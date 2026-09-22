@@ -46,8 +46,10 @@ function toast(message: string) {
   toastTimeout = window.setTimeout(() => { element.hidden = true; }, 4500);
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
 async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(path, { signal });
+  const response = await fetch(`${API_BASE_URL}${path}`, { signal });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error || `HTTP ${response.status}`);
