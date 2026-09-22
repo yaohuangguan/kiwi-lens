@@ -5,15 +5,17 @@
   "type": "module",
   "workspaces": ["apps/web", "apps/server", "packages/core"],
   "scripts": {
-    "dev": "concurrently -k -n server,web -c cyan,green \"npm run dev -w @kiwi-lens/server\" \"npm run dev -w @kiwi-lens/web\"",
-    "build": "npm run build -w @kiwi-lens/core && npm run build -w @kiwi-lens/server && npm run build -w @kiwi-lens/web",
+    "dev": "npm run build -w @kiwi-lens/web && concurrently -k -n server,web -c cyan,green \"npm run dev -w @kiwi-lens/server\" \"npm run dev -w @kiwi-lens/web\"",
+    "build": "npm run build -w @kiwi-lens/core && npm run build -w @kiwi-lens/web && npm run build -w @kiwi-lens/server",
     "test": "npm run test -w @kiwi-lens/core && npm run test -w @kiwi-lens/server",
     "data:import": "node scripts/import-cameras.mjs",
-    "start": "npm run start -w @kiwi-lens/server"
+    "start": "npm run dev -w @kiwi-lens/server",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "wrangler": "^4.136.3"
   },
   "engines": { "node": ">=20" }
 }

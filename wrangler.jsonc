@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kiwi-lens",
+  "main": "apps/server/src/worker.mjs",
+  "compatibility_date": "2026-08-04",
+  "assets": {
+    "directory": "apps/web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "kv_namespaces": [
+    { "binding": "CAMERA_DATA" }
+  ],
+  "triggers": {
+    "crons": ["0 */6 * * *"]
+  },
+  "observability": { "enabled": true }
+}

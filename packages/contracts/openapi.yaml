@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Kiwi Lens API
   version: 0.1.0
-  description: Shared HTTP contract for the PWA and a future Flutter client.
+  description: Shared HTTP contract for the PWA and a future iOS client.
 servers:
   - url: /api
 paths:
