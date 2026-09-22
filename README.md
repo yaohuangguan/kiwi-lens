@@ -35,7 +35,55 @@ NZTA 当前公开的是网页列表，不是摄像头变更推送，所以这不
 
 ## Cloudflare 部署
 
-登录有 Workers 权限的 Cloudflare 账号后，运行 `npx wrangler login`，再运行 `npm run deploy`。部署包含 `apps/web/dist` 静态资源和 `/api/*` Worker 路由；首次部署会自动创建 `CAMERA_DATA` KV 命名空间。Cron 使用 UTC 时间，每 6 小时触发一次。可在 Cloudflare Dashboard 查看定时任务和 Worker 日志。未登录账号时可本地测试与构建，但不能上线。`wrangler dev` 的 KV 是本地数据，与线上分离。
+当前推荐生产架构是 **Cloudflare Workers full-stack SPA**：一次部署同时发布 `apps/web/dist` 静态资源和 `/api/*` Worker API。Cloudflare 官方 Static Assets 支持这种 SPA + Worker API 的同域部署方式。
+
+首次部署：
+
+```bash
+npm install
+npx wrangler login
+npx wrangler whoami
+npm run deploy
+```
+
+项目使用 Wrangler 4 的资源自动 provision；`CAMERA_DATA` 只有 binding、没有固定 `id` 时，真实 `wrangler deploy` 会尝试为草稿 binding 自动创建 KV。部署完成后测试：
+
+```bash
+curl https://<your-worker>.workers.dev/api/health
+```
+
+应返回 `ok: true` 和摄像头数量。Cron 使用 UTC 时间，每 6 小时触发一次。可在 Cloudflare Dashboard → Workers & Pages → kiwi-lens 查看 Logs、Triggers 和 Bindings。
+
+如果你的 Wrangler/账号环境没有自动创建 KV，手动执行：
+
+```bash
+npx wrangler kv namespace create CAMERA_DATA
+```
+
+命令会输出 namespace ID。把该 ID 填入 `wrangler.jsonc`：
+
+```json
+"kv_namespaces": [
+  { "binding": "CAMERA_DATA", "id": "<输出的 namespace id>" }
+]
+```
+
+然后再次运行 `npm run deploy`。
+
+注意：`npm run build` 现在只构建共享 core 和 Web；它不会再在首次部署前执行 Worker dry-run。需要单独检查 Worker 打包时运行 `npm run check:worker`。本地 `wrangler dev` 使用本地 KV，与线上数据分离。
+
+### 可选：Web 单独部署到 Vercel
+
+`apps/web` 本身是 Vite SPA，可以单独部署到 Vercel，但它仍依赖 Cloudflare Worker API。推荐生产环境仍使用上面的 Cloudflare 同域方案。
+
+如果需要 Vercel Preview：
+
+1. Vercel Root Directory 设为 `apps/web`。
+2. Build Command 使用 `npm run build`，Output Directory 使用 `dist`。
+3. 增加环境变量 `VITE_API_BASE_URL=https://<your-worker>.workers.dev`。
+4. Worker API 已允许跨域 GET 请求。
+
+不设置 `VITE_API_BASE_URL` 时，Web 默认使用同域 `/api/*`，适用于 Cloudflare full-stack 部署。
 
 ## 导航能力与限制
 
