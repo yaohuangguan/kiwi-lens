@@ -1,0 +1,19 @@
+{
+  "name": "kiwi-lens",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["apps/web", "apps/server", "packages/core"],
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c cyan,green \"npm run dev -w @kiwi-lens/server\" \"npm run dev -w @kiwi-lens/web\"",
+    "build": "npm run build -w @kiwi-lens/core && npm run build -w @kiwi-lens/server && npm run build -w @kiwi-lens/web",
+    "test": "npm run test -w @kiwi-lens/core && npm run test -w @kiwi-lens/server",
+    "data:import": "node scripts/import-cameras.mjs",
+    "start": "npm run start -w @kiwi-lens/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": { "node": ">=20" }
+}

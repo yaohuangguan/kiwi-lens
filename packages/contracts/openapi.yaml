@@ -1,0 +1,129 @@
+openapi: 3.0.3
+info:
+  title: Kiwi Lens API
+  version: 0.1.0
+  description: Shared HTTP contract for the PWA and a future Flutter client.
+servers:
+  - url: /api
+paths:
+  /health:
+    get:
+      summary: API and camera cache status
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  cameraCount: { type: integer }
+                  syncStatus: { type: string, enum: [seed, live, stale] }
+  /cameras:
+    get:
+      summary: All fixed safety cameras and source freshness
+      responses:
+        '200':
+          description: Camera collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cameras, sourceUpdatedAt, syncStatus]
+                properties:
+                  cameras:
+                    type: array
+                    items: { $ref: '#/components/schemas/Camera' }
+                  sourceUpdatedAt: { type: string, format: date }
+                  checkedAt: { type: string, format: date-time, nullable: true }
+                  syncStatus: { type: string, enum: [seed, live, stale] }
+                  syncError: { type: string, nullable: true }
+                  source: { type: string, format: uri }
+  /search:
+    get:
+      summary: Search addresses within New Zealand
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, minLength: 3, maxLength: 120 }
+      responses:
+        '200':
+          description: Matching places
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    label: { type: string }
+                    latitude: { type: number }
+                    longitude: { type: number }
+  /route:
+    get:
+      summary: Driving route with turn steps
+      parameters:
+        - in: query
+          name: from
+          required: true
+          description: longitude,latitude
+          schema: { type: string }
+        - in: query
+          name: to
+          required: true
+          description: longitude,latitude
+          schema: { type: string }
+      responses:
+        '200':
+          description: Route
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+components:
+  schemas:
+    Camera:
+      type: object
+      required: [id, name, region, suburb, location, type, latitude, longitude, source, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        region: { type: string }
+        suburb: { type: string }
+        location: { type: string }
+        type: { type: string, enum: ['Spot speed', 'Average speed', 'Red light'] }
+        latitude: { type: number }
+        longitude: { type: number }
+        source: { type: string, format: uri }
+        updatedAt: { type: string, format: date }
+    Route:
+      type: object
+      properties:
+        coordinates:
+          type: array
+          description: Polyline points in [longitude, latitude] order
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items: { type: number }
+        distance: { type: number, description: Metres }
+        duration: { type: number, description: Seconds }
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              distance: { type: number }
+              duration: { type: number }
+              name: { type: string }
+              maneuver: { type: string }
+              modifier: { type: string }
+              instruction: { type: string }
+              location:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items: { type: number }

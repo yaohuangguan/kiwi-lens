@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.DS_Store
+coverage/
+apps/mobile/.dart_tool/
+apps/mobile/build/
