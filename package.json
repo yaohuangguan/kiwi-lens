@@ -6,11 +6,12 @@
   "workspaces": ["apps/web", "apps/server", "packages/core"],
   "scripts": {
     "dev": "npm run build -w @kiwi-lens/web && concurrently -k -n server,web -c cyan,green \"npm run dev -w @kiwi-lens/server\" \"npm run dev -w @kiwi-lens/web\"",
-    "build": "npm run build -w @kiwi-lens/core && npm run build -w @kiwi-lens/web && npm run build -w @kiwi-lens/server",
+    "build": "npm run build -w @kiwi-lens/core && npm run build -w @kiwi-lens/web",
+    "check:worker": "npm run build -w @kiwi-lens/server",
     "test": "npm run test -w @kiwi-lens/core && npm run test -w @kiwi-lens/server",
     "data:import": "node scripts/import-cameras.mjs",
     "start": "npm run dev -w @kiwi-lens/server",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy --config wrangler.jsonc"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
