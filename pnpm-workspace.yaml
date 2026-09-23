@@ -1,0 +1,6 @@
+packages:
+  - apps/web
+  - apps/server
+  - packages/*
+
+autoDedupe: true
