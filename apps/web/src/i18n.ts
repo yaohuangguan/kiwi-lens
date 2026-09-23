@@ -13,7 +13,7 @@ const messages = {
     routeCalculating: 'Calculating route…', destinationFallback: 'Destination', routeError: 'Route unavailable',
     routeFailed: 'Could not calculate route', chooseOrigin: 'Choose a starting point or allow GPS.',
     turnDefault: 'Continue along the route', arrived: 'Arrive at destination',
-    initialTitle: 'Explore New Zealand, drive with confidence', start: 'Start navigation', stop: 'End navigation',
+    initialTitle: 'Explore New Zealand, drive with confidence', start: 'Start navigation', stop: 'End navigation', cancelDestination: 'Clear',
     speedLimit: 'Speed limit', nextCamera: 'Next camera', gpsAccuracy: 'GPS accuracy', routeSteps: 'Route steps',
     camerasAlong: 'Cameras on route', distance: 'Distance', arrival: 'Arrival', dataDetails: 'Data details ↗',
     camerasLoading: 'Loading NZTA cameras…', camerasUnavailable: 'Camera data unavailable',
@@ -45,7 +45,7 @@ const messages = {
     routeFailed: '路线计算失败', chooseOrigin: '请选择起点，或允许 GPS 定位。',
     turnDefault: '沿路线行驶', arrived: '到达目的地',
     speedLimit: '当前限速', nextCamera: '下一摄像头', gpsAccuracy: 'GPS 精度', routeSteps: '路线步骤',
-    initialTitle: '探索新西兰，安心出发', start: '开始导航', stop: '结束导航',
+    initialTitle: '探索新西兰，安心出发', start: '开始导航', stop: '结束导航', cancelDestination: '取消',
     camerasAlong: '沿途摄像头', distance: '路程', arrival: '预计到达', dataDetails: '数据详情 ↗',
     camerasLoading: '正在加载 NZTA 摄像头…', camerasUnavailable: '摄像头数据暂不可用',
     cameraCount: '个 NZTA 固定摄像头', cached: '缓存', neverChecked: '尚未检查',
@@ -100,6 +100,9 @@ export function applyUiLanguage(language: Language) {
   setText('.route-stats > div:nth-child(2) span', t(language, 'distance'));
   setText('.route-stats > div:nth-child(3) span', t(language, 'arrival'));
   setText('#dataButton', t(language, 'dataDetails'));
+  setText('#clearDestinationButton', t(language, 'cancelDestination'));
+  setAttribute('#clearDestinationButton', 'aria-label', language === 'zh' ? '取消目的地' : 'Clear destination');
+  setAttribute('#clearDestinationButton', 'title', language === 'zh' ? '取消目的地' : 'Clear destination');
   setText('#settingsTitle', t(language, 'settingsTitle'));
   setText('#settingsOverlay .setting-row:nth-child(2) strong', t(language, 'language'));
   setText('.trip-detail-grid > div:nth-child(1) span', t(language, 'speedLimit'));
