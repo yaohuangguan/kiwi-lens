@@ -94,6 +94,28 @@ flutter run --dart-define=MAP_ID=YOUR_MAP_ID
 
 没有 Map ID 时使用 Google 默认地图样式。
 
+## Drive Mode 架构
+
+Google Navigation SDK 只负责导航底层能力，Kiwi Lens 自己拥有驾驶产品逻辑：
+
+```text
+Google Navigation SDK
+        ↓
+DriveEngine
+├─ road-snapped location
+├─ NavInfo / ETA / route changes
+├─ speeding events
+├─ CameraMatcher
+├─ VoiceEngine
+└─ system speed stream
+        ↓
+Kiwi Lens Drive HUD
+```
+
+当前 Drive Mode 即使没有设置目的地也可以启动。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 500 m 和 150 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 会继续消费 Google NavInfo，显示转弯、剩余距离和可用的推荐车道。
+
+摄像头数据目前没有执法方向，因此 Free Drive 的匹配策略刻意保守：优先前进方向锥形范围内的摄像头，避免侧路或身后的明显误报。真实驾驶测试后再调提醒距离与 heading 阈值。
+
 ## 下一步
 
 - Places 搜索与地点详情

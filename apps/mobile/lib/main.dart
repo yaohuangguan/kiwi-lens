@@ -4,6 +4,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import 'domain/coordinate_formatter.dart';
+import 'drive/drive_engine.dart';
+import 'widgets/drive_hud.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +52,8 @@ class _MapHomePageState extends State<MapHomePage> {
   static const _mapId = String.fromEnvironment('MAP_ID');
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
 
+  final DriveEngine _driveEngine = DriveEngine();
+
   PointOfInterest? _selectedPoi;
   bool _navigationSessionInitialized = false;
   bool _guidanceRunning = false;
@@ -58,6 +62,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   @override
   void dispose() {
+    _driveEngine.dispose();
     if (_navigationSessionInitialized) {
       GoogleMapsNavigator.cleanup();
     }
@@ -78,7 +83,10 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<bool> _ensureNavigationSession() async {
-    if (_navigationSessionInitialized) return true;
+    if (_navigationSessionInitialized) {
+      if (!_driveEngine.active) await _driveEngine.start();
+      return true;
+    }
     if (!await _ensureLocationPermission()) return false;
 
     if (!await GoogleMapsNavigator.areTermsAccepted()) {
@@ -92,7 +100,15 @@ class _MapHomePageState extends State<MapHomePage> {
     await GoogleMapsNavigator.initializeNavigationSession(
       taskRemovedBehavior: TaskRemovedBehavior.continueService,
     );
+    await GoogleMapsNavigator.setAudioGuidance(
+      NavigationAudioGuidanceSettings(
+        guidanceType: NavigationAudioGuidanceType.alertsAndGuidance,
+        isBluetoothAudioEnabled: true,
+        isVibrationEnabled: true,
+      ),
+    );
     _navigationSessionInitialized = true;
+    await _driveEngine.start();
     return true;
   }
 
@@ -160,6 +176,39 @@ class _MapHomePageState extends State<MapHomePage> {
     await GoogleMapsNavigator.clearDestinations();
     if (!mounted) return;
     setState(() => _guidanceRunning = false);
+  }
+
+  Future<void> _startDriveMode() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      if (!await _ensureNavigationSession()) return;
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = 'Could not start Drive Mode: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _stopDriveMode() async {
+    if (_guidanceRunning) await _stopNavigation();
+    await _driveEngine.stop();
+    if (_navigationSessionInitialized) {
+      await GoogleMapsNavigator.cleanup();
+      _navigationSessionInitialized = false;
+    }
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _onPoiClicked(PointOfInterest poi) {
@@ -278,6 +327,16 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
           ),
+          if (_driveEngine.active && _selectedPoi == null)
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _driveEngine,
+                builder: (context, _) => DriveHud(
+                  engine: _driveEngine,
+                  onStop: () => _stopDriveMode(),
+                ),
+              ),
+            ),
           if (_message != null)
             SafeArea(
               child: Align(
@@ -299,6 +358,28 @@ class _MapHomePageState extends State<MapHomePage> {
                         ),
                       ),
                     ),
+                  ),
+                ),
+              ),
+            ),
+          if (!_driveEngine.active && _selectedPoi == null && !_guidanceRunning)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(
+                minimum: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+                child: PointerInterceptor(
+                  child: FilledButton.icon(
+                    onPressed: _busy ? null : _startDriveMode,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0B1717),
+                      foregroundColor: const Color(0xFFC8F169),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 16,
+                      ),
+                    ),
+                    icon: const Icon(Icons.directions_car_filled_rounded),
+                    label: Text(_busy ? 'Starting…' : 'Drive'),
                   ),
                 ),
               ),
