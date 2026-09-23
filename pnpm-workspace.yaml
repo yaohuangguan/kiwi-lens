@@ -4,3 +4,7 @@ packages:
   - packages/*
 
 autoDedupe: true
+
+allowBuilds:
+  esbuild: true
+  workerd: true
