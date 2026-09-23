@@ -1,5 +1,11 @@
 # Kiwi Lens
 
+## About
+
+Kiwi Lens is a New Zealand-focused navigation and road-safety project that combines route guidance with fixed safety-camera awareness. It uses Google Maps for places and traffic-aware routing, NZTA camera data for safety alerts, and a focused navigation UI designed to keep route instructions, ETA, speed, upcoming turns, and relevant camera warnings visible without covering the map.
+
+The project is built as a reusable full-stack monorepo: a Vite PWA and Cloudflare Worker power the web experience, shared core packages handle route/camera matching, and a Flutter mobile client provides a path toward native background navigation on Android and iOS.
+
 面向新西兰驾驶者的固定安全摄像头导航。第一期为可安装的 PWA，由 Cloudflare Worker 在同一域名提供网页和 API；后续 Flutter Android/iOS 客户端可复用 API 契约。
 
 ## Monorepo
