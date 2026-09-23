@@ -1,0 +1,11 @@
+.account-section { margin-top: 18px; padding-top: 14px; border-top: 1px solid #e6ede6; }
+.account-section h3 { margin: 0 0 8px; color: #19382b; font-size: 16px; }
+.account-note, .account-warning { margin: 0 0 12px; color: #63736a; font-size: 12px; line-height: 1.5; }
+.account-warning { margin-top: 10px; color: #8c6c4d; }
+.account-form { display: grid; gap: 8px; }
+.account-form input { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #d8e2d9; border-radius: 10px; background: #fff; color: #1c3028; outline-color: #88b34c; }
+.account-button { min-height: 41px; padding: 8px 14px; border: 0; border-radius: 10px; background: #c8f169; color: #19331e; font-weight: 800; }
+.account-button.secondary { background: #eef3e9; }
+.account-button:disabled { opacity: .6; }
+.account-link { margin-top: 11px; padding: 0; border: 0; background: none; color: #356742; font-size: 12px; font-weight: 800; }
+.account-error { color: #a83d27; font-size: 12px; }

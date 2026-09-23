@@ -13,13 +13,20 @@ export interface Camera {
   updatedAt: string;
 }
 
+export interface RouteLane {
+  indications: string[];
+  valid: boolean;
+}
+
 export interface RouteStep {
   distance: number;
   duration: number;
   name: string;
   instruction: string;
   maneuver: string;
+  modifier?: string;
   location: Coordinate;
+  lanes?: RouteLane[];
 }
 
 export interface Route {

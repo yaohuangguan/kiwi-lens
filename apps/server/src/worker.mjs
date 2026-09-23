@@ -1,5 +1,7 @@
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
+import { handleAccount } from './auth.mjs';
+import { handlePlaces } from './places.mjs';
 
 const CAMERA_KEY = 'cameras/current';
 let lastSearchAt = 0;
@@ -101,15 +103,23 @@ async function handleApi(request, env, ctx) {
     const result = await upstreamJson(routeUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
     if (result.code !== 'Ok' || !result.routes?.length) return json({ error: 'No driving route found' }, 422);
     const selected = result.routes[0];
-    const steps = selected.legs.flatMap((leg) => leg.steps.map((step) => ({
-      distance: step.distance,
-      duration: step.duration,
-      name: step.name || '',
-      maneuver: step.maneuver?.type || 'continue',
-      modifier: step.maneuver?.modifier || '',
-      instruction: [step.maneuver?.type, step.maneuver?.modifier, step.name].filter(Boolean).join(' '),
-      location: step.maneuver.location
-    })));
+    const steps = selected.legs.flatMap((leg) => leg.steps.map((step) => {
+      const laneIntersection = step.intersections?.find((intersection) => Array.isArray(intersection.lanes) && intersection.lanes.length);
+      const lanes = laneIntersection?.lanes?.map((lane) => ({
+        indications: Array.isArray(lane.indications) ? lane.indications : [],
+        valid: lane.valid === true
+      }));
+      return {
+        distance: step.distance,
+        duration: step.duration,
+        name: step.name || '',
+        maneuver: step.maneuver?.type || 'continue',
+        modifier: step.maneuver?.modifier || '',
+        instruction: [step.maneuver?.type, step.maneuver?.modifier, step.name].filter(Boolean).join(' '),
+        location: step.maneuver.location,
+        ...(lanes?.length ? { lanes } : {})
+      };
+    }));
     return json({ coordinates: selected.geometry.coordinates, distance: selected.distance, duration: selected.duration, steps });
   }
   return json({ error: 'Not found' }, 404);
@@ -120,6 +130,8 @@ export default {
     const pathname = new URL(request.url).pathname;
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
+      const featureResponse = await handleAccount(request, env) || await handlePlaces(request, env);
+      if (featureResponse) return featureResponse;
       return await handleApi(request, env, ctx);
     } catch (error) {
       console.error(error);

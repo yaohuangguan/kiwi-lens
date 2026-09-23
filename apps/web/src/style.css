@@ -55,6 +55,10 @@ button { cursor: pointer; }
 .turn-eta { align-self: stretch; display: flex; flex-direction: column; justify-content: center; text-align: right; padding-left: 12px; border-left: 1px solid #345047; white-space: nowrap; }
 .turn-eta strong { color: #c8f169; font-size: 17px; }
 .turn-eta span { color: #b1c0b7; font-size: 11px; }
+.lane-guidance { display: flex; align-items: stretch; gap: 4px; margin-top: 9px; }
+.lane { min-width: 28px; height: 29px; display: grid; place-items: center; padding: 0 6px; border: 1px solid #3a514a; border-radius: 8px; color: #8da099; background: #172723; font-size: 17px; line-height: 1; }
+.lane.recommended { border-color: #c8f169; background: #c8f169; color: #142319; box-shadow: 0 0 0 2px rgba(200,241,105,.12); }
+.lane.multi { font-size: 13px; letter-spacing: -2px; padding-right: 8px; }
 
 .map-controls { position: absolute; z-index: 410; right: max(18px, env(safe-area-inset-right)); top: calc(192px + env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 9px; }
 .map-control { width: 47px; height: 47px; border-radius: 14px; background: #fff; color: #284f43; font-size: 25px; box-shadow: 0 7px 22px rgba(14,34,26,.17); }
