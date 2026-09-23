@@ -41,6 +41,11 @@ let lastRerouteAt = 0;
 let lastTurnKey = '';
 let wakeLock: WakeLockSentinel | null = null;
 let toastTimeout = 0;
+type GpsStatus = 'idle' | 'locating' | 'active' | 'denied' | 'unavailable';
+let gpsStatus: GpsStatus = 'idle';
+let gpsAccuracy: number | null = null;
+let gpsWatchId: number | null = null;
+let gpsRequesting = false;
 const spokenCameras = new Set<string>();
 
 function escapeHtml(value: string) {
@@ -126,8 +131,9 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
       toast(`${t(language, 'currentPlace')}: ${label}`);
     }).catch(() => { /* GPS coordinates remain available if reverse lookup fails */ });
   }
-  $('gpsBadge').classList.remove('error');
-  $('gpsBadge').innerHTML = `<i></i>GPS ${Math.round(accuracy)} m`;
+  gpsStatus = 'active';
+  gpsAccuracy = accuracy;
+  renderGpsStatus();
   if (!positionMarker) {
     positionMarker = L.marker([latitude, longitude], { icon: positionIcon(heading), zIndexOffset: 600 }).addTo(map);
     if (following) { const center = navigating && route ? lookAheadCenter(current, heading, route) : current; map.setView([center[1], center[0]], navigating ? 17 : 15); }
@@ -139,21 +145,98 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
   if (navigating && route) updateGuidance();
 }
 
-function startGps() {
-  if (!navigator.geolocation) {
-    $('gpsBadge').classList.add('error');
-    $('gpsBadge').innerHTML = `<i></i>${t(language, 'gpsUnavailable')}`;
-    return;
+function renderGpsStatus() {
+  const badge = $('gpsBadge');
+  const text = $('gpsBadgeText');
+  badge.classList.toggle('error', gpsStatus === 'denied' || gpsStatus === 'unavailable');
+  if (gpsStatus === 'active' && gpsAccuracy !== null) text.textContent = `GPS ${Math.round(gpsAccuracy)} m`;
+  else if (gpsStatus === 'locating') text.textContent = t(language, 'locating');
+  else if (gpsStatus === 'denied') text.textContent = t(language, 'permissionDenied');
+  else if (gpsStatus === 'unavailable') text.textContent = t(language, 'gpsTemporary');
+  else text.textContent = t(language, 'enableLocation');
+}
+
+function handleGpsError(error: GeolocationPositionError) {
+  if (error.code === error.PERMISSION_DENIED && gpsWatchId !== null) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
   }
-  navigator.geolocation.watchPosition(
+  gpsStatus = error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable';
+  gpsAccuracy = null;
+  renderGpsStatus();
+  if (error.code === error.PERMISSION_DENIED) toast(t(language, 'permissionHelp'));
+}
+
+function startGpsWatch() {
+  if (!navigator.geolocation || gpsWatchId !== null) return;
+  gpsStatus = 'locating';
+  renderGpsStatus();
+  gpsWatchId = navigator.geolocation.watchPosition(
     ({ coords }) => updatePosition(coords.latitude, coords.longitude, Number.isFinite(coords.heading) ? coords.heading : null, coords.accuracy),
-    (error) => {
-      $('gpsBadge').classList.add('error');
-      $('gpsBadge').innerHTML = `<i></i>${t(language, error.code === 1 ? 'permissionDenied' : 'gpsTemporary')}`;
-      if (error.code === 1) toast(t(language, 'permissionHelp'));
-    },
+    handleGpsError,
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 18000 }
   );
+}
+
+function requestGps() {
+  if (!navigator.geolocation) {
+    gpsStatus = 'unavailable';
+    renderGpsStatus();
+    return;
+  }
+  if (gpsRequesting || gpsStatus === 'active') return;
+  gpsRequesting = true;
+  gpsStatus = 'locating';
+  renderGpsStatus();
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      gpsRequesting = false;
+      updatePosition(coords.latitude, coords.longitude, Number.isFinite(coords.heading) ? coords.heading : null, coords.accuracy);
+      startGpsWatch();
+    },
+    (error) => {
+      gpsRequesting = false;
+      handleGpsError(error);
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 18000 }
+  );
+}
+
+async function initGps() {
+  if (!navigator.geolocation) {
+    gpsStatus = 'unavailable';
+    renderGpsStatus();
+    return;
+  }
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  if ('permissions' in navigator) {
+    try {
+      const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+      if (permission.state === 'granted') startGpsWatch();
+      else {
+        gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
+        renderGpsStatus();
+        if (permission.state === 'prompt' && !standalone) requestGps();
+      }
+      permission.onchange = () => {
+        if (permission.state === 'granted') startGpsWatch();
+        else {
+          if (gpsWatchId !== null) {
+            navigator.geolocation.clearWatch(gpsWatchId);
+            gpsWatchId = null;
+          }
+          gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
+          gpsAccuracy = null;
+          renderGpsStatus();
+        }
+      };
+      return;
+    } catch { /* older Safari may not expose geolocation through Permissions API */ }
+  }
+  if (standalone) {
+    gpsStatus = 'idle';
+    renderGpsStatus();
+  } else requestGps();
 }
 
 async function search(target: 'origin' | 'destination') {
@@ -352,7 +435,8 @@ function updateGuidance() {
 }
 
 async function startNavigation() {
-  if (!route || !current) { toast(t(language, 'noGps')); return; }
+  if (!current) { requestGps(); toast(t(language, 'noGps')); return; }
+  if (!route) { toast(t(language, 'routeError')); return; }
   navigating = true;
   following = true;
   $('followButton').classList.add('active');
@@ -417,10 +501,21 @@ initAutocomplete({
     else if (destination) toast(t(language, 'chooseOrigin'));
   }
 });
-$('useGpsButton').onclick = () => { manualOrigin = null; ($('originInput') as HTMLInputElement).value = ''; if (destination && current) void planRoute(); else toast(t(language, 'noGps')); };
+$('useGpsButton').onclick = () => {
+  manualOrigin = null;
+  ($('originInput') as HTMLInputElement).value = '';
+  if (!current) { requestGps(); return; }
+  if (destination) void planRoute();
+};
 $('driveButton').onclick = () => navigating ? stopNavigation() : void startNavigation();
 $('followButton').onclick = () => { following = !following; $('followButton').classList.toggle('active', following); if (following && current) { const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; map.panTo([center[1], center[0]]); } };
-$('recenterButton').onclick = () => { if (current) { following = true; $('followButton').classList.add('active'); const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; map.setView([center[1], center[0]], navigating ? 17 : 16); } else toast(t(language, 'noGps')); };
+$('recenterButton').onclick = () => {
+  if (!current) { requestGps(); return; }
+  following = true;
+  $('followButton').classList.add('active');
+  const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current;
+  map.setView([center[1], center[0]], navigating ? 17 : 16);
+};
 map.on('dragstart', () => { following = false; $('followButton').classList.remove('active'); });
 map.on('click', () => { $('searchResults').hidden = true; });
 $('settingsButton').onclick = () => showOverlay('settingsOverlay');
@@ -443,6 +538,7 @@ function applyLanguage() {
   } else $('dataStatus').textContent = t(language, 'camerasLoading');
   renderCameras();
   renderAccount();
+  renderGpsStatus();
   if (navigating) updateGuidance();
 }
 $('zhButton').onclick = () => { language = 'zh'; applyLanguage(); void rememberPreferences(language, voiceEnabled); };
@@ -456,7 +552,8 @@ $('laneToggle').addEventListener('change', () => {
   if (navigating) updateGuidance(); else renderLaneGuidance();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && navigating && !wakeLock && 'wakeLock' in navigator) void navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock; }).catch(() => {}); });
-startGps();
+$('gpsBadge').onclick = () => requestGps();
+void initGps();
 void loadCameras();
 window.setInterval(() => void loadCameras(), 15 * 60_000);
 localStorage.removeItem('kiwi-language');

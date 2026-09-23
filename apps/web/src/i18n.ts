@@ -4,8 +4,8 @@ const messages = {
   en: {
     title: 'Kiwi Lens · Safer NZ navigation', description: 'NZ fixed safety camera navigation and alerts',
     map: 'New Zealand navigation map', settings: 'Open settings', locating: 'Locating', gpsUnavailable: 'GPS unavailable',
-    permissionDenied: 'Location permission denied', gpsTemporary: 'Location unavailable',
-    permissionHelp: 'Allow location access, or search for a starting point.',
+    enableLocation: 'Tap to enable location', permissionDenied: 'Location permission denied', gpsTemporary: 'Location unavailable',
+    permissionHelp: 'Allow location for Kiwi Lens in iPhone Settings, then tap GPS again.',
     searchPanel: 'Route search', origin: 'Current location · tap to change', destination: 'Search destination',
     useGps: 'Use live location', searchButton: 'Search destination', follow: 'Follow location', recenter: 'Recenter map',
     noGps: 'Waiting for GPS location.', minQuery: 'Type at least 3 characters.', searching: 'Searching…',
@@ -34,8 +34,8 @@ const messages = {
   zh: {
     title: 'Kiwi Lens · NZ 安全导航', description: '新西兰固定安全摄像头导航提醒',
     map: '新西兰导航地图', settings: '打开设置', locating: '定位中', gpsUnavailable: 'GPS 不可用',
-    permissionDenied: '定位未授权', gpsTemporary: '定位暂不可用',
-    permissionHelp: '请允许定位，或在起点栏手动搜索地址。',
+    enableLocation: '点按启用定位', permissionDenied: '定位未授权', gpsTemporary: '定位暂不可用',
+    permissionHelp: '请在 iPhone 设置中允许 Kiwi Lens 使用定位，然后再次点按 GPS。',
     searchPanel: '路线搜索', origin: '当前位置 · 点击可改起点', destination: '搜索目的地',
     useGps: '使用实时位置', searchButton: '搜索目的地', follow: '跟随位置', recenter: '回到当前位置',
     noGps: '等待 GPS 定位。', minQuery: '请输入至少 3 个字符。', searching: '搜索中…',
@@ -81,6 +81,8 @@ export function applyUiLanguage(language: Language) {
   setAttribute('meta[name="description"]', 'content', t(language, 'description'));
   setAttribute('#map', 'aria-label', t(language, 'map'));
   setAttribute('#settingsButton', 'aria-label', t(language, 'settings'));
+  setAttribute('#gpsBadge', 'aria-label', t(language, 'useGps'));
+  setAttribute('#gpsBadge', 'title', t(language, 'useGps'));
   setAttribute('#searchPanel', 'aria-label', t(language, 'searchPanel'));
   setAttribute('#originInput', 'placeholder', t(language, 'origin'));
   setAttribute('#originInput', 'aria-label', t(language, 'origin'));

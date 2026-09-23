@@ -24,7 +24,7 @@ button { cursor: pointer; }
 .brand-icon { display: grid; place-items: center; width: 36px; height: 36px; border: 2px solid #c8f169; border-radius: 12px; color: #c8f169; font-size: 23px; line-height: 1; }
 .brand-light { color: #c8f169; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
-.gps-badge { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border-radius: 20px; background: #1e302c; color: #d6e7df; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.gps-badge { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 20px; background: #1e302c; color: #d6e7df; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .gps-badge i { width: 7px; height: 7px; border-radius: 50%; background: #c8f169; box-shadow: 0 0 0 4px rgba(200,241,105,.12); }
 .gps-badge.error i { background: #ff9d7d; box-shadow: 0 0 0 4px rgba(255,157,125,.13); }
 .icon-button, .map-control, .close-button { border: 0; display: grid; place-items: center; }
