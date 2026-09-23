@@ -320,6 +320,18 @@ export class GoogleMapAdapter {
     if (!navigating) this.fitRoute(route);
   }
 
+  clearRoute() {
+    this.pendingRoute = undefined;
+    this.routeOutline?.setMap(null);
+    this.routeOutline = undefined;
+    this.routeLine?.setMap(null);
+    this.routeLine = undefined;
+    if (this.destinationMarker) {
+      this.destinationMarker.map = null;
+      this.destinationMarker = undefined;
+    }
+  }
+
   setView(coordinate: Coordinate, zoom: number) {
     if (!this.map) return;
     this.map.moveCamera({ center: { lat: coordinate[1], lng: coordinate[0] }, zoom });
