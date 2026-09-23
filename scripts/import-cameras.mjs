@@ -28,7 +28,7 @@ function parseCsv(text) {
 }
 
 const input = process.argv[2];
-if (!input) throw new Error('Usage: npm run data:import -- <path-to-nzta.csv>');
+if (!input) throw new Error('Usage: pnpm data:import -- <path-to-nzta.csv>');
 const rows = parseCsv(await readFile(resolve(input), 'utf8'));
 const cameras = rows.map((row) => {
   const latitude = Number(row.Latitude);
