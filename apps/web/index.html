@@ -85,7 +85,10 @@
         <div class="panel-handle"></div>
         <div class="panel-header">
           <div><span class="eyebrow" id="tripEyebrow">READY TO GO</span><h1 id="tripTitle">探索新西兰，安心出发</h1></div>
-          <button id="driveButton" class="drive-button" disabled><span id="driveIcon">➤</span><span id="driveLabel">开始导航</span></button>
+          <div class="panel-actions">
+            <button id="clearDestinationButton" class="cancel-route-button" type="button" hidden>取消</button>
+            <button id="driveButton" class="drive-button" disabled><span id="driveIcon">➤</span><span id="driveLabel">开始导航</span></button>
+          </div>
         </div>
         <div class="route-stats">
           <div><span>沿途摄像头</span><strong id="cameraRouteCount">—</strong></div>
