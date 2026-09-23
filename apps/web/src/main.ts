@@ -2,7 +2,7 @@ import './style.css';
 import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
-import { initAccount, recentDestinations, rememberDestination, rememberPreferences, renderAccount, type AccountProfile } from './account';
+import { currentAccountEmail, initAccount, isSignedIn, recentDestinations, rememberDestination, rememberPreferences, renderAccount, savePlace, savedPlace, type AccountProfile } from './account';
 import { lookAheadCenter } from './navigation-view';
 import { initAutocomplete, type SuggestedPlace } from './autocomplete';
 import { GoogleMapAdapter, type PoiSelection } from './google-map';
@@ -71,6 +71,18 @@ async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function renderTripFlags() {
+  $('sheetVoice').textContent = language === 'zh'
+    ? `语音 ${voiceEnabled ? '✓' : '关闭'}`
+    : `Voice ${voiceEnabled ? '✓' : 'off'}`;
+  $('sheetLane').textContent = language === 'zh'
+    ? `车道 ${laneGuidanceEnabled ? '✓' : '关闭'}`
+    : `Lanes ${laneGuidanceEnabled ? '✓' : 'off'}`;
+  $('sheetAccount').textContent = isSignedIn()
+    ? (language === 'zh' ? '账号已同步' : 'Account synced')
+    : (language === 'zh' ? '访客模式' : 'Guest mode');
+}
+
 function renderSpeedHud() {
   const hud = $('speedHud');
   const speeding = speedLimitKph !== null && currentSpeedKph > speedLimitKph;
@@ -79,6 +91,7 @@ function renderSpeedHud() {
   $('speedLimitValue').textContent = speedLimitKph === null
     ? (language === 'zh' ? '限速 —' : 'LIMIT —')
     : (language === 'zh' ? `限速 ${speedLimitKph}` : `LIMIT ${speedLimitKph}`);
+  $('sheetSpeedLimit').textContent = speedLimitKph === null ? '—' : `${speedLimitKph} km/h`;
 }
 
 async function refreshSpeedLimit(coordinate: Coordinate) {
@@ -170,6 +183,9 @@ function renderGpsStatus() {
   else if (gpsStatus === 'denied') text.textContent = t(language, 'permissionDenied');
   else if (gpsStatus === 'unavailable') text.textContent = t(language, 'gpsTemporary');
   else text.textContent = t(language, 'enableLocation');
+  $('sheetGps').textContent = gpsStatus === 'active' && gpsAccuracy !== null
+    ? `±${Math.round(gpsAccuracy)} m`
+    : '—';
 }
 
 function handleGpsError(error: GeolocationPositionError) {
@@ -327,6 +343,10 @@ async function planRoute() {
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('tripDistance').textContent = formatDistance(route.distance, language);
     $('cameraRouteCount').textContent = String(routeCameras.length);
+    $('sheetRouteSteps').textContent = String(route.steps.length);
+    $('sheetNextCamera').textContent = routeCameras.length
+      ? formatDistance(Math.max(0, routeCameras[0]!.alongMeters), language)
+      : '—';
     $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
       language === 'zh' ? 'zh-NZ' : 'en-NZ',
       { hour: '2-digit', minute: '2-digit' }
@@ -441,6 +461,9 @@ function updateGuidance() {
     }
   }
   const upcoming = routeCameras.filter((item) => item.confidence === 'high' && item.alongMeters >= progress - 15).sort((a, b) => a.alongMeters - b.alongMeters)[0];
+  $('sheetNextCamera').textContent = upcoming
+    ? formatDistance(Math.max(0, upcoming.alongMeters - progress), language)
+    : '—';
   if (upcoming && upcoming.alongMeters - progress <= 1200) {
     const ahead = Math.max(0, upcoming.alongMeters - progress);
     $('cameraAlert').hidden = false;
@@ -505,12 +528,158 @@ function hidePoiCard() {
   $('poiCard').hidden = true;
 }
 
+function renderPoiAccountState(place: PoiSelection) {
+  const stored = savedPlace(place.placeId);
+  const signedIn = isSignedIn();
+  const favorite = $('poiFavorite') as HTMLButtonElement;
+  const note = $('poiNote') as HTMLTextAreaElement;
+  const saveNote = $('poiSaveNote') as HTMLButtonElement;
+  favorite.textContent = stored?.isFavorite ? '♥' : '♡';
+  favorite.classList.toggle('active', stored?.isFavorite === true);
+  favorite.disabled = false;
+  note.disabled = !signedIn;
+  saveNote.disabled = !signedIn;
+  note.value = stored?.note || '';
+  $('poiAccountHint').textContent = signedIn
+    ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)
+    : (language === 'zh' ? '登录后同步收藏和备注' : 'Sign in to sync favorites and notes');
+}
+
 function showPoiCard(place: PoiSelection) {
   selectedPoi = place;
   $('poiTitle').textContent = place.name;
+  $('poiType').textContent = place.primaryType || 'GOOGLE PLACE';
   $('poiAddress').textContent = place.address || `${place.coordinate[1].toFixed(5)}, ${place.coordinate[0].toFixed(5)}`;
+
+  const rating = $('poiRating');
+  if (place.rating !== null) {
+    rating.replaceChildren();
+    const stars = document.createElement('span');
+    stars.className = 'stars';
+    stars.textContent = '★'.repeat(Math.max(1, Math.min(5, Math.round(place.rating))));
+    const text = document.createElement('span');
+    text.textContent = `${place.rating.toFixed(1)} · ${place.userRatingCount ?? 0} ${language === 'zh' ? '条评分' : 'ratings'}`;
+    rating.append(stars, text);
+    rating.hidden = false;
+  } else rating.hidden = true;
+
+  const summary = $('poiSummary');
+  summary.textContent = place.editorialSummary;
+  summary.hidden = !place.editorialSummary;
+
+  const photos = $('poiPhotos');
+  photos.replaceChildren();
+  for (const photo of place.photos) {
+    const figure = document.createElement('figure');
+    figure.className = 'poi-photo';
+    const image = document.createElement('img');
+    image.src = photo.url;
+    image.alt = photo.attribution ? `${place.name} · ${photo.attribution}` : place.name;
+    image.loading = 'lazy';
+    figure.append(image);
+    if (photo.attribution) {
+      const caption = document.createElement('figcaption');
+      caption.textContent = `© ${photo.attribution}`;
+      figure.append(caption);
+    }
+    photos.append(figure);
+  }
+  photos.hidden = place.photos.length === 0;
+
+  const meta = $('poiMeta');
+  meta.replaceChildren();
+  const addMeta = (value: string) => {
+    if (!value) return;
+    const chip = document.createElement('span');
+    chip.textContent = value;
+    meta.append(chip);
+  };
+  addMeta(place.businessStatus === 'OPERATIONAL' ? (language === 'zh' ? '营业中' : 'Operational') : (place.businessStatus || ''));
+  addMeta(place.priceLevel?.replaceAll('_', ' ') || '');
+  addMeta(place.phone ? `☎ ${place.phone}` : '');
+
+  const hours = $('poiHours');
+  hours.replaceChildren();
+  for (const line of place.openingHours) {
+    const row = document.createElement('div');
+    row.textContent = line;
+    hours.append(row);
+  }
+  hours.hidden = place.openingHours.length === 0;
+
+  const website = $('poiWebsite') as HTMLAnchorElement;
+  website.hidden = !place.websiteURI;
+  website.href = place.websiteURI || '#';
+  const mapsLink = $('poiGoogleMaps') as HTMLAnchorElement;
+  mapsLink.hidden = !place.googleMapsURI;
+  mapsLink.href = place.googleMapsURI || '#';
+
+  const reviewsRoot = $('poiReviews');
+  reviewsRoot.replaceChildren();
+  for (const review of place.reviews) {
+    const root = document.createElement('article');
+    root.className = 'poi-review';
+    const head = document.createElement('div');
+    head.className = 'poi-review-head';
+    if (review.authorPhoto) {
+      const avatar = document.createElement('img');
+      avatar.src = review.authorPhoto;
+      avatar.alt = review.author;
+      avatar.loading = 'lazy';
+      head.append(avatar);
+    }
+    const author = document.createElement('strong');
+    author.textContent = review.author;
+    const score = document.createElement('span');
+    score.textContent = `${review.rating ?? '—'} ★ · ${review.relativeTime}`;
+    head.append(author, score);
+    const copy = document.createElement('p');
+    copy.textContent = review.text;
+    root.append(head, copy);
+    if (review.googleMapsURI) {
+      const link = document.createElement('a');
+      link.className = 'source-link';
+      link.href = review.googleMapsURI;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = language === 'zh' ? '在 Google Maps 查看 ↗' : 'View on Google Maps ↗';
+      root.append(link);
+    }
+    reviewsRoot.append(root);
+  }
+  $('poiReviewCount').textContent = place.userRatingCount ? String(place.userRatingCount) : '';
+  $('poiReviewsSection').hidden = place.reviews.length === 0;
+
+  renderPoiAccountState(place);
   $('poiCard').hidden = false;
   $('searchResults').hidden = true;
+}
+
+async function saveSelectedPlace(nextFavorite?: boolean) {
+  if (!selectedPoi) return;
+  if (!isSignedIn()) {
+    toast(language === 'zh' ? '请先在设置中登录，再同步收藏和备注。' : 'Sign in in Settings to sync favorites and notes.');
+    return;
+  }
+  const stored = savedPlace(selectedPoi.placeId);
+  const note = ($('poiNote') as HTMLTextAreaElement).value.trim();
+  const isFavorite = nextFavorite ?? stored?.isFavorite ?? false;
+  try {
+    await savePlace({
+      placeId: selectedPoi.placeId,
+      name: selectedPoi.name,
+      address: selectedPoi.address,
+      latitude: selectedPoi.coordinate[1],
+      longitude: selectedPoi.coordinate[0],
+      isFavorite,
+      note
+    });
+    renderPoiAccountState(selectedPoi);
+    renderTripFlags();
+    toast(language === 'zh' ? '已同步到账号' : 'Saved to your account');
+  } catch (error) {
+    toast(String((error as Error).message));
+  }
 }
 
 function navigateToSelectedPoi() {
@@ -611,6 +780,11 @@ $('useGpsButton').onclick = () => {
 $('driveButton').onclick = () => navigating ? stopNavigation() : void startNavigation();
 $('poiClose').onclick = hidePoiCard;
 $('poiNavigate').onclick = navigateToSelectedPoi;
+$('poiFavorite').onclick = () => {
+  if (!selectedPoi) return;
+  void saveSelectedPlace(!(savedPlace(selectedPoi.placeId)?.isFavorite ?? false));
+};
+$('poiSaveNote').onclick = () => void saveSelectedPlace();
 $('followButton').onclick = () => { following = !following; $('followButton').classList.toggle('active', following); if (following && current) { const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; map.panTo(center); } };
 $('recenterButton').onclick = () => {
   if (!current) { requestGps(); return; }
@@ -641,22 +815,34 @@ function applyLanguage() {
   renderAccount();
   renderGpsStatus();
   renderSpeedHud();
+  renderTripFlags();
+  if (selectedPoi) showPoiCard(selectedPoi);
   if (navigating) updateGuidance();
 }
 $('zhButton').onclick = () => { language = 'zh'; applyLanguage(); void rememberPreferences(language, voiceEnabled); };
 $('enButton').onclick = () => { language = 'en'; applyLanguage(); void rememberPreferences(language, voiceEnabled); };
 ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
-$('voiceToggle').addEventListener('change', () => { voiceEnabled = ($('voiceToggle') as HTMLInputElement).checked; void rememberPreferences(language, voiceEnabled); });
+$('voiceToggle').addEventListener('change', () => {
+  voiceEnabled = ($('voiceToggle') as HTMLInputElement).checked;
+  renderTripFlags();
+  void rememberPreferences(language, voiceEnabled);
+});
 ($('laneToggle') as HTMLInputElement).checked = laneGuidanceEnabled;
 $('laneToggle').addEventListener('change', () => {
   laneGuidanceEnabled = ($('laneToggle') as HTMLInputElement).checked;
   localStorage.setItem('kiwi-lane-guidance', laneGuidanceEnabled ? 'on' : 'off');
+  renderTripFlags();
   if (navigating) updateGuidance(); else renderLaneGuidance();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && navigating && !wakeLock && 'wakeLock' in navigator) void navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock; }).catch(() => {}); });
 $('gpsBadge').onclick = () => requestGps();
 initBottomSheet();
 renderSpeedHud();
+renderTripFlags();
+window.addEventListener('kiwi-account-change', () => {
+  renderTripFlags();
+  if (selectedPoi) renderPoiAccountState(selectedPoi);
+});
 
 void map.init({
   apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
@@ -685,5 +871,10 @@ accountRoot.className = 'account-section';
 document.querySelector('#settingsOverlay .modal')?.append(accountRoot);
 applyLanguage();
 void initAccount(accountRoot, () => language, () => voiceEnabled, (saved: AccountProfile) => {
-  language = saved.language; voiceEnabled = saved.voiceEnabled; ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled; applyLanguage();
+  language = saved.language;
+  voiceEnabled = saved.voiceEnabled;
+  ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
+  applyLanguage();
+  renderTripFlags();
+  if (selectedPoi) renderPoiAccountState(selectedPoi);
 });

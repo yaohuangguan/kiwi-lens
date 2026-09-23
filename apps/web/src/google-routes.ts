@@ -64,11 +64,7 @@ export async function computeGoogleRoute(
       'distanceMeters',
       'durationMillis',
       'viewport',
-      'legs.steps.distanceMeters',
-      'legs.steps.staticDurationMillis',
-      'legs.steps.instructions',
-      'legs.steps.maneuver',
-      'legs.steps.startLocation'
+      'legs'
     ]
   });
 
