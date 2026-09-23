@@ -380,6 +380,7 @@ async function search(target: 'origin' | 'destination') {
           destination = coordinate;
           destinationName = place.label.split(',').slice(0, 2).join(',');
           ($('destinationInput') as HTMLInputElement).value = destinationName;
+          $('clearDestinationButton').hidden = false;
           void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
         }
         if (destination && (manualOrigin || current)) void planRoute();
@@ -442,6 +443,41 @@ async function planRoute() {
     $('tripTitle').textContent = t(language, 'routeError');
     toast(`${t(language, 'routeFailed')}: ${String((error as Error).message)}`);
   }
+}
+
+function clearDestination() {
+  routeAbort?.abort();
+  routeAbort = null;
+  destination = null;
+  destinationName = '';
+  route = null;
+  routeCameras = [];
+  lastTurnKey = '';
+  spokenCameras.clear();
+
+  ($('destinationInput') as HTMLInputElement).value = '';
+  $('searchResults').hidden = true;
+  $('clearDestinationButton').hidden = true;
+  ($('driveButton') as HTMLButtonElement).disabled = true;
+
+  $('tripEyebrow').textContent = 'READY TO GO';
+  $('tripTitle').textContent = t(language, 'initialTitle');
+  $('tripDistance').textContent = '—';
+  $('tripArrival').textContent = '—';
+  $('cameraRouteCount').textContent = '—';
+  $('sheetNextCamera').textContent = '—';
+  $('sheetRouteSteps').textContent = '—';
+  $('navDestinationTitle').textContent = '—';
+  $('navDistance').textContent = '—';
+  $('navArrival').textContent = '—';
+  $('navCameraCount').textContent = '—';
+  $('navNextCamera').textContent = '—';
+  $('navRouteSteps').textContent = '—';
+  $('cameraAlert').hidden = true;
+
+  map.clearRoute();
+  renderCameras();
+  if (current) map.setView(current, 15);
 }
 
 function speak(message: string) {
@@ -775,6 +811,7 @@ function navigateToSelectedPoi() {
   destination = selectedPoi.coordinate;
   destinationName = selectedPoi.name;
   ($('destinationInput') as HTMLInputElement).value = destinationName;
+  $('clearDestinationButton').hidden = false;
   void rememberDestination({
     label: selectedPoi.address ? `${selectedPoi.name}, ${selectedPoi.address}` : selectedPoi.name,
     latitude: destination[1],
@@ -853,6 +890,7 @@ initAutocomplete({
       destination = coordinate;
       destinationName = place.label.split(',').slice(0, 2).join(',');
       ($('destinationInput') as HTMLInputElement).value = destinationName;
+      $('clearDestinationButton').hidden = false;
       void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
     }
     if (destination && (manualOrigin || current)) void planRoute();
@@ -865,6 +903,7 @@ $('useGpsButton').onclick = () => {
   if (!current) { requestGps(); return; }
   if (destination) void planRoute();
 };
+$('clearDestinationButton').onclick = clearDestination;
 $('driveButton').onclick = () => navigating ? stopNavigation() : void startNavigation();
 $('navEndButton').onclick = () => stopNavigation();
 $('navDataButton').onclick = () => showOverlay('dataOverlay');
