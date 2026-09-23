@@ -66,11 +66,20 @@ async function userProfile(db, user) {
   const profile = await db.prepare('SELECT language, voice_enabled FROM profiles WHERE user_id = ?').bind(user.id).first();
   const recent = await db.prepare(`SELECT label, latitude, longitude FROM recent_destinations
     WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20`).bind(user.id).all();
+  const saved = await db.prepare(`SELECT place_id AS placeId, name, address, latitude, longitude,
+      is_favorite AS isFavorite, note, updated_at AS updatedAt
+    FROM place_bookmarks
+    WHERE user_id = ? AND (is_favorite = 1 OR note <> '')
+    ORDER BY updated_at DESC LIMIT 100`).bind(user.id).all();
   return {
     user: { id: user.id, email: user.email },
     language: profile?.language === 'zh' ? 'zh' : 'en',
     voiceEnabled: profile?.voice_enabled !== 0,
-    recentDestinations: recent.results || []
+    recentDestinations: recent.results || [],
+    savedPlaces: (saved.results || []).map((place) => ({
+      ...place,
+      isFavorite: place.isFavorite === 1
+    }))
   };
 }
 
@@ -189,6 +198,38 @@ export async function handleAccount(request, env) {
     await db.prepare(`DELETE FROM recent_destinations WHERE user_id = ? AND (latitude, longitude) NOT IN
       (SELECT latitude, longitude FROM recent_destinations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20)`)
       .bind(user.id, user.id).run();
+    return response(await userProfile(db, user));
+  }
+  if (path === '/api/profile/places' && request.method === 'POST') {
+    const body = await readBody(request);
+    const placeId = typeof body?.placeId === 'string' ? body.placeId.trim() : '';
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    const address = typeof body?.address === 'string' ? body.address.trim() : '';
+    const note = typeof body?.note === 'string' ? body.note.trim() : '';
+    if (!placeId || placeId.length > 256 || !name || name.length > 200 || address.length > 500 ||
+      note.length > 2000 || typeof body?.isFavorite !== 'boolean' ||
+      !(body.latitude > -48 && body.latitude < -34 && body.longitude > 166 && body.longitude < 179)) {
+      return response({ error: 'Invalid place bookmark' }, 400);
+    }
+    await db.prepare(`INSERT INTO place_bookmarks
+      (user_id, place_id, name, address, latitude, longitude, is_favorite, note, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, place_id) DO UPDATE SET
+        name = excluded.name,
+        address = excluded.address,
+        latitude = excluded.latitude,
+        longitude = excluded.longitude,
+        is_favorite = excluded.is_favorite,
+        note = excluded.note,
+        updated_at = excluded.updated_at`)
+      .bind(
+        user.id, placeId, name, address, body.latitude, body.longitude,
+        body.isFavorite ? 1 : 0, note, Date.now()
+      ).run();
+    if (!body.isFavorite && !note) {
+      await db.prepare('DELETE FROM place_bookmarks WHERE user_id = ? AND place_id = ?')
+        .bind(user.id, placeId).run();
+    }
     return response(await userProfile(db, user));
   }
   return response({ error: 'Not found' }, 404);

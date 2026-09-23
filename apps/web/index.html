@@ -49,11 +49,36 @@
       </section>
 
       <section id="poiCard" class="poi-card" hidden>
+        <div id="poiPhotos" class="poi-photos" hidden></div>
         <button id="poiClose" class="poi-close" aria-label="关闭地点">×</button>
-        <span class="eyebrow">GOOGLE PLACE</span>
-        <h2 id="poiTitle">—</h2>
-        <p id="poiAddress">—</p>
-        <button id="poiNavigate" class="poi-navigate">➤ <span>导航到这里</span></button>
+        <div class="poi-scroll">
+          <div class="poi-heading">
+            <div>
+              <span id="poiType" class="eyebrow">GOOGLE PLACE</span>
+              <h2 id="poiTitle">—</h2>
+              <div id="poiRating" class="poi-rating" hidden></div>
+            </div>
+            <button id="poiFavorite" class="poi-favorite" type="button" aria-label="收藏地点">♡</button>
+          </div>
+          <p id="poiAddress">—</p>
+          <p id="poiSummary" class="poi-summary" hidden></p>
+          <div id="poiMeta" class="poi-meta"></div>
+          <div id="poiHours" class="poi-hours" hidden></div>
+          <div class="poi-actions">
+            <button id="poiNavigate" class="poi-navigate">➤ <span>导航到这里</span></button>
+            <a id="poiWebsite" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden>网站 ↗</a>
+            <a id="poiGoogleMaps" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden>Google Maps ↗</a>
+          </div>
+          <section id="poiAccountSection" class="poi-account">
+            <div class="poi-section-head"><strong>我的地点</strong><span id="poiAccountHint"></span></div>
+            <textarea id="poiNote" maxlength="2000" rows="3" placeholder="写下自己的备注…" disabled></textarea>
+            <button id="poiSaveNote" type="button" disabled>保存备注</button>
+          </section>
+          <section id="poiReviewsSection" class="poi-reviews" hidden>
+            <div class="poi-section-head"><strong>Google 评论</strong><span id="poiReviewCount"></span></div>
+            <div id="poiReviews"></div>
+          </section>
+        </div>
       </section>
 
       <section id="bottomPanel" class="bottom-panel">
@@ -66,6 +91,17 @@
           <div><span>沿途摄像头</span><strong id="cameraRouteCount">—</strong></div>
           <div><span>路程</span><strong id="tripDistance">—</strong></div>
           <div><span>预计到达</span><strong id="tripArrival">—</strong></div>
+        </div>
+        <div class="trip-detail-grid">
+          <div><span>当前限速</span><strong id="sheetSpeedLimit">—</strong></div>
+          <div><span>下一摄像头</span><strong id="sheetNextCamera">—</strong></div>
+          <div><span>GPS 精度</span><strong id="sheetGps">—</strong></div>
+          <div><span>路线步骤</span><strong id="sheetRouteSteps">—</strong></div>
+        </div>
+        <div class="trip-flags">
+          <span id="sheetVoice">语音 ✓</span>
+          <span id="sheetLane">车道 ✓</span>
+          <span id="sheetAccount">访客模式</span>
         </div>
         <div class="data-status"><div><span class="data-dot"></span><span id="dataStatus">正在加载 NZTA 摄像头…</span></div><button id="dataButton">数据详情 ↗</button></div>
       </section>

@@ -1,11 +1,32 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { cameraLabel, type Camera, type Coordinate, type Route } from '@kiwi-lens/core';
 
+export type PoiReview = {
+  author: string;
+  authorPhoto: string | null;
+  rating: number | null;
+  text: string;
+  relativeTime: string;
+  googleMapsURI: string | null;
+};
+
 export type PoiSelection = {
   placeId: string;
   name: string;
   address: string;
   coordinate: Coordinate;
+  primaryType: string;
+  rating: number | null;
+  userRatingCount: number | null;
+  businessStatus: string | null;
+  priceLevel: string | null;
+  phone: string;
+  websiteURI: string;
+  googleMapsURI: string;
+  editorialSummary: string;
+  openingHours: string[];
+  photos: { url: string; attribution: string }[];
+  reviews: PoiReview[];
 };
 
 type InitOptions = {
@@ -72,13 +93,53 @@ export class GoogleMapAdapter {
         iconEvent.stop();
         try {
           const place = new Place({ id: iconEvent.placeId });
-          await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location'] });
+          await place.fetchFields({
+            fields: [
+              'displayName',
+              'formattedAddress',
+              'location',
+              'primaryTypeDisplayName',
+              'rating',
+              'userRatingCount',
+              'businessStatus',
+              'priceLevel',
+              'nationalPhoneNumber',
+              'websiteURI',
+              'googleMapsURI',
+              'editorialSummary',
+              'regularOpeningHours',
+              'photos',
+              'reviews'
+            ]
+          });
           if (!place.location) return;
           options.onPoiSelected({
             placeId: iconEvent.placeId,
             name: place.displayName || place.formattedAddress || 'Selected place',
             address: place.formattedAddress || '',
-            coordinate: [place.location.lng(), place.location.lat()]
+            coordinate: [place.location.lng(), place.location.lat()],
+            primaryType: place.primaryTypeDisplayName || '',
+            rating: place.rating ?? null,
+            userRatingCount: place.userRatingCount ?? null,
+            businessStatus: place.businessStatus ?? null,
+            priceLevel: place.priceLevel ?? null,
+            phone: place.nationalPhoneNumber || '',
+            websiteURI: place.websiteURI || '',
+            googleMapsURI: place.googleMapsURI || '',
+            editorialSummary: place.editorialSummary || '',
+            openingHours: place.regularOpeningHours?.weekdayDescriptions || [],
+            photos: (place.photos || []).slice(0, 8).map((photo) => ({
+              url: photo.getURI({ maxWidth: 1200 }),
+              attribution: photo.authorAttributions.map((author) => author.displayName).join(', ')
+            })),
+            reviews: (place.reviews || []).slice(0, 5).map((review) => ({
+              author: review.authorAttribution?.displayName || 'Google user',
+              authorPhoto: review.authorAttribution?.photoURI || null,
+              rating: review.rating,
+              text: review.text || review.originalText || '',
+              relativeTime: review.relativePublishTimeDescription || '',
+              googleMapsURI: review.googleMapsURI
+            }))
           });
           this.map?.panTo(place.location);
         } catch {

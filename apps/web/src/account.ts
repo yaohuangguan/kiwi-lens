@@ -1,10 +1,21 @@
 export type Language = 'en' | 'zh';
 export type RecentDestination = { label: string; latitude: number; longitude: number };
+export type SavedPlace = {
+  placeId: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  isFavorite: boolean;
+  note: string;
+  updatedAt: number;
+};
 export type AccountProfile = {
   user: { id: string; email: string };
   language: Language;
   voiceEnabled: boolean;
   recentDestinations: RecentDestination[];
+  savedPlaces: SavedPlace[];
 };
 
 let profile: AccountProfile | null = null;
@@ -46,7 +57,11 @@ const copy = {
 };
 
 export function isSignedIn() { return Boolean(profile); }
+export function currentAccountEmail() { return profile?.user.email || ''; }
 export function recentDestinations() { return profile?.recentDestinations || []; }
+export function savedPlace(placeId: string) {
+  return profile?.savedPlaces?.find((place) => place.placeId === placeId) || null;
+}
 
 export function renderAccount() {
   if (!accountRoot) return;
@@ -67,6 +82,7 @@ export function renderAccount() {
       try { await accountApi('/api/auth/logout', 'POST'); } catch { /* clear client session anyway */ }
       profile = null;
       renderAccount();
+      window.dispatchEvent(new Event('kiwi-account-change'));
     };
     accountRoot.append(signedIn, signOut);
     return;
@@ -153,4 +169,18 @@ export async function rememberDestination(destination: RecentDestination) {
   try {
     profile = await accountApi<AccountProfile>('/api/profile/destinations', 'POST', destination);
   } catch { /* the route remains usable without persistence */ }
+}
+
+export async function savePlace(input: {
+  placeId: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  isFavorite: boolean;
+  note: string;
+}) {
+  if (!profile) throw new Error('Sign in to save places');
+  profile = await accountApi<AccountProfile>('/api/profile/places', 'POST', input);
+  return savedPlace(input.placeId);
 }
