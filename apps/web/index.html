@@ -37,10 +37,22 @@
         <button id="recenterButton" class="map-control" title="回到当前位置" aria-label="回到当前位置">◎</button>
       </div>
 
+      <section id="speedHud" class="speed-hud" aria-label="当前车速">
+        <strong id="speedValue">0</strong><span>km/h</span>
+      </section>
+
       <section id="cameraAlert" class="camera-alert" hidden>
         <div class="alert-symbol">◉</div>
         <div class="alert-copy"><span id="alertType">固定测速摄像头</span><strong id="alertRoad">—</strong></div>
         <strong id="alertDistance">—</strong>
+      </section>
+
+      <section id="poiCard" class="poi-card" hidden>
+        <button id="poiClose" class="poi-close" aria-label="关闭地点">×</button>
+        <span class="eyebrow">GOOGLE PLACE</span>
+        <h2 id="poiTitle">—</h2>
+        <p id="poiAddress">—</p>
+        <button id="poiNavigate" class="poi-navigate">➤ <span>导航到这里</span></button>
       </section>
 
       <section id="bottomPanel" class="bottom-panel">

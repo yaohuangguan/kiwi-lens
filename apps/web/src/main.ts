@@ -1,24 +1,18 @@
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import './style.css';
-import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
+import { cameraLabel, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
 import { initAccount, recentDestinations, rememberDestination, rememberPreferences, renderAccount, type AccountProfile } from './account';
 import { lookAheadCenter } from './navigation-view';
 import { initAutocomplete, type SuggestedPlace } from './autocomplete';
+import { GoogleMapAdapter, type PoiSelection } from './google-map';
+import { computeGoogleRoute, enrichRouteLanes } from './google-routes';
 
 type Language = 'zh' | 'en';
 type Place = { id: number; label: string; latitude: number; longitude: number };
 type CameraResponse = { cameras: Camera[]; sourceUpdatedAt: string; checkedAt: string | null; syncStatus: string; syncError?: string | null; change?: { added: number; removed: number } };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([-36.8485, 174.7633], 12);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
-const cameraLayer = L.layerGroup().addTo(map);
-let positionMarker: L.Marker | null = null;
-let destinationMarker: L.Marker | null = null;
-let routeOutline: L.Polyline | null = null;
-let routeLine: L.Polyline | null = null;
+const map = new GoogleMapAdapter();
 let cameras: Camera[] = [];
 let cameraResponse: CameraResponse | null = null;
 let routeCameras: RouteCamera[] = [];
@@ -46,6 +40,7 @@ let gpsStatus: GpsStatus = 'idle';
 let gpsAccuracy: number | null = null;
 let gpsWatchId: number | null = null;
 let gpsRequesting = false;
+let selectedPoi: PoiSelection | null = null;
 const spokenCameras = new Set<string>();
 
 function escapeHtml(value: string) {
@@ -71,23 +66,9 @@ async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function cameraIcon(camera: Camera, onRoute = false) {
-  const red = camera.type.toLowerCase().includes('red light');
-  return L.divIcon({
-    className: '', html: `<span class="camera-pin ${red ? 'red' : ''} ${onRoute ? 'route' : ''}">◉</span>`,
-    iconSize: onRoute ? [38, 38] : [30, 30], iconAnchor: onRoute ? [19, 19] : [15, 15]
-  });
-}
-
 function renderCameras() {
-  cameraLayer.clearLayers();
   const onRoute = new Set(routeCameras.map((item) => item.camera.id));
-  for (const camera of cameras) {
-    const marker = L.marker([camera.latitude, camera.longitude], { icon: cameraIcon(camera, onRoute.has(camera.id)), zIndexOffset: onRoute.has(camera.id) ? 400 : 0 });
-    const type = cameraLabel(camera.type, language);
-    marker.bindPopup(`<span class="popup-tag ${camera.type.toLowerCase().includes('red light') ? 'red' : ''}">${escapeHtml(type)}</span><div class="popup-title">${escapeHtml(camera.location)}</div><div class="popup-line">${escapeHtml(camera.suburb)} · ${escapeHtml(camera.region)}</div><div class="popup-line">${camera.latitude.toFixed(6)}, ${camera.longitude.toFixed(6)}</div><div class="popup-source">NZTA · ${escapeHtml(camera.updatedAt)}</div>`);
-    cameraLayer.addLayer(marker);
-  }
+  map.renderCameras(cameras, onRoute, language);
   $('cameraRouteCount').textContent = route ? String(routeCameras.length) : '—';
 }
 
@@ -114,11 +95,7 @@ async function loadCameras() {
   } else $('dataStatus').textContent = t(language, 'camerasUnavailable');
 }
 
-function positionIcon(heading: number | null) {
-  return L.divIcon({ className: '', html: `<span class="position-pin">${heading === null ? '' : `<span class="position-heading" style="transform:rotate(${heading}deg)"></span>`}</span>`, iconSize: [23, 23], iconAnchor: [11, 11] });
-}
-
-function updatePosition(latitude: number, longitude: number, heading: number | null, accuracy: number) {
+function updatePosition(latitude: number, longitude: number, heading: number | null, accuracy: number, speedMetersPerSecond?: number | null) {
   if (!(latitude > -48 && latitude < -34 && longitude > 166 && longitude < 179)) return;
   current = [longitude, latitude];
   latestHeading = heading;
@@ -134,12 +111,15 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
   gpsStatus = 'active';
   gpsAccuracy = accuracy;
   renderGpsStatus();
-  if (!positionMarker) {
-    positionMarker = L.marker([latitude, longitude], { icon: positionIcon(heading), zIndexOffset: 600 }).addTo(map);
-    if (following) { const center = navigating && route ? lookAheadCenter(current, heading, route) : current; map.setView([center[1], center[0]], navigating ? 17 : 15); }
-  } else {
-    positionMarker.setLatLng([latitude, longitude]).setIcon(positionIcon(heading));
-    if (following && navigating && route) { const center = lookAheadCenter(current, heading, route); map.panTo([center[1], center[0]], { animate: true, duration: .5 }); }
+  const speedKph = Number.isFinite(speedMetersPerSecond) && (speedMetersPerSecond || 0) > 0
+    ? Math.round((speedMetersPerSecond || 0) * 3.6)
+    : 0;
+  $('speedValue').textContent = String(speedKph);
+  map.setPosition(current, heading);
+  if (following) {
+    const center = navigating && route ? lookAheadCenter(current, heading, route) : current;
+    if (navigating && route) map.panTo(center);
+    else map.setView(center, navigating ? 17 : 15);
   }
   if (destination && !route && !manualOrigin) void planRoute();
   if (navigating && route) updateGuidance();
@@ -172,7 +152,7 @@ function startGpsWatch() {
   gpsStatus = 'locating';
   renderGpsStatus();
   gpsWatchId = navigator.geolocation.watchPosition(
-    ({ coords }) => updatePosition(coords.latitude, coords.longitude, Number.isFinite(coords.heading) ? coords.heading : null, coords.accuracy),
+    ({ coords }) => updatePosition(coords.latitude, coords.longitude, Number.isFinite(coords.heading) ? coords.heading : null, coords.accuracy, coords.speed),
     handleGpsError,
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 18000 }
   );
@@ -191,7 +171,7 @@ function requestGps() {
   navigator.geolocation.getCurrentPosition(
     ({ coords }) => {
       gpsRequesting = false;
-      updatePosition(coords.latitude, coords.longitude, Number.isFinite(coords.heading) ? coords.heading : null, coords.accuracy);
+      updatePosition(coords.latitude, coords.longitude, Number.isFinite(coords.heading) ? coords.heading : null, coords.accuracy, coords.speed);
       startGpsWatch();
     },
     (error) => {
@@ -288,29 +268,37 @@ async function planRoute() {
   if (!from || !destination) return;
   routeAbort?.abort();
   routeAbort = new AbortController();
+  const signal = routeAbort.signal;
   $('tripEyebrow').textContent = 'CALCULATING ROUTE';
   $('tripTitle').textContent = t(language, 'routeCalculating');
   try {
-    const next = await api<Route>(`/api/route?from=${from.join(',')}&to=${destination.join(',')}`, routeAbort.signal);
+    const laneRoutePromise = api<Route>(
+      `/api/route?from=${from.join(',')}&to=${destination.join(',')}`,
+      signal
+    ).catch(() => undefined);
+    const [googleRoute, laneRoute] = await Promise.all([
+      computeGoogleRoute(from, destination, language),
+      laneRoutePromise
+    ]);
+    if (signal.aborted) return;
+    const next = enrichRouteLanes(googleRoute, laneRoute);
     if (next.coordinates.length < 2) throw new Error('Route geometry is empty');
     route = next;
     routeCameras = matchCamerasToRoute(cameras, route);
     renderCameras();
-    const latlngs = route.coordinates.map(([lon, lat]) => [lat, lon] as L.LatLngTuple);
-    routeOutline?.remove(); routeLine?.remove(); destinationMarker?.remove();
-    routeOutline = L.polyline(latlngs, { color: '#fff', weight: 12, opacity: .95 }).addTo(map);
-    routeLine = L.polyline(latlngs, { color: '#3d8b68', weight: 7, opacity: 1 }).addTo(map);
-    destinationMarker = L.marker([destination[1], destination[0]], { icon: L.divIcon({ className: '', html: '<span class="camera-pin route" style="background:#193729">◆</span>', iconSize: [38, 38], iconAnchor: [19, 19] }) }).addTo(map);
-    if (!navigating) map.fitBounds(routeLine.getBounds(), { paddingTopLeft: [25, 190], paddingBottomRight: [30, 220], maxZoom: 15 });
+    map.renderRoute(route, destination, navigating);
     $('tripEyebrow').textContent = navigating ? 'DRIVING MODE' : 'ROUTE READY';
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('tripDistance').textContent = formatDistance(route.distance, language);
     $('cameraRouteCount').textContent = String(routeCameras.length);
-    $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(language === 'zh' ? 'zh-NZ' : 'en-NZ', { hour: '2-digit', minute: '2-digit' });
+    $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
+      language === 'zh' ? 'zh-NZ' : 'en-NZ',
+      { hour: '2-digit', minute: '2-digit' }
+    );
     ($('driveButton') as HTMLButtonElement).disabled = false;
     if (navigating) updateGuidance();
   } catch (error) {
-    if ((error as Error).name === 'AbortError') return;
+    if ((error as Error).name === 'AbortError' || signal.aborted) return;
     $('tripEyebrow').textContent = 'ROUTE ERROR';
     $('tripTitle').textContent = t(language, 'routeError');
     toast(`${t(language, 'routeFailed')}: ${String((error as Error).message)}`);
@@ -328,7 +316,8 @@ function speak(message: string) {
 }
 
 function turnText(step: RouteStep) {
-  const modifier = (step as RouteStep & { modifier?: string }).modifier || '';
+  if (step.instruction?.trim()) return step.instruction;
+  const modifier = step.modifier || '';
   const road = step.name || (language === 'zh' ? '道路' : 'the road');
   if (step.maneuver === 'arrive') return language === 'zh' ? '到达目的地' : 'Arrive at destination';
   if (step.maneuver === 'roundabout' || step.maneuver === 'rotary') return language === 'zh' ? `进入环岛，驶向 ${road}` : `Enter roundabout toward ${road}`;
@@ -447,7 +436,7 @@ async function startNavigation() {
   $('drivingStatus').textContent = t(language, 'drivingStarted');
   $('searchPanel').hidden = true;
   const lookAhead = lookAheadCenter(current, latestHeading, route);
-  map.setView([lookAhead[1], lookAhead[0]], 17, { animate: true });
+  map.setView(lookAhead, 17);
   lastTurnKey = '';
   if (manualOrigin && current) { manualOrigin = null; void planRoute(); }
   try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* browser may deny wake lock */ }
@@ -473,6 +462,37 @@ function stopNavigation(arrived = false) {
 
 function showOverlay(id: string) { $(id).hidden = false; }
 function hideOverlay(id: string) { $(id).hidden = true; }
+
+function hidePoiCard() {
+  selectedPoi = null;
+  $('poiCard').hidden = true;
+}
+
+function showPoiCard(place: PoiSelection) {
+  selectedPoi = place;
+  $('poiTitle').textContent = place.name;
+  $('poiAddress').textContent = place.address || `${place.coordinate[1].toFixed(5)}, ${place.coordinate[0].toFixed(5)}`;
+  $('poiCard').hidden = false;
+  $('searchResults').hidden = true;
+}
+
+function navigateToSelectedPoi() {
+  if (!selectedPoi) return;
+  destination = selectedPoi.coordinate;
+  destinationName = selectedPoi.name;
+  ($('destinationInput') as HTMLInputElement).value = destinationName;
+  void rememberDestination({
+    label: selectedPoi.address ? `${selectedPoi.name}, ${selectedPoi.address}` : selectedPoi.name,
+    latitude: destination[1],
+    longitude: destination[0]
+  });
+  hidePoiCard();
+  if (manualOrigin || current) void planRoute();
+  else {
+    requestGps();
+    toast(t(language, 'chooseOrigin'));
+  }
+}
 
 $('originInput').addEventListener('focus', () => { searchTarget = 'origin'; });
 $('destinationInput').addEventListener('focus', () => { searchTarget = 'destination'; });
@@ -508,16 +528,16 @@ $('useGpsButton').onclick = () => {
   if (destination) void planRoute();
 };
 $('driveButton').onclick = () => navigating ? stopNavigation() : void startNavigation();
-$('followButton').onclick = () => { following = !following; $('followButton').classList.toggle('active', following); if (following && current) { const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; map.panTo([center[1], center[0]]); } };
+$('poiClose').onclick = hidePoiCard;
+$('poiNavigate').onclick = navigateToSelectedPoi;
+$('followButton').onclick = () => { following = !following; $('followButton').classList.toggle('active', following); if (following && current) { const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; map.panTo(center); } };
 $('recenterButton').onclick = () => {
   if (!current) { requestGps(); return; }
   following = true;
   $('followButton').classList.add('active');
   const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current;
-  map.setView([center[1], center[0]], navigating ? 17 : 16);
+  map.setView(center, navigating ? 17 : 16);
 };
-map.on('dragstart', () => { following = false; $('followButton').classList.remove('active'); });
-map.on('click', () => { $('searchResults').hidden = true; });
 $('settingsButton').onclick = () => showOverlay('settingsOverlay');
 $('closeSettings').onclick = () => hideOverlay('settingsOverlay');
 $('dataButton').onclick = () => showOverlay('dataOverlay');
@@ -553,6 +573,24 @@ $('laneToggle').addEventListener('change', () => {
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && navigating && !wakeLock && 'wakeLock' in navigator) void navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock; }).catch(() => {}); });
 $('gpsBadge').onclick = () => requestGps();
+
+void map.init({
+  apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+  mapId: import.meta.env.VITE_GOOGLE_MAP_ID || undefined,
+  language,
+  onDragStart: () => {
+    following = false;
+    $('followButton').classList.remove('active');
+  },
+  onMapClick: () => {
+    $('searchResults').hidden = true;
+    hidePoiCard();
+  },
+  onPoiSelected: showPoiCard
+}).catch((error) => {
+  toast(`Google Maps: ${String((error as Error).message)}`);
+});
+
 void initGps();
 void loadCameras();
 window.setInterval(() => void loadCameras(), 15 * 60_000);
