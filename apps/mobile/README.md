@@ -22,7 +22,27 @@ Kiwi Lens 的原生移动端使用 Flutter，当前主地图与导航栈为 Goog
 
 ## 本地 Flutter
 
-推荐开发环境为 WSL2，项目与 SDK 都放在 Linux 文件系统：
+推荐从仓库根目录使用 pnpm 统一触发 Flutter 开发任务。Flutter/Dart 自身依赖仍由 `flutter pub` 管理，这是 Flutter 官方机制；pnpm 负责整个 monorepo 的安装入口、脚本编排与 CI。
+
+```bash
+corepack enable
+pnpm install
+pnpm mobile:doctor
+pnpm mobile:dev
+```
+
+`pnpm mobile:dev` 会自动执行 `flutter pub get`，优先使用已连接的 Android 设备/模拟器；如果没有运行中的 Android 设备，会从已创建的 AVD 中选择一个启动并自动执行 `flutter run`。
+
+可以手动查看环境：
+
+```bash
+pnpm mobile:devices
+pnpm mobile:emulators
+```
+
+如果没有可用模拟器，请先在 Android Studio → Device Manager 创建一个 Android Virtual Device。Flutter 与 Android SDK 必须安装在执行上述 pnpm 命令的同一环境可访问的位置。
+
+推荐开发环境为 WSL2 或原生 Windows/macOS；如果使用 WSL2，项目与 SDK 可放在 Linux 文件系统：
 
 ```text
 repo:    ~/work/kiwi-lens
@@ -96,9 +116,10 @@ Mac 上的典型流程：
 ```bash
 git clone git@github.com:yaohuangguan/kiwi-lens.git
 cd kiwi-lens
-git switch feat/mobile-google-navigation
+corepack enable
+pnpm install
+pnpm mobile:get
 cd apps/mobile
-flutter pub get
 cp ios/Flutter/Secrets.xcconfig.example ios/Flutter/Secrets.xcconfig
 # 填写 MAPS_API_KEY
 open ios/Runner.xcodeproj
@@ -111,6 +132,7 @@ open ios/Runner.xcodeproj
 如果创建了 Google Cloud Map ID，可以启动时传：
 
 ```bash
+cd apps/mobile
 flutter run --dart-define=MAP_ID=YOUR_MAP_ID
 ```
 
