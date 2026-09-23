@@ -117,7 +117,12 @@ button { cursor: pointer; }
 .panel-handle { position: relative; width: 72px; height: 24px; margin: -4px auto 2px; cursor: ns-resize; touch-action: none; }
 .panel-handle::after { content: ''; position: absolute; left: 50%; top: 10px; width: 52px; height: 5px; transform: translateX(-50%); border-radius: 3px; background: #cfd9d1; }
 .bottom-panel.sheet-collapsed .route-stats, .bottom-panel.sheet-collapsed .data-status { visibility: hidden; }
-.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panel-header > div:first-child { min-width: 0; flex: 1; }
+.panel-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.cancel-route-button { min-width: 54px; height: 44px; padding: 0 11px; border: 1px solid #dce5de; border-radius: 13px; background: #f4f7f3; color: #5a6a62; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.cancel-route-button:hover, .cancel-route-button:focus-visible { background: #eaf0eb; color: #30473b; }
+.cancel-route-button:focus-visible { outline: 3px solid #538f47; outline-offset: 3px; }
 .eyebrow { display: block; color: #6d8c59; font-size: 11px; font-weight: 800; letter-spacing: .15em; }
 .panel-header h1 { max-width: 220px; margin: 4px 0 0; font-size: 20px; line-height: 1.22; font-weight: 800; }
 .drive-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 132px; height: 44px; padding: 0 14px; border: 0; border-radius: 13px; background: #c8f169; color: #132413; font-size: 13px; font-weight: 800; white-space: nowrap; }
@@ -190,7 +195,9 @@ button { cursor: pointer; }
   .topbar { padding-left: 15px; padding-right: 15px; }
   .search-panel, .turn-panel { left: 14px; width: calc(100vw - 28px); }
   .panel-header h1 { font-size: 18px; }
-  .drive-button { min-width: 116px; padding: 0 9px; font-size: 12px; }
+  .panel-actions { gap: 6px; }
+  .cancel-route-button { min-width: 48px; padding: 0 8px; }
+  .drive-button { min-width: 108px; padding: 0 9px; font-size: 12px; }
   .bottom-panel { padding-left: 17px; padding-right: 17px; }
   .camera-alert { bottom: calc(225px + env(safe-area-inset-bottom)); }
 }
