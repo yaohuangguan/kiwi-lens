@@ -26,7 +26,7 @@
         <div id="searchResults" class="search-results" hidden></div>
       </section>
 
-      <section id="turnPanel" class="turn-panel" hidden>
+      <section id="navBanner" class="nav-banner" hidden aria-label="Next maneuver">
         <div id="turnArrow" class="turn-arrow">↑</div>
         <div class="turn-content"><strong id="turnDistance">—</strong><span id="turnInstruction">沿路线行驶</span><div id="laneGuidance" class="lane-guidance" hidden></div></div>
         <div class="turn-eta"><strong id="turnEta">—</strong><span id="turnRemaining">—</span></div>
@@ -104,6 +104,30 @@
           <span id="sheetAccount">访客模式</span>
         </div>
         <div class="data-status"><div><span class="data-dot"></span><span id="dataStatus">正在加载 NZTA 摄像头…</span></div><button id="dataButton">数据详情 ↗</button></div>
+      </section>
+
+      <section id="navSheet" class="nav-sheet" hidden aria-label="Navigation trip">
+        <button id="navSheetHandle" class="nav-sheet-handle" type="button" aria-controls="navSecondary" aria-expanded="false" aria-label="Show trip details"><span></span></button>
+        <div class="nav-sheet-heading">
+          <div class="nav-destination"><small id="navDestinationLabel">DESTINATION</small><h2 id="navDestinationTitle">—</h2></div>
+          <button id="navEndButton" class="nav-end-button" type="button"><span aria-hidden="true">■</span><span id="navEndLabel">End navigation</span></button>
+        </div>
+        <div class="nav-stats">
+          <div><span id="navCamerasLabel">Cameras on route</span><strong id="navCameraCount">—</strong></div>
+          <div><span id="navDistanceLabel">Distance</span><strong id="navDistance">—</strong></div>
+          <div><span id="navArrivalLabel">Arrival</span><strong id="navArrival">—</strong></div>
+        </div>
+        <div class="nav-chips">
+          <button id="navVoiceChip" type="button" aria-pressed="true">Voice ✓</button>
+          <button id="navLanesChip" type="button" aria-pressed="true">Lanes ✓</button>
+          <button id="navGpsChip" type="button">GPS —</button>
+        </div>
+        <div id="navSecondary" class="nav-secondary" hidden>
+          <div><span id="navSpeedLimitLabel">Speed limit</span><strong id="navSpeedLimit">—</strong></div>
+          <div><span id="navNextCameraLabel">Next camera</span><strong id="navNextCamera">—</strong></div>
+          <div><span id="navRouteStepsLabel">Route steps</span><strong id="navRouteSteps">—</strong></div>
+          <button id="navDataButton" type="button">Camera data ↗</button>
+        </div>
       </section>
 
       <div id="toast" class="toast" role="status" hidden></div>

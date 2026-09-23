@@ -51,6 +51,7 @@ export class GoogleMapAdapter {
   private pendingPosition?: { coordinate: Coordinate; heading: number | null };
   private pendingCameras?: { cameras: Camera[]; onRoute: Set<string>; language: 'zh' | 'en' };
   private pendingRoute?: { route: Route; destination: Coordinate; navigating: boolean };
+  private focusSequence = 0;
 
   async init(options: InitOptions) {
     if (!options.apiKey) throw new Error('VITE_GOOGLE_MAPS_API_KEY is not configured');
@@ -91,6 +92,7 @@ export class GoogleMapAdapter {
       const iconEvent = event as google.maps.IconMouseEvent;
       if (iconEvent.placeId) {
         iconEvent.stop();
+        if (document.body.dataset.mode === 'navigation') return;
         try {
           const place = new Place({ id: iconEvent.placeId });
           await place.fetchFields({
@@ -287,10 +289,41 @@ export class GoogleMapAdapter {
     this.map?.panTo({ lat: coordinate[1], lng: coordinate[0] });
   }
 
+  focusNavigation(coordinate: Coordinate, zoom = 17) {
+    if (!this.map) return;
+    this.setView(coordinate, zoom);
+    const sequence = ++this.focusSequence;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (sequence !== this.focusSequence || !this.map) return;
+      const banner = document.getElementById('navBanner')?.getBoundingClientRect();
+      const sheet = document.getElementById('navSheet')?.getBoundingClientRect();
+      const marker = document.querySelector<HTMLElement>('#map .position-pin')?.getBoundingClientRect();
+      if (!banner || !sheet || !marker) return;
+      const visibleTop = banner.bottom + 14;
+      const visibleBottom = sheet.top - 14;
+      const targetY = Math.max(visibleTop + 28, visibleBottom - 48);
+      const markerY = marker.top + marker.height / 2;
+      const delta = Math.round(markerY - targetY);
+      if (Math.abs(delta) > 4) this.map.panBy(0, delta);
+    }));
+  }
+
   fitRoute(route: Route) {
     if (!this.map || route.coordinates.length < 2) return;
     const bounds = new google.maps.LatLngBounds();
     for (const [lng, lat] of route.coordinates) bounds.extend({ lat, lng });
-    this.map.fitBounds(bounds, { top: 190, right: 30, bottom: 220, left: 25 });
+    const isNavigation = document.body.dataset.mode === 'navigation';
+    const topOverlay = document.getElementById(isNavigation ? 'navBanner' : 'searchPanel')?.getBoundingClientRect();
+    const bottomOverlay = document.getElementById(isNavigation ? 'navSheet' : document.body.classList.contains('poi-open') ? 'poiCard' : 'bottomPanel')?.getBoundingClientRect();
+    const desktop = window.innerWidth >= 760;
+    const padding = desktop
+      ? { top: 32, right: 32, bottom: 32, left: 500 }
+      : {
+          top: Math.ceil((topOverlay?.bottom || 0) + 18),
+          right: 22,
+          bottom: Math.ceil(window.innerHeight - (bottomOverlay?.top || window.innerHeight) + 18),
+          left: 22
+        };
+    this.map.fitBounds(bounds, padding);
   }
 }

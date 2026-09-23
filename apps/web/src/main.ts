@@ -25,6 +25,7 @@ let destination: Coordinate | null = null;
 let destinationName = '';
 let route: Route | null = null;
 let navigating = false;
+let uiMode: 'explore' | 'navigation' = 'explore';
 let following = true;
 let language: Language = 'en';
 let voiceEnabled = true;
@@ -81,6 +82,35 @@ function renderTripFlags() {
   $('sheetAccount').textContent = isSignedIn()
     ? (language === 'zh' ? '账号已同步' : 'Account synced')
     : (language === 'zh' ? '访客模式' : 'Guest mode');
+  const voiceChip = $('navVoiceChip');
+  const lanesChip = $('navLanesChip');
+  voiceChip.textContent = language === 'zh' ? `语音 ${voiceEnabled ? '✓' : '关闭'}` : `Voice ${voiceEnabled ? '✓' : 'off'}`;
+  lanesChip.textContent = language === 'zh' ? `车道 ${laneGuidanceEnabled ? '✓' : '关闭'}` : `Lanes ${laneGuidanceEnabled ? '✓' : 'off'}`;
+  voiceChip.setAttribute('aria-pressed', String(voiceEnabled));
+  lanesChip.setAttribute('aria-pressed', String(laneGuidanceEnabled));
+}
+
+function setUiMode(next: 'explore' | 'navigation') {
+  uiMode = next;
+  document.body.dataset.mode = next;
+  $('navBanner').hidden = next !== 'navigation';
+  $('navSheet').hidden = next !== 'navigation';
+  $('bottomPanel').hidden = next === 'navigation';
+  $('searchPanel').hidden = next === 'navigation';
+  if (next === 'navigation') {
+    hidePoiCard();
+    $('navSecondary').hidden = true;
+    $('navSheetHandle').setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('nav-sheet-expanded');
+    $('navSheetHandle').setAttribute('aria-label', language === 'zh' ? '展开行程详情' : 'Show trip details');
+    requestAnimationFrame(updateNavigationOverlayLayout);
+  }
+}
+
+function updateNavigationOverlayLayout() {
+  if (uiMode !== 'navigation') return;
+  document.body.style.setProperty('--nav-sheet-clearance', `${Math.ceil($('navSheet').getBoundingClientRect().height) + 12}px`);
+  document.body.style.setProperty('--nav-banner-clearance', `${Math.ceil($('navBanner').getBoundingClientRect().bottom) + 18}px`);
 }
 
 function renderSpeedHud() {
@@ -92,6 +122,7 @@ function renderSpeedHud() {
     ? (language === 'zh' ? '限速 —' : 'LIMIT —')
     : (language === 'zh' ? `限速 ${speedLimitKph}` : `LIMIT ${speedLimitKph}`);
   $('sheetSpeedLimit').textContent = speedLimitKph === null ? '—' : `${speedLimitKph} km/h`;
+  $('navSpeedLimit').textContent = speedLimitKph === null ? '—' : `${speedLimitKph} km/h`;
 }
 
 async function refreshSpeedLimit(coordinate: Coordinate) {
@@ -118,6 +149,7 @@ function renderCameras() {
   const onRoute = new Set(routeCameras.map((item) => item.camera.id));
   map.renderCameras(cameras, onRoute, language);
   $('cameraRouteCount').textContent = route ? String(routeCameras.length) : '—';
+  $('navCameraCount').textContent = route ? String(routeCameras.length) : '—';
 }
 
 async function loadCameras() {
@@ -167,8 +199,8 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
   map.setPosition(current, heading);
   if (following) {
     const center = navigating && route ? lookAheadCenter(current, heading, route) : current;
-    if (navigating && route) map.panTo(center);
-    else map.setView(center, navigating ? 17 : 15);
+    if (navigating && route) map.focusNavigation(center);
+    else map.setView(center, 15);
   }
   if (destination && !route && !manualOrigin) void planRoute();
   if (navigating && route) updateGuidance();
@@ -186,6 +218,8 @@ function renderGpsStatus() {
   $('sheetGps').textContent = gpsStatus === 'active' && gpsAccuracy !== null
     ? `±${Math.round(gpsAccuracy)} m`
     : '—';
+  $('navGpsChip').textContent = gpsStatus === 'active' && gpsAccuracy !== null
+    ? `GPS ±${Math.round(gpsAccuracy)} m` : 'GPS —';
 }
 
 function handleGpsError(error: GeolocationPositionError) {
@@ -342,15 +376,21 @@ async function planRoute() {
     $('tripEyebrow').textContent = navigating ? 'DRIVING MODE' : 'ROUTE READY';
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('tripDistance').textContent = formatDistance(route.distance, language);
+    $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
+    $('navDistance').textContent = formatDistance(route.distance, language);
+    $('navCameraCount').textContent = String(routeCameras.length);
+    $('navRouteSteps').textContent = String(route.steps.length);
     $('cameraRouteCount').textContent = String(routeCameras.length);
     $('sheetRouteSteps').textContent = String(route.steps.length);
     $('sheetNextCamera').textContent = routeCameras.length
       ? formatDistance(Math.max(0, routeCameras[0]!.alongMeters), language)
       : '—';
+    $('navNextCamera').textContent = $('sheetNextCamera').textContent;
     $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
       language === 'zh' ? 'zh-NZ' : 'en-NZ',
       { hour: '2-digit', minute: '2-digit' }
     );
+    $('navArrival').textContent = $('tripArrival').textContent;
     ($('driveButton') as HTMLButtonElement).disabled = false;
     if (navigating) updateGuidance();
   } catch (error) {
@@ -443,7 +483,6 @@ function updateGuidance() {
   const remaining = Math.max(0, route.distance - progress);
   const remainingSeconds = route.duration * remaining / Math.max(route.distance, 1);
   const maneuver = nextStep(progress);
-  $('turnPanel').hidden = false;
   $('turnArrow').textContent = maneuver ? turnArrow(maneuver.step) : '◆';
   $('turnDistance').textContent = maneuver ? formatDistance(Math.max(0, maneuver.along - progress), language) : '—';
   $('turnInstruction').textContent = maneuver ? turnText(maneuver.step) : t(language, 'arrived');
@@ -452,6 +491,8 @@ function updateGuidance() {
   $('turnRemaining').textContent = formatDistance(remaining, language);
   $('tripDistance').textContent = formatDistance(remaining, language);
   $('tripArrival').textContent = $('turnEta').textContent;
+  $('navDistance').textContent = $('turnRemaining').textContent;
+  $('navArrival').textContent = $('turnEta').textContent;
   if (maneuver) {
     const toTurn = maneuver.along - progress;
     const key = `${maneuver.step.location.join(',')}:${toTurn <= 100 ? '100' : '500'}`;
@@ -464,6 +505,7 @@ function updateGuidance() {
   $('sheetNextCamera').textContent = upcoming
     ? formatDistance(Math.max(0, upcoming.alongMeters - progress), language)
     : '—';
+  $('navNextCamera').textContent = $('sheetNextCamera').textContent;
   if (upcoming && upcoming.alongMeters - progress <= 1200) {
     const ahead = Math.max(0, upcoming.alongMeters - progress);
     $('cameraAlert').hidden = false;
@@ -479,6 +521,7 @@ function updateGuidance() {
       }
     }
   } else $('cameraAlert').hidden = true;
+  requestAnimationFrame(updateNavigationOverlayLayout);
   if (remaining < 25) stopNavigation(true);
 }
 
@@ -488,15 +531,14 @@ async function startNavigation() {
   navigating = true;
   following = true;
   $('followButton').classList.add('active');
-  $('bottomPanel').classList.add('driving');
-  $('bottomPanel').classList.remove('sheet-collapsed');
   $('tripEyebrow').textContent = 'DRIVING MODE';
   $('driveLabel').textContent = t(language, 'stop');
   $('driveIcon').textContent = '■';
   $('drivingStatus').textContent = t(language, 'drivingStarted');
-  $('searchPanel').hidden = true;
+  setUiMode('navigation');
+  $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
   const lookAhead = lookAheadCenter(current, latestHeading, route);
-  map.setView(lookAhead, 17);
+  map.focusNavigation(lookAhead);
   lastTurnKey = '';
   if (manualOrigin && current) { manualOrigin = null; void planRoute(); }
   try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* browser may deny wake lock */ }
@@ -506,11 +548,10 @@ async function startNavigation() {
 
 function stopNavigation(arrived = false) {
   navigating = false;
-  $('turnPanel').hidden = true;
   renderLaneGuidance();
   $('cameraAlert').hidden = true;
-  $('searchPanel').hidden = false;
-  $('bottomPanel').classList.remove('driving');
+  setUiMode('explore');
+  if (route) map.fitRoute(route);
   $('tripEyebrow').textContent = arrived ? 'ARRIVED' : 'ROUTE READY';
   $('driveLabel').textContent = t(language, 'start');
   $('driveIcon').textContent = '➤';
@@ -526,6 +567,7 @@ function hideOverlay(id: string) { $(id).hidden = true; }
 function hidePoiCard() {
   selectedPoi = null;
   $('poiCard').hidden = true;
+  document.body.classList.remove('poi-open');
 }
 
 function renderPoiAccountState(place: PoiSelection) {
@@ -546,6 +588,7 @@ function renderPoiAccountState(place: PoiSelection) {
 }
 
 function showPoiCard(place: PoiSelection) {
+  if (uiMode === 'navigation') return;
   selectedPoi = place;
   $('poiTitle').textContent = place.name;
   $('poiType').textContent = place.primaryType || 'GOOGLE PLACE';
@@ -652,6 +695,7 @@ function showPoiCard(place: PoiSelection) {
 
   renderPoiAccountState(place);
   $('poiCard').hidden = false;
+  document.body.classList.add('poi-open');
   $('searchResults').hidden = true;
 }
 
@@ -778,6 +822,8 @@ $('useGpsButton').onclick = () => {
   if (destination) void planRoute();
 };
 $('driveButton').onclick = () => navigating ? stopNavigation() : void startNavigation();
+$('navEndButton').onclick = () => stopNavigation();
+$('navDataButton').onclick = () => showOverlay('dataOverlay');
 $('poiClose').onclick = hidePoiCard;
 $('poiNavigate').onclick = navigateToSelectedPoi;
 $('poiFavorite').onclick = () => {
@@ -785,13 +831,37 @@ $('poiFavorite').onclick = () => {
   void saveSelectedPlace(!(savedPlace(selectedPoi.placeId)?.isFavorite ?? false));
 };
 $('poiSaveNote').onclick = () => void saveSelectedPlace();
-$('followButton').onclick = () => { following = !following; $('followButton').classList.toggle('active', following); if (following && current) { const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; map.panTo(center); } };
+$('followButton').onclick = () => { following = !following; $('followButton').classList.toggle('active', following); if (following && current) { const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; if (navigating) map.focusNavigation(center); else map.panTo(center); } };
 $('recenterButton').onclick = () => {
   if (!current) { requestGps(); return; }
   following = true;
   $('followButton').classList.add('active');
   const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current;
-  map.setView(center, navigating ? 17 : 16);
+  if (navigating) map.focusNavigation(center);
+  else map.setView(center, 16);
+};
+$('navVoiceChip').onclick = () => {
+  voiceEnabled = !voiceEnabled;
+  ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
+  renderTripFlags();
+  void rememberPreferences(language, voiceEnabled);
+};
+$('navLanesChip').onclick = () => {
+  laneGuidanceEnabled = !laneGuidanceEnabled;
+  ($('laneToggle') as HTMLInputElement).checked = laneGuidanceEnabled;
+  localStorage.setItem('kiwi-lane-guidance', laneGuidanceEnabled ? 'on' : 'off');
+  renderTripFlags();
+  updateGuidance();
+};
+$('navGpsChip').onclick = () => { if (current) ($('recenterButton') as HTMLButtonElement).click(); else requestGps(); };
+$('navSheetHandle').onclick = () => {
+  const expanded = $('navSecondary').hidden;
+  $('navSecondary').hidden = !expanded;
+  document.body.classList.toggle('nav-sheet-expanded', expanded);
+  $('navSheetHandle').setAttribute('aria-expanded', String(expanded));
+  $('navSheetHandle').setAttribute('aria-label', language === 'zh' ? (expanded ? '收起行程详情' : '展开行程详情') : (expanded ? 'Hide trip details' : 'Show trip details'));
+  requestAnimationFrame(updateNavigationOverlayLayout);
+  if (current && route && navigating && following) requestAnimationFrame(() => map.focusNavigation(lookAheadCenter(current!, latestHeading, route!)));
 };
 $('settingsButton').onclick = () => showOverlay('settingsOverlay');
 $('closeSettings').onclick = () => hideOverlay('settingsOverlay');
@@ -805,6 +875,21 @@ function applyLanguage() {
   ($('originInput') as HTMLInputElement).placeholder = currentPlaceLabel ? `${t(language, 'currentPlace')}: ${currentPlaceLabel}` : t(language, 'origin');
   $('driveLabel').textContent = t(language, navigating ? 'stop' : 'start');
   $('drivingStatus').textContent = t(language, navigating ? 'drivingStarted' : 'drivingStopped');
+  $('navEndLabel').textContent = t(language, 'stop');
+  $('navDestinationLabel').textContent = language === 'zh' ? '目的地' : 'DESTINATION';
+  $('navCamerasLabel').textContent = t(language, 'camerasAlong');
+  $('navDistanceLabel').textContent = t(language, 'distance');
+  $('navArrivalLabel').textContent = t(language, 'arrival');
+  $('navSpeedLimitLabel').textContent = language === 'zh' ? '当前限速' : 'Speed limit';
+  $('navNextCameraLabel').textContent = language === 'zh' ? '下一摄像头' : 'Next camera';
+  $('navRouteStepsLabel').textContent = language === 'zh' ? '路线步骤' : 'Route steps';
+  $('navDataButton').textContent = t(language, 'dataDetails');
+  $('navBanner').setAttribute('aria-label', language === 'zh' ? '下一步转弯' : 'Next maneuver');
+  $('navSheet').setAttribute('aria-label', language === 'zh' ? '导航行程' : 'Navigation trip');
+  $('navSheetHandle').setAttribute('aria-label', language === 'zh'
+    ? ($('navSecondary').hidden ? '展开行程详情' : '收起行程详情')
+    : ($('navSecondary').hidden ? 'Show trip details' : 'Hide trip details'));
+  if (route) $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
   if (!route && !navigating) $('tripTitle').textContent = t(language, 'initialTitle');
   if (cameraResponse) {
     $('dataStatus').textContent = `${cameras.length} ${t(language, 'cameraCount')} · ${cameraResponse.sourceUpdatedAt}${cameraResponse.syncStatus === 'live' ? '' : ` · ${t(language, 'cached')}`}`;
@@ -836,6 +921,13 @@ $('laneToggle').addEventListener('change', () => {
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && navigating && !wakeLock && 'wakeLock' in navigator) void navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock; }).catch(() => {}); });
 $('gpsBadge').onclick = () => requestGps();
+window.addEventListener('resize', () => {
+  if (!route) return;
+  requestAnimationFrame(updateNavigationOverlayLayout);
+  if (navigating && current && following) map.focusNavigation(lookAheadCenter(current, latestHeading, route));
+  else if (uiMode === 'explore') map.fitRoute(route);
+});
+setUiMode('explore');
 initBottomSheet();
 renderSpeedHud();
 renderTripFlags();
