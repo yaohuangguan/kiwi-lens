@@ -7,7 +7,7 @@ import '../domain/safety_camera.dart';
 class CameraRepository {
   CameraRepository({
     http.Client? client,
-    this.baseUrl = 'https://kiwi-lens.719919153.workers.dev',
+    this.baseUrl = 'https://kiwi-lens.nzs.workers.dev',
   }) : _client = client ?? http.Client();
 
   final http.Client _client;
