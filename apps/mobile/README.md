@@ -22,10 +22,12 @@ Kiwi Lens 的原生移动端使用 Flutter，当前主地图与导航栈为 Goog
 
 ## 本地 Flutter
 
-开发机当前 Flutter SDK：
+推荐开发环境为 WSL2，项目与 SDK 都放在 Linux 文件系统：
 
 ```text
-E:\SDK\flutter
+repo:    ~/work/kiwi-lens
+Flutter: ~/flutter
+Android: ~/Android/Sdk
 ```
 
 当前版本：
@@ -51,7 +53,8 @@ API Key 不提交到 Git。
 在 `android/local.properties` 中保留 Flutter SDK，并加入：
 
 ```properties
-flutter.sdk=E:\\SDK\\flutter
+flutter.sdk=/home/samyao/flutter
+sdk.dir=/home/samyao/Android/Sdk
 MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 ```
 
@@ -83,6 +86,25 @@ space.ps6.kiwilens
 ```
 
 `Secrets.xcconfig` 已被 Git 忽略。
+
+#### 自己的 iPhone 免费安装
+
+WSL 可以完成代码开发、测试和 Android 构建，但 iOS 最终编译、签名和安装必须在 macOS + Xcode 上完成。测试自己的 iPhone 不要求先加入付费 Apple Developer Program；可以在 Xcode 登录普通 Apple Account，并使用自动生成的 Personal Team 做开发签名。
+
+Mac 上的典型流程：
+
+```bash
+git clone git@github.com:yaohuangguan/kiwi-lens.git
+cd kiwi-lens
+git switch feat/mobile-google-navigation
+cd apps/mobile
+flutter pub get
+cp ios/Flutter/Secrets.xcconfig.example ios/Flutter/Secrets.xcconfig
+# 填写 MAPS_API_KEY
+open ios/Runner.xcodeproj
+```
+
+然后在 Xcode 的 Signing & Capabilities 中选择自己的 Personal Team，连接并信任 iPhone，开启 Developer Mode 后直接 Run。免费 Personal Team 的 provisioning 会过期，需要定期重新签名安装；这是自用测试方案，不是 App Store/TestFlight 分发方案。
 
 ## Cloud Map Style
 
