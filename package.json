@@ -10,6 +10,8 @@
     "check:worker": "npm run build -w @kiwi-lens/server",
     "test": "npm run test -w @kiwi-lens/core && npm run test -w @kiwi-lens/server",
     "data:import": "node scripts/import-cameras.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply kiwi-lens-users --local --config wrangler.jsonc",
+    "db:migrate:remote": "wrangler d1 migrations apply kiwi-lens-users --remote --config wrangler.jsonc",
     "start": "npm run dev -w @kiwi-lens/server",
     "deploy": "npm run build && wrangler deploy --config wrangler.jsonc"
   },

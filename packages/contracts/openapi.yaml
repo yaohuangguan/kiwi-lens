@@ -127,3 +127,14 @@ components:
                 minItems: 2
                 maxItems: 2
                 items: { type: number }
+              lanes:
+                type: array
+                description: OSRM lane guidance when the route source provides it.
+                items:
+                  type: object
+                  required: [indications, valid]
+                  properties:
+                    indications:
+                      type: array
+                      items: { type: string }
+                    valid: { type: boolean }

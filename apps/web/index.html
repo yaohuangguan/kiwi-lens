@@ -28,7 +28,7 @@
 
       <section id="turnPanel" class="turn-panel" hidden>
         <div id="turnArrow" class="turn-arrow">↑</div>
-        <div class="turn-content"><strong id="turnDistance">—</strong><span id="turnInstruction">沿路线行驶</span></div>
+        <div class="turn-content"><strong id="turnDistance">—</strong><span id="turnInstruction">沿路线行驶</span><div id="laneGuidance" class="lane-guidance" hidden></div></div>
         <div class="turn-eta"><strong id="turnEta">—</strong><span id="turnRemaining">—</span></div>
       </section>
 
@@ -64,6 +64,7 @@
           <div class="modal-head"><div><span class="eyebrow">NAVIGATION</span><h2 id="settingsTitle">导航设置</h2></div><button id="closeSettings" class="close-button" aria-label="关闭设置">×</button></div>
           <div class="setting-row"><div><strong>语音语言</strong><small>Turn & camera alerts</small></div><div class="language-switch"><button id="zhButton" class="selected">中文</button><button id="enButton">EN</button></div></div>
           <div class="setting-row"><div><strong>语音提示</strong><small>Turn-by-turn guidance</small></div><label class="toggle"><input id="voiceToggle" type="checkbox" checked /><span></span></label></div>
+          <div class="setting-row"><div><strong id="laneSettingTitle">推荐车道</strong><small id="laneSettingDescription">路线数据提供时显示</small></div><label class="toggle"><input id="laneToggle" type="checkbox" checked /><span></span></label></div>
           <div class="setting-row"><div><strong>驾驶模式</strong><small>保持屏幕唤醒，持续前台定位</small></div><span id="drivingStatus" class="status-chip">未启动</span></div>
           <div class="info-card"><strong>后台导航说明</strong><p>PWA 切到后台或锁屏后，浏览器可能暂停 GPS 与语音。后续 iOS 客户端将使用原生后台定位。</p></div>
         </section>
