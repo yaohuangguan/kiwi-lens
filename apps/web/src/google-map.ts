@@ -48,6 +48,8 @@ export class GoogleMapAdapter {
   private destinationMarker?: google.maps.marker.AdvancedMarkerElement;
   private routeOutline?: google.maps.Polyline;
   private routeLine?: google.maps.Polyline;
+  private radar?: google.maps.Polygon;
+  private radarHeading: number | null = null;
   private pendingPosition?: { coordinate: Coordinate; heading: number | null };
   private pendingCameras?: { cameras: Camera[]; onRoute: Set<string>; language: 'zh' | 'en' };
   private pendingRoute?: { route: Route; destination: Coordinate; navigating: boolean };
@@ -79,6 +81,7 @@ export class GoogleMapAdapter {
       center: { lat: -36.8485, lng: 174.7633 },
       zoom: 12,
       mapId,
+      renderingType: google.maps.RenderingType.VECTOR,
       clickableIcons: true,
       mapTypeControl: false,
       streetViewControl: false,
@@ -171,7 +174,7 @@ export class GoogleMapAdapter {
     if (heading !== null) {
       const direction = document.createElement('span');
       direction.className = 'position-heading';
-      direction.style.transform = `rotate(${heading}deg)`;
+      direction.style.transform = `rotate(${(heading - (this.map?.getHeading() || 0) + 360) % 360}deg)`;
       span.append(direction);
     }
     return span;
@@ -236,6 +239,43 @@ export class GoogleMapAdapter {
       this.positionMarker.position = position;
       this.positionMarker.content = this.createPositionContent(heading);
     }
+    this.updateRadar();
+  }
+
+  setRadarHeading(heading: number | null) {
+    this.radarHeading = heading;
+    this.updateRadar();
+  }
+
+  setFollowHeading(heading: number | null) {
+    if (this.map && heading !== null) {
+      this.map.setHeading(heading);
+      if (this.pendingPosition) this.setPosition(this.pendingPosition.coordinate, this.pendingPosition.heading);
+    }
+  }
+
+  private updateRadar() {
+    if (!this.map || !this.pendingPosition) return;
+    if (this.radarHeading === null) {
+      this.radar?.setMap(null);
+      this.radar = undefined;
+      return;
+    }
+    const [longitude, latitude] = this.pendingPosition.coordinate;
+    const latRadians = latitude * Math.PI / 180;
+    const lonRadians = longitude * Math.PI / 180;
+    const angularDistance = 500 / 6371008.8;
+    const points: google.maps.LatLngLiteral[] = [{ lat: latitude, lng: longitude }];
+    for (let offset = -34; offset <= 34; offset += 4) {
+      const bearing = (this.radarHeading + offset) * Math.PI / 180;
+      const nextLat = Math.asin(Math.sin(latRadians) * Math.cos(angularDistance) + Math.cos(latRadians) * Math.sin(angularDistance) * Math.cos(bearing));
+      const nextLon = lonRadians + Math.atan2(Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latRadians), Math.cos(angularDistance) - Math.sin(latRadians) * Math.sin(nextLat));
+      points.push({ lat: nextLat * 180 / Math.PI, lng: nextLon * 180 / Math.PI });
+    }
+    if (!this.radar) {
+      this.radar = new google.maps.Polygon({ map: this.map, clickable: false, fillColor: '#aaf05f', fillOpacity: 0.19, strokeColor: '#86cb48', strokeOpacity: 0.55, strokeWeight: 1.5, zIndex: 5 });
+    }
+    this.radar.setPaths(points);
   }
 
   renderRoute(route: Route, destination: Coordinate, navigating: boolean) {

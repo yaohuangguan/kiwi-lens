@@ -3,9 +3,9 @@
 Kiwi Lens 的原生移动端使用 Flutter，当前主地图与导航栈为 Google Maps Platform：
 
 - `google_navigation_flutter`：地图浏览、POI 点击、路线与 turn-by-turn 导航
-- Google Places：下一步用于搜索、地点详情、评分、营业时间和照片
-- Cloudflare Worker：复用现有 Kiwi Lens 摄像头、账号及自有数据 API
-- Flutter UI + 必要时原生扩展：相机采集、后台定位、CarPlay / Android Auto 等能力按需下沉
+- Cloudflare Worker `https://kiwi-lens.nzs.workers.dev`：地址自动补全、摄像头及限速 API
+- iOS Core Location：手机顶部罗盘朝向；地图与 500 米雷达扇区跟随该方向，GPS course 仅为无罗盘时的行驶中回退
+- 自定义 Flutter 导航顶栏、速度/摄像头浮层和紧凑行程卡；Google Navigation SDK 保留真实路线与转弯数据
 
 ## 当前里程碑
 
@@ -15,10 +15,10 @@ Kiwi Lens 的原生移动端使用 Flutter，当前主地图与导航栈为 Goog
 2. 点击地图上的真实 POI
 3. 从 Google POI 获取 Place ID、名称和坐标
 4. 显示 Kiwi Lens 地点卡片
-5. 点击 Navigate 后以 Place ID 设置目的地
-6. 进入 Google Navigation SDK 的 turn-by-turn 导航
+5. 点击 Navigate 后以 Place ID 或搜索结果坐标设置目的地
+6. 进入 Google Navigation SDK 的 turn-by-turn 导航，地图使用 heading-up 视角
 
-不会在主界面放没有功能的假搜索框或假按钮。搜索和完整地点卡片会在 Places API 接入后加入。
+探索页可搜索 NZ 地址并自动补全。Google POI 的照片、评分、营业时间尚未接入原生地点卡；路线摄像头总数也尚未从原生导航路线中取得，因此显示 `—`。iOS 真机的罗盘与地图叠加层需要用 Xcode 实测；iOS Simulator 没有磁力计。
 
 ## 本地 Flutter
 

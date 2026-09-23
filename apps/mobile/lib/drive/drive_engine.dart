@@ -42,6 +42,7 @@ class DriveEngine extends ChangeNotifier {
   bool loadingCameras = false;
   double speedKph = 0;
   int? speedLimitKph;
+  bool voiceEnabled = true;
   String? speedLimitZoneName;
   SpeedAlertSeverity speedSeverity = SpeedAlertSeverity.notSpeeding;
   double? percentageAboveLimit;
@@ -189,6 +190,7 @@ class DriveEngine extends ChangeNotifier {
   }
 
   Future<void> _maybeAlert(CameraMatch match) async {
+    if (!voiceEnabled) return;
     final distance = match.distanceMeters;
 
     if (distance <= 150) {

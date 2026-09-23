@@ -22,6 +22,14 @@ test('Worker API serves the full seeded camera list when KV is empty', async () 
   assert.equal((await response.json()).cameraCount, 125);
 });
 
+test('cross-origin address requests get a readable configuration response', async () => {
+  const response = await worker.fetch(new Request('https://kiwi-lens.nzs.workers.dev/api/suggest?q=Queen', {
+    headers: { Origin: 'https://preview.example' }
+  }), fakeEnv(), { waitUntil() {} });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('access-control-allow-origin'), '*');
+});
+
 test('failed scheduled sync keeps validated cameras in KV', async () => {
   const env = fakeEnv();
   const state = await syncCameras(env, async () => new Response('<html>challenge</html>'));

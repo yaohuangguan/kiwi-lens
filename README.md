@@ -27,6 +27,11 @@ scripts/     NZTA CSV 初始数据导入
 
 Web Google Maps 配置复制 `apps/web/.env.example` 到 `apps/web/.env.local`，填写 `VITE_GOOGLE_MAPS_API_KEY`。浏览器 API Key 会出现在客户端，这是 Google Maps Web 的正常工作方式，因此必须在 Google Cloud 中限制 **HTTP referrer**，并只允许项目实际使用的 Maps JavaScript / Places / Routes 能力。可选配置 `VITE_GOOGLE_MAP_ID`；未配置时开发阶段使用 `DEMO_MAP_ID`。
 
+当前生产 Worker/PWA 地址是 `https://kiwi-lens.nzs.workers.dev`。同域部署时保持 `VITE_API_BASE_URL` 为空；其他域名托管的 Web 前端才指向这个 Worker。Google Maps 的 `RefererNotAllowedMapError` 不是 Worker CORS：请在 Google Cloud Console 的 **网页 API Key → Application restrictions → Websites** 添加 `https://kiwi-lens.nzs.workers.dev/*`（本地开发另加 `http://localhost:5173/*`），并启用 Maps JavaScript API、Places API、Routes API 与 Billing。不要取消 Key 限制。iOS Navigation SDK 使用独立的 iOS bundle ID 限制 Key。
+
+地址补全等公开 GET API 支持跨域读取；账号登录/资料仍要求与 Worker 同域，以维持 SameSite cookie 和 CSRF 保护。更换 Worker 域名后请从新地址安装 PWA，旧域名的 Service Worker 不会自动迁移。
+
+
 运行 `npm test` 执行算法、解析器和 Worker API 测试；`npm run build` 包含网页构建与 Worker dry-run 打包。
 
 `apps/server/data/cameras.json` 已从用户提供的 NZTA CSV 导入 125 条记录，源更新时间为 2026-08-26。重新导入 CSV：

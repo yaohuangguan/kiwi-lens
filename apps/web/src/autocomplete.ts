@@ -64,19 +64,17 @@ export function initAutocomplete(options: {
         else options.results.hidden = true;
         return;
       }
-      if (!configured) {
-        render(target, [], t(options.language(), 'autocompleteUnavailable'));
-        return;
-      }
       const requestNumber = ++sequence;
       timer = window.setTimeout(async () => {
         pending = new AbortController();
         try {
-          const response = await fetch(`/api/suggest?q=${encodeURIComponent(query)}&lang=${options.language()}`, { signal: pending.signal });
-          if (response.status === 503) {
+          const searchUrl = `/api/search?q=${encodeURIComponent(query)}`;
+          let response = await fetch(configured
+            ? `/api/suggest?q=${encodeURIComponent(query)}&lang=${options.language()}`
+            : searchUrl, { signal: pending.signal });
+          if (configured && response.status === 503) {
             configured = false;
-            render(target, [], t(options.language(), 'autocompleteUnavailable'));
-            return;
+            response = await fetch(searchUrl, { signal: pending.signal });
           }
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const places = await response.json() as SuggestedPlace[];

@@ -1,7 +1,10 @@
+import { pbkdf2, scrypt } from 'node:crypto';
+
 const encoder = new TextEncoder();
 const COOKIE_NAME = 'kiwi_session';
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
-const HASH_ITERATIONS = 210_000;
+const LEGACY_HASH_ITERATIONS = 210_000;
+const PASSWORD_HASH_VERSION = 'scrypt-v1$';
 
 function response(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
@@ -26,8 +29,13 @@ async function digest(value) {
 export async function hashPassword(password, saltHex) {
   const salt = fromHex(saltHex);
   if (salt.length !== 16) throw new Error('Invalid password salt');
-  const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: HASH_ITERATIONS }, key, 256));
+  const derived = await new Promise((resolve, reject) => {
+    scrypt(password, salt, 32, { N: 16_384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 }, (error, key) => {
+      if (error) reject(error);
+      else resolve(key);
+    });
+  });
+  return PASSWORD_HASH_VERSION + hex(derived);
 }
 
 function constantTimeEquals(a, b) {
@@ -35,6 +43,24 @@ function constantTimeEquals(a, b) {
   let difference = 0;
   for (let index = 0; index < a.length; index++) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
   return difference === 0;
+}
+
+export async function verifyPassword(password, saltHex, storedHash) {
+  if (typeof storedHash !== 'string') return false;
+  if (storedHash.startsWith(PASSWORD_HASH_VERSION)) {
+    return constantTimeEquals(await hashPassword(password, saltHex), storedHash);
+  }
+  // Accounts created before the Worker-compatible migration used PBKDF2-SHA256.
+  if (!/^[0-9a-f]{64}$/i.test(storedHash)) return false;
+  const salt = fromHex(saltHex);
+  if (salt.length !== 16) return false;
+  const legacyHash = await new Promise((resolve, reject) => {
+    pbkdf2(password, salt, LEGACY_HASH_ITERATIONS, 32, 'sha256', (error, key) => {
+      if (error) reject(error);
+      else resolve(hex(key));
+    });
+  });
+  return constantTimeEquals(legacyHash, storedHash);
 }
 
 function cookieHeader(token, request) {
@@ -156,8 +182,7 @@ export async function handleAccount(request, env) {
     if (!validEmail(email) || typeof body?.password !== 'string') return response({ error: 'Invalid credentials' }, 401);
     if (await tooManyAttempts(db, email)) return response({ error: 'Too many attempts. Try again in 15 minutes.' }, 429);
     const user = await db.prepare('SELECT id, email, password_salt, password_hash FROM users WHERE email = ?').bind(email).first();
-    const candidate = user ? await hashPassword(body.password, user.password_salt) : null;
-    if (!user || !constantTimeEquals(candidate, user.password_hash)) {
+    if (!user || !await verifyPassword(body.password, user.password_salt, user.password_hash)) {
       await failedAttempt(db, email);
       return response({ error: 'Invalid credentials' }, 401);
     }

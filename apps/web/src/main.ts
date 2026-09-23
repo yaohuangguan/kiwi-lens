@@ -1,4 +1,8 @@
 import './style.css';
+declare global {
+  interface Window { gm_authFailure?: () => void }
+}
+
 import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
@@ -20,6 +24,9 @@ let current: Coordinate | null = null;
 let currentPlaceLabel = '';
 let placeLookupStarted = false;
 let latestHeading: number | null = null;
+let deviceHeading: number | null = null;
+let compassListening = false;
+let lastCompassPaint = 0;
 let manualOrigin: Coordinate | null = null;
 let destination: Coordinate | null = null;
 let destinationName = '';
@@ -175,6 +182,39 @@ async function loadCameras() {
   } else $('dataStatus').textContent = t(language, 'camerasUnavailable');
 }
 
+function onDeviceOrientation(event: DeviceOrientationEvent) {
+  const iosHeading = (event as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading;
+  const measured = Number.isFinite(iosHeading)
+    ? iosHeading!
+    : event.absolute && event.alpha !== null ? 360 - event.alpha : null;
+  if (measured === null || !Number.isFinite(measured)) return;
+  const next = (measured + 360) % 360;
+  if (deviceHeading !== null && Math.abs(((next - deviceHeading + 540) % 360) - 180) < 2 && Date.now() - lastCompassPaint < 200) return;
+  deviceHeading = next;
+  lastCompassPaint = Date.now();
+  if (!current) return;
+  map.setRadarHeading(deviceHeading);
+  if (following) map.setFollowHeading(deviceHeading);
+  map.setPosition(current, deviceHeading);
+}
+
+function listenToCompass() {
+  if (compassListening) return;
+  compassListening = true;
+  window.addEventListener('deviceorientation', onDeviceOrientation);
+  window.addEventListener('deviceorientationabsolute', onDeviceOrientation as EventListener);
+}
+
+function requestCompassFromGesture() {
+  if (typeof DeviceOrientationEvent === 'undefined') return;
+  const orientation = DeviceOrientationEvent as typeof DeviceOrientationEvent & { requestPermission?: (absolute?: boolean) => Promise<'granted' | 'denied'> };
+  if (!orientation.requestPermission) { listenToCompass(); return; }
+  if (compassListening) return;
+  void orientation.requestPermission(true).then((result) => {
+    if (result === 'granted') listenToCompass();
+  }).catch(() => { /* GPS course remains the fallback. */ });
+}
+
 function updatePosition(latitude: number, longitude: number, heading: number | null, accuracy: number, speedMetersPerSecond?: number | null) {
   if (!(latitude > -48 && latitude < -34 && longitude > 166 && longitude < 179)) return;
   current = [longitude, latitude];
@@ -196,11 +236,14 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
     : 0;
   renderSpeedHud();
   void refreshSpeedLimit(current);
-  map.setPosition(current, heading);
+  const mapHeading = deviceHeading ?? heading;
+  map.setRadarHeading(mapHeading);
+  map.setPosition(current, mapHeading);
   if (following) {
     const center = navigating && route ? lookAheadCenter(current, heading, route) : current;
     if (navigating && route) map.focusNavigation(center);
     else map.setView(center, 15);
+    map.setFollowHeading(mapHeading);
   }
   if (destination && !route && !manualOrigin) void planRoute();
   if (navigating && route) updateGuidance();
@@ -530,6 +573,7 @@ async function startNavigation() {
   if (!route) { toast(t(language, 'routeError')); return; }
   navigating = true;
   following = true;
+  requestCompassFromGesture();
   $('followButton').classList.add('active');
   $('tripEyebrow').textContent = 'DRIVING MODE';
   $('driveLabel').textContent = t(language, 'stop');
@@ -831,14 +875,16 @@ $('poiFavorite').onclick = () => {
   void saveSelectedPlace(!(savedPlace(selectedPoi.placeId)?.isFavorite ?? false));
 };
 $('poiSaveNote').onclick = () => void saveSelectedPlace();
-$('followButton').onclick = () => { following = !following; $('followButton').classList.toggle('active', following); if (following && current) { const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; if (navigating) map.focusNavigation(center); else map.panTo(center); } };
+$('followButton').onclick = () => { requestCompassFromGesture(); following = !following; $('followButton').classList.toggle('active', following); if (following && current) { map.setFollowHeading(deviceHeading ?? latestHeading); const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; if (navigating) map.focusNavigation(center); else map.panTo(center); } };
 $('recenterButton').onclick = () => {
+  requestCompassFromGesture();
   if (!current) { requestGps(); return; }
   following = true;
   $('followButton').classList.add('active');
   const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current;
   if (navigating) map.focusNavigation(center);
   else map.setView(center, 16);
+  map.setFollowHeading(deviceHeading ?? latestHeading);
 };
 $('navVoiceChip').onclick = () => {
   voiceEnabled = !voiceEnabled;
@@ -920,7 +966,7 @@ $('laneToggle').addEventListener('change', () => {
   if (navigating) updateGuidance(); else renderLaneGuidance();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && navigating && !wakeLock && 'wakeLock' in navigator) void navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock; }).catch(() => {}); });
-$('gpsBadge').onclick = () => requestGps();
+$('gpsBadge').onclick = () => { requestCompassFromGesture(); requestGps(); };
 window.addEventListener('resize', () => {
   if (!route) return;
   requestAnimationFrame(updateNavigationOverlayLayout);
@@ -931,6 +977,12 @@ setUiMode('explore');
 initBottomSheet();
 renderSpeedHud();
 renderTripFlags();
+window.gm_authFailure = () => {
+  toast(language === 'zh'
+    ? `Google 地图授权失败。请检查网页 API Key 是否允许 ${window.location.origin}/*，以及账单和 API 权限。`
+    : `Google Maps authorization failed. Allow ${window.location.origin}/* for the web API key and check billing/API restrictions.`);
+};
+
 window.addEventListener('kiwi-account-change', () => {
   renderTripFlags();
   if (selectedPoi) renderPoiAccountState(selectedPoi);
@@ -955,6 +1007,7 @@ void map.init({
 
 void initGps();
 void loadCameras();
+if (typeof DeviceOrientationEvent !== 'undefined' && !('requestPermission' in DeviceOrientationEvent)) listenToCompass();
 window.setInterval(() => void loadCameras(), 15 * 60_000);
 localStorage.removeItem('kiwi-language');
 localStorage.removeItem('kiwi-voice');

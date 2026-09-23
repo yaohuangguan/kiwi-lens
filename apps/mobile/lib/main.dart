@@ -1,11 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import 'domain/coordinate_formatter.dart';
+import 'domain/radar_geometry.dart';
+import 'drive/device_heading.dart';
 import 'drive/drive_engine.dart';
 import 'widgets/drive_hud.dart';
+import 'widgets/explore_search.dart';
+import 'widgets/navigation_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,6 +60,22 @@ class _MapHomePageState extends State<MapHomePage> {
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
 
   final DriveEngine _driveEngine = DriveEngine();
+  GoogleMapViewController? _browseController;
+  GoogleNavigationViewController? _navigationController;
+  StreamSubscription<Position>? _positionSubscription;
+  StreamSubscription<double>? _headingSubscription;
+  Timer? _mapRefreshTimer;
+  LatLng? _gpsLocation;
+  double? _gpsAccuracy;
+  double? _deviceHeading;
+  double? _travelHeading;
+  Polygon? _radarPolygon;
+  bool _mapRefreshing = false;
+  bool _refreshAgain = false;
+  bool _following = true;
+  bool _voiceEnabled = true;
+  bool _lanesEnabled = true;
+  String _destinationTitle = 'Destination';
 
   PointOfInterest? _selectedPoi;
   bool _navigationSessionInitialized = false;
@@ -61,7 +84,18 @@ class _MapHomePageState extends State<MapHomePage> {
   String? _message;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_startTracking());
+    });
+  }
+
+  @override
   void dispose() {
+    _positionSubscription?.cancel();
+    _headingSubscription?.cancel();
+    _mapRefreshTimer?.cancel();
     _driveEngine.dispose();
     if (_navigationSessionInitialized) {
       GoogleMapsNavigator.cleanup();
@@ -80,6 +114,121 @@ class _MapHomePageState extends State<MapHomePage> {
           : 'Location permission is required for navigation.';
     });
     return false;
+  }
+
+  Future<void> _startTracking() async {
+    if (_positionSubscription != null || !await _ensureLocationPermission()) return;
+    _headingSubscription = DeviceHeading.readings.listen((heading) {
+      _deviceHeading = heading;
+      _queueMapRefresh();
+    }, onError: (_) { /* iOS simulator and non-iOS use GPS course. */ });
+    _positionSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 2,
+      ),
+    ).listen(_onPosition, onError: (Object error) {
+      if (mounted) setState(() => _message = 'Location unavailable: $error');
+    });
+    try {
+      _onPosition(await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best),
+      ));
+    } catch (_) { /* The location stream will retry. */ }
+  }
+
+  void _onPosition(Position position) {
+    if (!mounted) return;
+    _gpsLocation = LatLng(latitude: position.latitude, longitude: position.longitude);
+    _gpsAccuracy = position.accuracy.isFinite ? position.accuracy : null;
+    if (position.speed >= 1.5 && position.heading.isFinite && position.heading >= 0) {
+      _travelHeading = position.heading % 360;
+    } else {
+      _travelHeading = null;
+    }
+    setState(() {});
+    _queueMapRefresh();
+  }
+
+  void _queueMapRefresh() {
+    _mapRefreshTimer?.cancel();
+    _mapRefreshTimer = Timer(const Duration(milliseconds: 180), () => unawaited(_refreshMap()));
+  }
+
+  Future<void> _refreshMap() async {
+    if (_mapRefreshing) { _refreshAgain = true; return; }
+    final controller = _guidanceRunning ? _navigationController : _browseController;
+    final location = _gpsLocation;
+    final heading = _deviceHeading ?? _travelHeading;
+    if (controller == null || location == null) return;
+    _mapRefreshing = true;
+    try {
+      if (heading != null) {
+        final options = PolygonOptions(
+          points: radarSector(location, heading),
+          fillColor: const Color(0x33AAF05F),
+          strokeColor: const Color(0x9986CB48),
+          strokeWidth: 1.5,
+          geodesic: true,
+          zIndex: 5,
+        );
+        if (_radarPolygon == null) {
+          final polygon = (await controller.addPolygons([options])).first;
+          if (controller == (_guidanceRunning ? _navigationController : _browseController)) {
+            _radarPolygon = polygon;
+          }
+        } else {
+          final polygon = (await controller.updatePolygons([
+            _radarPolygon!.copyWith(options: options),
+          ])).first;
+          if (controller == (_guidanceRunning ? _navigationController : _browseController)) {
+            _radarPolygon = polygon;
+          }
+        }
+      } else if (_radarPolygon != null) {
+        await controller.removePolygons([_radarPolygon!]);
+        _radarPolygon = null;
+      }
+      if (_following) {
+        final cameraTarget = _guidanceRunning && heading != null
+            ? pointAtDistance(location, heading, 105)
+            : location;
+        await controller.moveCamera(CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: cameraTarget,
+            bearing: heading ?? 0,
+            tilt: _guidanceRunning ? 40 : 0,
+            zoom: _guidanceRunning ? 17 : 16,
+          ),
+        ));
+      }
+    } catch (_) { /* View may have been replaced during a mode change. */ }
+    finally {
+      _mapRefreshing = false;
+      if (_refreshAgain) {
+        _refreshAgain = false;
+        _queueMapRefresh();
+      }
+    }
+  }
+
+  void _recenter() {
+    _following = true;
+    _queueMapRefresh();
+  }
+
+  void _toggleVoice() {
+    setState(() => _voiceEnabled = !_voiceEnabled);
+    _driveEngine.voiceEnabled = _voiceEnabled;
+    unawaited(GoogleMapsNavigator.setAudioGuidance(
+      NavigationAudioGuidanceSettings(
+        guidanceType: _voiceEnabled
+            ? NavigationAudioGuidanceType.alertsAndGuidance
+            : NavigationAudioGuidanceType.silent,
+        isBluetoothAudioEnabled: true,
+        isVibrationEnabled: true,
+      ),
+    ));
   }
 
   Future<bool> _ensureNavigationSession() async {
@@ -127,10 +276,13 @@ class _MapHomePageState extends State<MapHomePage> {
       final status = await GoogleMapsNavigator.setDestinations(
         Destinations(
           waypoints: <NavigationWaypoint>[
-            NavigationWaypoint.withPlaceID(
-              title: poi.name,
-              placeID: poi.placeID,
-            ),
+            if (poi.placeID.isNotEmpty)
+              NavigationWaypoint.withPlaceID(title: poi.name, placeID: poi.placeID)
+            else
+              NavigationWaypoint.withLatLngTarget(
+                title: poi.name,
+                target: poi.latLng,
+              ),
           ],
           displayOptions: NavigationDisplayOptions(
             showDestinationMarkers: true,
@@ -160,6 +312,7 @@ class _MapHomePageState extends State<MapHomePage> {
       if (!mounted) return;
       setState(() {
         _guidanceRunning = true;
+        _destinationTitle = poi.name;
         _selectedPoi = null;
       });
     } catch (error) {
@@ -175,7 +328,10 @@ class _MapHomePageState extends State<MapHomePage> {
     await GoogleMapsNavigator.stopGuidance();
     await GoogleMapsNavigator.clearDestinations();
     if (!mounted) return;
-    setState(() => _guidanceRunning = false);
+    setState(() {
+      _guidanceRunning = false;
+      _destinationTitle = 'Destination';
+    });
   }
 
   Future<void> _startDriveMode() async {
@@ -218,11 +374,28 @@ class _MapHomePageState extends State<MapHomePage> {
     });
   }
 
+  void _onSearchSelected(DestinationSuggestion suggestion) {
+    _onPoiClicked(PointOfInterest(
+      placeID: '',
+      name: suggestion.label,
+      latLng: suggestion.location,
+    ));
+    final controller = _browseController;
+    if (controller != null) {
+      unawaited(controller.animateCamera(CameraUpdate.newLatLng(suggestion.location)));
+    }
+  }
+
   Future<void> _onMapViewCreated(GoogleMapViewController controller) async {
+    _browseController = controller;
+    _navigationController = null;
+    _radarPolygon = null;
     await controller.settings.setTrafficEnabled(true);
     if (await Permission.locationWhenInUse.isGranted) {
       await controller.setMyLocationEnabled(true);
     }
+    await controller.setRecenterButtonEnabled(false);
+    _queueMapRefresh();
   }
 
   Future<void> _onNavigationViewCreated(
@@ -230,6 +403,14 @@ class _MapHomePageState extends State<MapHomePage> {
   ) async {
     await controller.setMyLocationEnabled(true);
     await controller.settings.setTrafficEnabled(true);
+    _navigationController = controller;
+    _browseController = null;
+    _radarPolygon = null;
+    await controller.setNavigationHeaderEnabled(false);
+    await controller.setNavigationFooterEnabled(false);
+    await controller.setRecenterButtonEnabled(false);
+    await controller.setPadding(const EdgeInsets.fromLTRB(16, 125, 16, 215));
+    _queueMapRefresh();
   }
 
   @override
@@ -243,6 +424,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     key: const ValueKey('navigation-view'),
                     onViewCreated: _onNavigationViewCreated,
                     mapId: _mapId.isEmpty ? null : _mapId,
+                    onCameraMoveStarted: (_, isGesture) { if (isGesture) _following = false; },
                     initialNavigationUIEnabledPreference:
                         NavigationUIEnabledPreference.automatic,
                     initialForceNightMode: NavigationForceNightMode.auto,
@@ -252,6 +434,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     key: const ValueKey('browse-map-view'),
                     onViewCreated: _onMapViewCreated,
                     mapId: _mapId.isEmpty ? null : _mapId,
+                    onCameraMoveStarted: (_, isGesture) { if (isGesture) _following = false; },
                     initialCameraPosition: const CameraPosition(
                       target: _auckland,
                       zoom: 14,
@@ -265,7 +448,8 @@ class _MapHomePageState extends State<MapHomePage> {
                     },
                   ),
           ),
-          SafeArea(
+          if (!_guidanceRunning)
+            SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: PointerInterceptor(
@@ -327,14 +511,38 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
           ),
+          if (!_guidanceRunning)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 75,
+              left: 16,
+              right: 16,
+              child: PointerInterceptor(
+                child: ExploreSearch(
+                  currentLocation: _gpsLocation,
+                  onSelected: _onSearchSelected,
+                ),
+              ),
+            ),
           if (_driveEngine.active && _selectedPoi == null)
             Positioned.fill(
               child: AnimatedBuilder(
                 animation: _driveEngine,
-                builder: (context, _) => DriveHud(
-                  engine: _driveEngine,
-                  onStop: () => _stopDriveMode(),
-                ),
+                builder: (context, _) => _guidanceRunning
+                    ? NavigationOverlay(
+                        engine: _driveEngine,
+                        destinationTitle: _destinationTitle,
+                        gpsAccuracy: _gpsAccuracy,
+                        voiceEnabled: _voiceEnabled,
+                        lanesEnabled: _lanesEnabled,
+                        onEnd: () => unawaited(_stopNavigation()),
+                        onRecenter: _recenter,
+                        onVoiceToggle: _toggleVoice,
+                        onLanesToggle: () => setState(() => _lanesEnabled = !_lanesEnabled),
+                      )
+                    : DriveHud(
+                        engine: _driveEngine,
+                        onStop: () => unawaited(_stopDriveMode()),
+                      ),
               ),
             ),
           if (_message != null)

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'api_config.dart';
+
 class SpeedLimitInfo {
   const SpeedLimitInfo({required this.speedLimitKph, this.zoneName});
 
@@ -12,7 +14,7 @@ class SpeedLimitInfo {
 class SpeedLimitRepository {
   SpeedLimitRepository({
     http.Client? client,
-    this.baseUrl = 'https://kiwi-lens.nzs.workers.dev',
+    this.baseUrl = workerBaseUrl,
   }) : _client = client ?? http.Client();
 
   final http.Client _client;

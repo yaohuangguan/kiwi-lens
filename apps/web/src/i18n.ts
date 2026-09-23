@@ -14,6 +14,7 @@ const messages = {
     routeFailed: 'Could not calculate route', chooseOrigin: 'Choose a starting point or allow GPS.',
     turnDefault: 'Continue along the route', arrived: 'Arrive at destination',
     initialTitle: 'Explore New Zealand, drive with confidence', start: 'Start navigation', stop: 'End navigation',
+    speedLimit: 'Speed limit', nextCamera: 'Next camera', gpsAccuracy: 'GPS accuracy', routeSteps: 'Route steps',
     camerasAlong: 'Cameras on route', distance: 'Distance', arrival: 'Arrival', dataDetails: 'Data details ↗',
     camerasLoading: 'Loading NZTA cameras…', camerasUnavailable: 'Camera data unavailable',
     cameraCount: 'NZTA fixed cameras', cached: 'cached', neverChecked: 'Not checked yet',
@@ -43,6 +44,7 @@ const messages = {
     routeCalculating: '正在计算路线…', destinationFallback: '目的地', routeError: '路线暂不可用',
     routeFailed: '路线计算失败', chooseOrigin: '请选择起点，或允许 GPS 定位。',
     turnDefault: '沿路线行驶', arrived: '到达目的地',
+    speedLimit: '当前限速', nextCamera: '下一摄像头', gpsAccuracy: 'GPS 精度', routeSteps: '路线步骤',
     initialTitle: '探索新西兰，安心出发', start: '开始导航', stop: '结束导航',
     camerasAlong: '沿途摄像头', distance: '路程', arrival: '预计到达', dataDetails: '数据详情 ↗',
     camerasLoading: '正在加载 NZTA 摄像头…', camerasUnavailable: '摄像头数据暂不可用',
@@ -100,6 +102,10 @@ export function applyUiLanguage(language: Language) {
   setText('#dataButton', t(language, 'dataDetails'));
   setText('#settingsTitle', t(language, 'settingsTitle'));
   setText('#settingsOverlay .setting-row:nth-child(2) strong', t(language, 'language'));
+  setText('.trip-detail-grid > div:nth-child(1) span', t(language, 'speedLimit'));
+  setText('.trip-detail-grid > div:nth-child(2) span', t(language, 'nextCamera'));
+  setText('.trip-detail-grid > div:nth-child(3) span', t(language, 'gpsAccuracy'));
+  setText('.trip-detail-grid > div:nth-child(4) span', t(language, 'routeSteps'));
   setText('#settingsOverlay .setting-row:nth-child(2) small', t(language, 'languageDescription'));
   setText('#settingsOverlay .setting-row:nth-child(3) strong', t(language, 'voice'));
   setText('#settingsOverlay .setting-row:nth-child(3) small', t(language, 'voiceDescription'));
