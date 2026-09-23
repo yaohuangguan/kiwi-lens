@@ -3,22 +3,37 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["apps/web", "apps/server", "packages/core"],
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=12.6.0"
+  },
   "scripts": {
-    "dev": "npm run build -w @kiwi-lens/web && concurrently -k -n server,web -c cyan,green \"npm run dev -w @kiwi-lens/server\" \"npm run dev -w @kiwi-lens/web\"",
-    "build": "npm run build -w @kiwi-lens/core && npm run build -w @kiwi-lens/web",
-    "check:worker": "npm run build -w @kiwi-lens/server",
-    "test": "npm run test -w @kiwi-lens/core && npm run test -w @kiwi-lens/server",
+    "dev": "pnpm build:web && concurrently -k -n server,web -c cyan,green \"pnpm dev:server\" \"pnpm dev:web\"",
+    "dev:web": "pnpm --filter @kiwi-lens/web dev",
+    "dev:server": "pnpm --filter @kiwi-lens/server dev",
+    "build": "pnpm build:web",
+    "build:web": "pnpm --filter @kiwi-lens/core build && pnpm --filter @kiwi-lens/web build",
+    "check:worker": "pnpm --filter @kiwi-lens/server build",
+    "test": "pnpm --filter @kiwi-lens/core test && pnpm --filter @kiwi-lens/server test",
     "data:import": "node scripts/import-cameras.mjs",
-    "db:migrate:local": "wrangler d1 migrations apply kiwi-lens-users --local --config wrangler.jsonc",
-    "db:migrate:remote": "wrangler d1 migrations apply kiwi-lens-users --remote --config wrangler.jsonc",
-    "start": "npm run dev -w @kiwi-lens/server",
-    "deploy": "npm run build && wrangler deploy --config wrangler.jsonc"
+    "db:migrate:local": "pnpm exec wrangler d1 migrations apply kiwi-lens-users --local --config wrangler.jsonc",
+    "db:migrate:remote": "pnpm exec wrangler d1 migrations apply kiwi-lens-users --remote --config wrangler.jsonc",
+    "start": "pnpm dev:server",
+    "deploy": "pnpm build && pnpm exec wrangler deploy --config wrangler.jsonc",
+    "mobile:doctor": "flutter doctor -v",
+    "mobile:get": "cd apps/mobile && flutter pub get",
+    "mobile:devices": "flutter devices",
+    "mobile:emulators": "flutter emulators",
+    "mobile:dev": "node scripts/flutter-dev.mjs",
+    "mobile:run": "cd apps/mobile && flutter run",
+    "mobile:analyze": "cd apps/mobile && flutter analyze",
+    "mobile:test": "cd apps/mobile && flutter test",
+    "mobile:build:apk": "cd apps/mobile && flutter build apk"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "typescript": "^5.9.2",
     "wrangler": "^4.136.3"
-  },
-  "engines": { "node": ">=20" }
+  }
 }
