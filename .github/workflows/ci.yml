@@ -53,11 +53,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Verify deploy secrets
+      - name: Check deploy secrets
+        id: deploy-auth
         shell: bash
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
-          test -n "$VITE_GOOGLE_MAPS_API_KEY" || { echo "::error::Missing VITE_GOOGLE_MAPS_API_KEY repository secret"; exit 1; }
-      - run: pnpm install --no-frozen-lockfile
+          ready=true
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::warning::Cloudflare deploy skipped: missing CLOUDFLARE_API_TOKEN"
+            ready=false
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::Cloudflare deploy skipped: missing CLOUDFLARE_ACCOUNT_ID"
+            ready=false
+          fi
+          if [ -z "$VITE_GOOGLE_MAPS_API_KEY" ]; then
+            echo "::warning::Cloudflare deploy skipped: missing VITE_GOOGLE_MAPS_API_KEY"
+            ready=false
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      - if: steps.deploy-auth.outputs.ready == 'true'
+        run: pnpm install --no-frozen-lockfile
       - name: Deploy Cloudflare Worker
+        if: steps.deploy-auth.outputs.ready == 'true'
         run: pnpm deploy
