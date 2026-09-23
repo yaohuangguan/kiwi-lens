@@ -35,6 +35,41 @@ test('Worker rejects malformed route coordinates before upstream calls', async (
   assert.equal(response.status, 400);
 });
 
+test('speed limit API selects the currently effective NZTA record', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    features: [
+      { attributes: {
+        speedLimitZoneValue: '30',
+        speedLimitZoneMaxValue: '30 km/h',
+        speedLimitZoneName: 'OLD CBD',
+        whenEffective: 0,
+        whenIneffective: Date.now() - 1000
+      } },
+      { attributes: {
+        speedLimitZoneValue: '50',
+        speedLimitZoneMaxValue: '50 km/h',
+        speedLimitZoneName: 'CURRENT CBD',
+        whenEffective: Date.now() - 5000,
+        whenIneffective: null
+      } }
+    ]
+  }), { headers: { 'content-type': 'application/json' } });
+  try {
+    const response = await worker.fetch(
+      new Request('https://example.test/api/speed-limit?at=174.7633,-36.8485'),
+      fakeEnv(),
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.speedLimitKph, 50);
+    assert.equal(body.zoneName, 'CURRENT CBD');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('route API preserves OSRM lane guidance for turn steps', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({

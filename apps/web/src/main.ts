@@ -1,5 +1,5 @@
 import './style.css';
-import { cameraLabel, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
+import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
 import { initAccount, recentDestinations, rememberDestination, rememberPreferences, renderAccount, type AccountProfile } from './account';
@@ -41,6 +41,11 @@ let gpsAccuracy: number | null = null;
 let gpsWatchId: number | null = null;
 let gpsRequesting = false;
 let selectedPoi: PoiSelection | null = null;
+let currentSpeedKph = 0;
+let speedLimitKph: number | null = null;
+let lastSpeedLimitLookupAt = 0;
+let lastSpeedLimitCoordinate: Coordinate | null = null;
+let speedLimitLookupPending = false;
 const spokenCameras = new Set<string>();
 
 function escapeHtml(value: string) {
@@ -64,6 +69,36 @@ async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
     throw new Error(body.error || `HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+function renderSpeedHud() {
+  const hud = $('speedHud');
+  const speeding = speedLimitKph !== null && currentSpeedKph > speedLimitKph;
+  hud.classList.toggle('speeding', speeding);
+  $('speedValue').textContent = String(Math.round(currentSpeedKph));
+  $('speedLimitValue').textContent = speedLimitKph === null
+    ? (language === 'zh' ? '限速 —' : 'LIMIT —')
+    : (language === 'zh' ? `限速 ${speedLimitKph}` : `LIMIT ${speedLimitKph}`);
+}
+
+async function refreshSpeedLimit(coordinate: Coordinate) {
+  if (speedLimitLookupPending) return;
+  const moved = lastSpeedLimitCoordinate ? distanceMeters(lastSpeedLimitCoordinate, coordinate) : Infinity;
+  if (Date.now() - lastSpeedLimitLookupAt < 15000 && moved < 75) return;
+  speedLimitLookupPending = true;
+  lastSpeedLimitLookupAt = Date.now();
+  lastSpeedLimitCoordinate = coordinate;
+  try {
+    const result = await api<{ speedLimitKph: number | null }>(
+      `/api/speed-limit?at=${coordinate[0]},${coordinate[1]}`
+    );
+    speedLimitKph = Number.isFinite(result.speedLimitKph) ? result.speedLimitKph : null;
+    renderSpeedHud();
+  } catch {
+    // Keep the last known legal limit if the network lookup temporarily fails.
+  } finally {
+    speedLimitLookupPending = false;
+  }
 }
 
 function renderCameras() {
@@ -111,10 +146,11 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
   gpsStatus = 'active';
   gpsAccuracy = accuracy;
   renderGpsStatus();
-  const speedKph = Number.isFinite(speedMetersPerSecond) && (speedMetersPerSecond || 0) > 0
-    ? Math.round((speedMetersPerSecond || 0) * 3.6)
+  currentSpeedKph = Number.isFinite(speedMetersPerSecond) && (speedMetersPerSecond || 0) > 0
+    ? (speedMetersPerSecond || 0) * 3.6
     : 0;
-  $('speedValue').textContent = String(speedKph);
+  renderSpeedHud();
+  void refreshSpeedLimit(current);
   map.setPosition(current, heading);
   if (following) {
     const center = navigating && route ? lookAheadCenter(current, heading, route) : current;
@@ -430,6 +466,7 @@ async function startNavigation() {
   following = true;
   $('followButton').classList.add('active');
   $('bottomPanel').classList.add('driving');
+  $('bottomPanel').classList.remove('sheet-collapsed');
   $('tripEyebrow').textContent = 'DRIVING MODE';
   $('driveLabel').textContent = t(language, 'stop');
   $('driveIcon').textContent = '■';
@@ -492,6 +529,50 @@ function navigateToSelectedPoi() {
     requestGps();
     toast(t(language, 'chooseOrigin'));
   }
+}
+
+function initBottomSheet() {
+  const panel = $('bottomPanel');
+  const handle = panel.querySelector<HTMLElement>('.panel-handle');
+  if (!handle) return;
+
+  if (window.matchMedia('(max-width: 759px)').matches) {
+    panel.classList.add('sheet-collapsed');
+  }
+
+  let startY = 0;
+  let latestY = 0;
+
+  const finish = () => {
+    panel.classList.remove('sheet-dragging');
+    const delta = latestY - startY;
+    if (Math.abs(delta) < 18) {
+      panel.classList.toggle('sheet-collapsed');
+    } else if (delta < 0) {
+      panel.classList.remove('sheet-collapsed');
+    } else {
+      panel.classList.add('sheet-collapsed');
+    }
+    panel.style.transform = '';
+  };
+
+  handle.addEventListener('pointerdown', (event) => {
+    startY = event.clientY;
+    latestY = event.clientY;
+    panel.classList.add('sheet-dragging');
+    handle.setPointerCapture(event.pointerId);
+  });
+  handle.addEventListener('pointermove', (event) => {
+    if (!panel.classList.contains('sheet-dragging')) return;
+    latestY = event.clientY;
+    const delta = latestY - startY;
+    const base = panel.classList.contains('sheet-collapsed')
+      ? Math.max(0, panel.offsetHeight - 108)
+      : 0;
+    panel.style.transform = `translateY(${Math.max(0, base + delta)}px)`;
+  });
+  handle.addEventListener('pointerup', finish);
+  handle.addEventListener('pointercancel', finish);
 }
 
 $('originInput').addEventListener('focus', () => { searchTarget = 'origin'; });
@@ -559,6 +640,7 @@ function applyLanguage() {
   renderCameras();
   renderAccount();
   renderGpsStatus();
+  renderSpeedHud();
   if (navigating) updateGuidance();
 }
 $('zhButton').onclick = () => { language = 'zh'; applyLanguage(); void rememberPreferences(language, voiceEnabled); };
@@ -573,6 +655,8 @@ $('laneToggle').addEventListener('change', () => {
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && navigating && !wakeLock && 'wakeLock' in navigator) void navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock; }).catch(() => {}); });
 $('gpsBadge').onclick = () => requestGps();
+initBottomSheet();
+renderSpeedHud();
 
 void map.init({
   apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',

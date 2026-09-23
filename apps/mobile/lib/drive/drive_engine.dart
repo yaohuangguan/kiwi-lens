@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../data/camera_repository.dart';
+import '../data/speed_limit_repository.dart';
 import '../domain/geo_math.dart';
 import '../domain/safety_camera.dart';
 import 'camera_matcher.dart';
@@ -15,25 +16,33 @@ class DriveEngine extends ChangeNotifier {
     CameraRepository? cameraRepository,
     CameraMatcher? cameraMatcher,
     VoiceEngine? voiceEngine,
+    SpeedLimitRepository? speedLimitRepository,
   }) : _cameraRepository = cameraRepository ?? CameraRepository(),
        _cameraMatcher = cameraMatcher ?? const CameraMatcher(),
-       _voiceEngine = voiceEngine ?? VoiceEngine();
+       _voiceEngine = voiceEngine ?? VoiceEngine(),
+       _speedLimitRepository = speedLimitRepository ?? SpeedLimitRepository();
 
   final CameraRepository _cameraRepository;
   final CameraMatcher _cameraMatcher;
   final VoiceEngine _voiceEngine;
+  final SpeedLimitRepository _speedLimitRepository;
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final Set<String> _spokenAlerts = <String>{};
 
   List<SafetyCamera> _cameras = const [];
   LatLng? _lastSnappedLocation;
+  LatLng? _lastSpeedLimitLocation;
+  DateTime? _lastSpeedLimitLookup;
+  bool _speedLimitLookupPending = false;
   double? _headingDegrees;
 
   bool active = false;
   bool guidanceRunning = false;
   bool loadingCameras = false;
   double speedKph = 0;
+  int? speedLimitKph;
+  String? speedLimitZoneName;
   SpeedAlertSeverity speedSeverity = SpeedAlertSeverity.notSpeeding;
   double? percentageAboveLimit;
   SafetyCamera? upcomingCamera;
@@ -125,6 +134,7 @@ class DriveEngine extends ChangeNotifier {
     }
 
     _lastSnappedLocation = current;
+    unawaited(_refreshSpeedLimit(current));
 
     final match = _cameraMatcher.findUpcoming(
       latitude: current.latitude,
@@ -141,6 +151,41 @@ class DriveEngine extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  Future<void> _refreshSpeedLimit(LatLng current) async {
+    if (_speedLimitLookupPending) return;
+    final now = DateTime.now();
+    final last = _lastSpeedLimitLocation;
+    final moved = last == null
+        ? double.infinity
+        : distanceMeters(
+            last.latitude,
+            last.longitude,
+            current.latitude,
+            current.longitude,
+          );
+    final recent =
+        _lastSpeedLimitLookup != null &&
+        now.difference(_lastSpeedLimitLookup!).inSeconds < 15;
+    if (recent && moved < 75) return;
+
+    _speedLimitLookupPending = true;
+    _lastSpeedLimitLookup = now;
+    _lastSpeedLimitLocation = current;
+    try {
+      final info = await _speedLimitRepository.fetch(
+        latitude: current.latitude,
+        longitude: current.longitude,
+      );
+      speedLimitKph = info.speedLimitKph;
+      speedLimitZoneName = info.zoneName;
+      notifyListeners();
+    } catch (_) {
+      // Retain the last known legal limit during short network interruptions.
+    } finally {
+      _speedLimitLookupPending = false;
+    }
   }
 
   Future<void> _maybeAlert(CameraMatch match) async {
@@ -181,6 +226,10 @@ class DriveEngine extends ChangeNotifier {
     upcomingCameraDistanceMeters = null;
     navInfo = null;
     speedKph = 0;
+    speedLimitKph = null;
+    speedLimitZoneName = null;
+    _lastSpeedLimitLocation = null;
+    _lastSpeedLimitLookup = null;
     notifyListeners();
   }
 

@@ -39,7 +39,9 @@ class DriveHud extends StatelessWidget {
     final cameraDistance = engine.upcomingCameraDistanceMeters;
     final speeding =
         engine.speedSeverity == SpeedAlertSeverity.minor ||
-        engine.speedSeverity == SpeedAlertSeverity.major;
+        engine.speedSeverity == SpeedAlertSeverity.major ||
+        (engine.speedLimitKph != null &&
+            engine.speedKph > engine.speedLimitKph!);
 
     return SafeArea(
       child: Padding(
@@ -214,10 +216,9 @@ class DriveHud extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    _Metric(
-                      label: 'SPEED',
-                      value: engine.speedKph.round().toString(),
-                      suffix: 'km/h',
+                    _SpeedMetric(
+                      speedKph: engine.speedKph,
+                      speedLimitKph: engine.speedLimitKph,
                       warning: speeding,
                     ),
                     Container(width: 1, height: 34, color: Colors.white12),
@@ -247,18 +248,98 @@ class DriveHud extends StatelessWidget {
   }
 }
 
-class _Metric extends StatelessWidget {
-  const _Metric({
-    required this.label,
-    required this.value,
-    this.suffix,
-    this.warning = false,
+class _SpeedMetric extends StatelessWidget {
+  const _SpeedMetric({
+    required this.speedKph,
+    required this.speedLimitKph,
+    required this.warning,
   });
+
+  final double speedKph;
+  final int? speedLimitKph;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = warning ? const Color(0xFFFF6868) : const Color(0xFFC8F169);
+
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(
+            color: warning ? const Color(0xFFFF5757) : Colors.white24,
+            width: warning ? 2.2 : 1,
+          ),
+          boxShadow: warning
+              ? const [
+                  BoxShadow(
+                    color: Color(0x40FF5757),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'SPEED',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  speedKph.round().toString(),
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    'km/h',
+                    style: TextStyle(color: Colors.white54, fontSize: 8),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 1),
+            Text(
+              speedLimitKph == null ? 'LIMIT —' : 'LIMIT $speedLimitKph',
+              style: TextStyle(
+                color: warning ? accent : Colors.white60,
+                fontSize: 8,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Metric extends StatelessWidget {
+  const _Metric({required this.label, required this.value});
 
   final String label;
   final String value;
-  final String? suffix;
-  final bool warning;
 
   @override
   Widget build(BuildContext context) {
@@ -284,27 +365,12 @@ class _Metric extends StatelessWidget {
               children: [
                 Text(
                   value,
-                  style: TextStyle(
-                    color: warning
-                        ? const Color(0xFFF7D66D)
-                        : const Color(0xFFC8F169),
+                  style: const TextStyle(
+                    color: Color(0xFFC8F169),
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                if (suffix != null) ...[
-                  const SizedBox(width: 3),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      suffix!,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 9,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ],

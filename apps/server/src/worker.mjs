@@ -85,6 +85,54 @@ async function handleApi(request, env, ctx) {
     if (state.syncStatus === 'seed') ctx.waitUntil(syncCameras(env));
     return json({ ...state, source: SOURCE_URL });
   }
+  if (url.pathname === '/api/speed-limit') {
+    const at = validateCoordinatePair(url.searchParams.get('at'));
+    if (!at) return json({ error: 'Valid NZ coordinate required' }, 400);
+
+    const [longitude, latitude] = at;
+    const params = new URLSearchParams({
+      f: 'json',
+      geometry: `${longitude},${latitude}`,
+      geometryType: 'esriGeometryPoint',
+      inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: 'speedLimitZoneValue,speedLimitZoneMaxValue,speedLimitZoneName,whenEffective,whenIneffective',
+      returnGeometry: 'false'
+    });
+    const nslrUrl =
+      'https://services.arcgis.com/CXBb7LAjgIIdcsPt/arcgis/rest/services/' +
+      'SpeedLimitZoneFull__View/FeatureServer/0/query?' +
+      params.toString();
+    const result = await upstreamJson(nslrUrl, {
+      accept: 'application/json',
+      'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)'
+    });
+    const now = Date.now();
+    const current = (result.features || [])
+      .map((feature) => feature.attributes || {})
+      .filter((attributes) => {
+        const starts = attributes.whenEffective == null || Number(attributes.whenEffective) <= now;
+        const active = attributes.whenIneffective == null || Number(attributes.whenIneffective) > now;
+        return starts && active;
+      })
+      .sort((a, b) => Number(b.whenEffective || 0) - Number(a.whenEffective || 0))[0];
+
+    if (!current) {
+      return json({
+        speedLimitKph: null,
+        source: 'NZTA National Speed Limit Register',
+        sourceUrl: 'https://www.nzta.govt.nz/partners/speed-management/national-speed-limit-register'
+      });
+    }
+
+    const parsed = Number.parseInt(String(current.speedLimitZoneValue || current.speedLimitZoneMaxValue || ''), 10);
+    return json({
+      speedLimitKph: Number.isFinite(parsed) ? parsed : null,
+      zoneName: current.speedLimitZoneName || null,
+      source: 'NZTA National Speed Limit Register',
+      sourceUrl: 'https://www.nzta.govt.nz/partners/speed-management/national-speed-limit-register'
+    });
+  }
   if (url.pathname === '/api/search') {
     const query = (url.searchParams.get('q') || '').trim();
     if (query.length < 3 || query.length > 120) return json({ error: 'Search query must be 3–120 characters' }, 400);
