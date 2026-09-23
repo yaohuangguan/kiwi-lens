@@ -6,9 +6,9 @@
 
 ```text
 apps/
-  web/       Vite + Leaflet PWA
-  server/    Cloudflare Worker：摄像头同步、地址搜索、驾车路线 API
-  mobile/    Flutter Android/iOS 客户端预留目录
+  web/       Vite PWA + Google Maps JavaScript / Places / Routes
+  server/    Cloudflare Worker：摄像头同步、账号、地址搜索与 lane enrichment API
+  mobile/    Flutter Android/iOS + Google Navigation SDK
 packages/
   core/      Web 路线投影、摄像头匹配与距离算法
   contracts/ HTTP API 契约，供移动端复用
@@ -17,7 +17,9 @@ scripts/     NZTA CSV 初始数据导入
 
 ## 本地运行
 
-需要 Node.js 20+。运行 `npm install` 和 `npm run dev`，打开 `http://localhost:5173`。Vite 将 `/api` 代理到本地 Worker `http://localhost:8787`；Worker 也直接提供已打包的 PWA。首次使用请允许定位；没有 GPS 时可搜索起点和目的地。搜索与规划路线需要网络。
+推荐在 WSL/Linux 文件系统运行，当前开发仓库位于 `~/work/kiwi-lens`。需要 Node.js 20+；运行 `npm install` 和 `npm run dev`，打开 `http://localhost:5173`。Vite 将 `/api` 代理到本地 Worker `http://localhost:8787`；Worker 也直接提供已打包的 PWA。首次使用请允许定位；没有 GPS 时可搜索起点和目的地。搜索与规划路线需要网络。
+
+Web Google Maps 配置复制 `apps/web/.env.example` 到 `apps/web/.env.local`，填写 `VITE_GOOGLE_MAPS_API_KEY`。浏览器 API Key 会出现在客户端，这是 Google Maps Web 的正常工作方式，因此必须在 Google Cloud 中限制 **HTTP referrer**，并只允许项目实际使用的 Maps JavaScript / Places / Routes 能力。可选配置 `VITE_GOOGLE_MAP_ID`；未配置时开发阶段使用 `DEMO_MAP_ID`。
 
 运行 `npm test` 执行算法、解析器和 Worker API 测试；`npm run build` 包含网页构建与 Worker dry-run 打包。
 
@@ -85,11 +87,13 @@ npx wrangler kv namespace create CAMERA_DATA
 ## 导航能力与限制
 
 - 浏览器前台 Geolocation 实时跟随位置，使用 Screen Wake Lock 尽可能保持屏幕唤醒。
-- 地址搜索通过 Worker 代理到 OpenStreetMap Nominatim，并可选使用 Geoapify 做实时地址补全；路线和转弯步骤通过 Worker 代理到 OSRM，底图使用 OpenStreetMap 图块。OSRM 返回车道建议时，转弯面板会高亮推荐车道；没有可靠车道数据时不显示。
-- 摄像头沿路线投影，并结合道路名和路线中心线距离筛选。路线上的摄像头高亮；仅对高可信匹配自动语音提示 800 米和 300 米，持续更新距离。
+- PWA 底图与可点击 POI 使用 Google Maps JavaScript API；点击 Google POI 会读取 Place ID、名称、地址并显示 Kiwi Lens 地点卡片，可直接设为导航目的地。
+- PWA 主路线使用 Google Maps JavaScript Routes library 的 traffic-aware driving route；Kiwi Lens 自己负责路线进度、转弯 HUD、ETA、实时车速、reroute 和语音。现有 Worker/OSRM 路线仅作为可选 lane enrichment：能匹配到同一转弯时补充推荐车道，没有可靠 lane 数据就不显示。
+- 地址文字搜索目前仍通过 Worker/Nominatim，并可选使用 Geoapify 实时补全；地图 POI 与路线已经由 Google 提供，后续可再将搜索统一切到 Google Places Autocomplete。
+- 摄像头沿 Google 路线投影，并结合道路名和路线中心线距离筛选。路线上的摄像头高亮；仅对高可信匹配自动语音提示 800 米和 300 米，持续更新距离。GPS 的 `coords.speed` 直接驱动 Kiwi Lens 时速 HUD。
 - NZTA CSV 没有车道或执法朝向字段。相邻道路误报可降低，但同一路面反方向摄像头不能可靠区分；驾驶者始终应以现场标志和法规为准。
 - PWA 进入后台或锁屏后，浏览器可能停止 GPS 与语音。持续后台导航需要 `apps/mobile` 的 Flutter 客户端配合 iOS/Android 原生后台定位能力。
-- 公共 Nominatim、OSRM 和 OSM 图块服务仅适合开发及小规模试用。正式运营前须换成符合服务条款且具有容量保障的服务，并配置限流、监控与可用性保障。
+- Nominatim/Geoapify 与 OSRM 目前只承担搜索 fallback / lane enrichment；正式运营前仍需确认容量与服务条款。Google Maps Platform 需要启用计费并对 Web 与原生 API Key 分别做平台和 API 限制。
 
 ## API
 

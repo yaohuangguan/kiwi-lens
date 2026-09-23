@@ -8,11 +8,9 @@ button { cursor: pointer; }
 [hidden] { display: none !important; }
 #app { position: relative; isolation: isolate; }
 #map { position: absolute; inset: 0; z-index: 0; background: #dbe6dd; }
-.leaflet-container { font-family: inherit; }
-.leaflet-control-attribution { font-size: 10px !important; background: rgba(255,255,255,.75) !important; }
-.leaflet-top.leaflet-left { display: none; }
-.leaflet-popup-content-wrapper { border-radius: 18px; box-shadow: 0 16px 45px rgba(0,0,0,.22); }
-.leaflet-popup-content { margin: 15px 18px; min-width: 185px; }
+.gm-style { font-family: inherit; }
+.gm-style .gm-style-iw-c { border-radius: 18px; box-shadow: 0 16px 45px rgba(0,0,0,.22); }
+.google-camera-popup { min-width: 185px; padding: 4px 2px; }
 .popup-tag { display: inline-flex; padding: 5px 8px; border-radius: 7px; background: #eff6d5; color: #35550f; font-size: 12px; font-weight: 800; text-transform: uppercase; }
 .popup-tag.red { background: #fff0eb; color: #a13c20; }
 .popup-title { margin: 9px 0 5px; font-size: 17px; font-weight: 800; line-height: 1.3; }
@@ -64,6 +62,14 @@ button { cursor: pointer; }
 .map-control { width: 47px; height: 47px; border-radius: 14px; background: #fff; color: #284f43; font-size: 25px; box-shadow: 0 7px 22px rgba(14,34,26,.17); }
 .map-control.active { background: #c8f169; color: #152919; }
 .map-control:focus-visible, .icon-button:focus-visible, .drive-button:focus-visible, .close-button:focus-visible { outline: 3px solid #538f47; outline-offset: 3px; }
+.speed-hud { position: absolute; z-index: 415; right: max(18px, env(safe-area-inset-right)); top: calc(305px + env(safe-area-inset-top)); width: 74px; height: 74px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px solid #fff; border-radius: 22px; background: #0b1717; color: #fff; box-shadow: 0 8px 24px rgba(14,34,26,.2); pointer-events: none; }
+.speed-hud strong { color: #c8f169; font-size: 27px; line-height: 1; font-weight: 900; }
+.speed-hud span { margin-top: 4px; color: #9fb0a8; font-size: 10px; font-weight: 800; }
+.poi-card { position: absolute; z-index: 445; left: 50%; bottom: calc(228px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(440px, calc(100vw - 30px)); padding: 18px 18px 16px; border-radius: 22px; background: #fff; box-shadow: 0 18px 45px rgba(20,40,31,.25); }
+.poi-card h2 { margin: 5px 38px 4px 0; color: #14261d; font-size: 20px; line-height: 1.2; }
+.poi-card p { margin: 0 0 14px; color: #66776f; font-size: 12px; line-height: 1.45; }
+.poi-close { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border: 0; border-radius: 11px; background: #f0f4ee; color: #385044; font-size: 23px; }
+.poi-navigate { width: 100%; min-height: 44px; border: 0; border-radius: 13px; background: #18372d; color: #c8f169; font-size: 13px; font-weight: 900; }
 
 .camera-alert { position: absolute; z-index: 430; bottom: calc(236px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 36px)); min-height: 78px; display: flex; align-items: center; gap: 13px; padding: 13px 16px; background: #172823; border: 1px solid #94b34f; border-radius: 18px; box-shadow: 0 15px 30px rgba(20,37,27,.25); color: #fff; }
 .alert-symbol { display: grid; place-items: center; width: 42px; height: 42px; flex: none; border-radius: 13px; background: #c8f169; color: #193124; font-size: 28px; }
@@ -123,6 +129,7 @@ button { cursor: pointer; }
 .camera-pin, .position-pin { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border: 3px solid #fff; border-radius: 50%; background: #21443a; color: #fff; box-shadow: 0 3px 10px rgba(0,0,0,.28); font-size: 17px; line-height: 1; }
 .camera-pin.red { background: #d45b3e; }
 .camera-pin.route { width: 38px; height: 38px; border: 4px solid #c8f169; box-shadow: 0 0 0 5px rgba(200,241,105,.24), 0 4px 13px rgba(0,0,0,.35); }
+.destination-pin { background: #193729; }
 .position-pin { width: 23px; height: 23px; background: #278ac5; border-width: 4px; box-shadow: 0 0 0 9px rgba(39,138,197,.18), 0 2px 10px rgba(0,0,0,.25); }
 .position-heading { position: absolute; bottom: 18px; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 15px solid #278ac5; transform-origin: center 28px; }
 
