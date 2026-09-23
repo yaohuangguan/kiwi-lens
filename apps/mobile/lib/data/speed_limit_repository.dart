@@ -12,7 +12,7 @@ class SpeedLimitInfo {
 class SpeedLimitRepository {
   SpeedLimitRepository({
     http.Client? client,
-    this.baseUrl = 'https://kiwi-lens.719919153.workers.dev',
+    this.baseUrl = 'https://kiwi-lens.nzs.workers.dev',
   }) : _client = client ?? http.Client();
 
   final http.Client _client;
