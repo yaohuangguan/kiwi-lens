@@ -29,7 +29,10 @@
     "mobile:run": "node scripts/flutter-dev.mjs",
     "mobile:analyze": "cd apps/mobile && flutter analyze",
     "mobile:test": "cd apps/mobile && flutter test",
-    "mobile:build:apk": "cd apps/mobile && flutter build apk"
+    "mobile:build:apk": "cd apps/mobile && flutter build apk",
+    "mobile:ios": "node scripts/ios-device.mjs debug",
+    "mobile:ios:install": "node scripts/ios-device.mjs install",
+    "mobile:ios:ipa": "node scripts/ios-device.mjs ipa"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
