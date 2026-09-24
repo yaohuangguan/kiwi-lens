@@ -265,3 +265,38 @@ body[data-mode='explore'] .poi-card { display: flex; flex-direction: column; bot
   body[data-mode='navigation'] .camera-alert,
   body.nav-sheet-expanded[data-mode='navigation'] .camera-alert { right: 28px; bottom: 28px; left: auto; transform: none; }
 }
+
+
+/* Multimodal route planner */
+.stop-editor { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e8eee9; }
+.stop-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
+.stop-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 5px 8px; border-radius: 9px; background: #eef4ee; color: #42584c; font-size: 10px; font-weight: 800; }
+.stop-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.stop-chip button { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: #dbe5dc; color: #31463a; }
+.travel-modes { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; margin-top: 14px; }
+.travel-modes button { min-width: 0; padding: 8px 4px; border: 0; border-radius: 12px; background: #f4f7f4; color: #53655c; }
+.travel-modes button.selected { background: #e8f2df; color: #173429; box-shadow: inset 0 0 0 1px #bad28b; }
+.travel-modes span { display: block; font-size: 18px; }
+.travel-modes strong, .travel-modes small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.travel-modes strong { margin-top: 2px; font-size: 10px; }
+.travel-modes small { margin-top: 2px; color: #75827b; font-size: 10px; font-weight: 800; }
+.route-alternatives { display: flex; gap: 7px; overflow-x: auto; padding: 10px 0 2px; }
+.route-option-card { flex: 0 0 145px; padding: 9px 10px; border: 1px solid #e0e7e2; border-radius: 12px; background: #f7f9f7; color: #354a40; text-align: left; }
+.route-option-card.selected { background: #eef6df; border-color: #9fbe64; }
+.route-option-card strong, .route-option-card span { display: block; }
+.route-option-card strong { font-size: 15px; }
+.route-option-card span { margin-top: 2px; color: #76837c; font-size: 10px; }
+.route-info-cards { display: grid; gap: 7px; margin-top: 9px; }
+.route-info-card { padding: 10px 11px; border-radius: 12px; background: #f5f7f5; color: #42534a; font-size: 11px; line-height: 1.45; }
+.route-info-card.warning { background: #fff2df; color: #83521c; border: 1px solid #efc681; }
+.route-info-card.transit { background: #f0f3fa; color: #3e4a66; }
+.route-info-card strong { display: block; color: inherit; margin-bottom: 2px; }
+.planning-actions { display: flex; gap: 7px; margin-top: 9px; }
+.planning-actions button { min-height: 36px; padding: 0 11px; border: 1px solid #dbe5dc; border-radius: 10px; background: #f5f8f4; color: #355146; font-size: 11px; font-weight: 900; }
+.nav-traffic-card { margin-top: 10px; padding: 10px 11px; border-radius: 12px; background: #fff2df; color: #80501b; font-size: 11px; font-weight: 700; line-height: 1.4; }
+.nav-chips { grid-template-columns: repeat(4, minmax(0,1fr)); }
+@media (max-width: 390px) {
+  .travel-modes { gap: 4px; }
+  .route-option-card { flex-basis: 132px; }
+  .nav-chips { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
