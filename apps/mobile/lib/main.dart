@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/route_repository.dart';
 import 'domain/coordinate_formatter.dart';
@@ -84,6 +86,7 @@ class _MapHomePageState extends State<MapHomePage> {
   KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
+  final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
 
   PointOfInterest? _selectedPoi;
   bool _navigationSessionInitialized = false;
@@ -247,6 +250,7 @@ class _MapHomePageState extends State<MapHomePage> {
       _selectedMode = KiwiTravelMode.drive;
       _routePreviewLoading = false;
       _selectedPoi = null;
+      _routeStops.clear();
     });
   }
 
@@ -264,7 +268,11 @@ class _MapHomePageState extends State<MapHomePage> {
       _message = null;
     });
     try {
-      final plan = await _routeRepository.fetch(origin: origin, destination: poi.latLng);
+      final plan = await _routeRepository.fetch(
+        origin: origin,
+        destination: poi.latLng,
+        stops: _routeStops.map((stop) => stop.location).toList(growable: false),
+      );
       final firstDrive = plan.forMode(KiwiTravelMode.drive).firstOrNull;
       if (!mounted) return;
       setState(() {
@@ -331,6 +339,70 @@ class _MapHomePageState extends State<MapHomePage> {
     unawaited(_renderRoutePreview());
   }
 
+  Future<void> _addStop() async {
+    final stop = await showModalBottomSheet<DestinationSuggestion>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 18,
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 18,
+        ),
+        child: ExploreSearch(
+          currentLocation: _gpsLocation,
+          onSelected: (selection) => Navigator.of(sheetContext).pop(selection),
+        ),
+      ),
+    );
+    if (stop == null || _selectedPoi == null) return;
+    setState(() => _routeStops.add(stop));
+    await _loadRoutePreview(_selectedPoi!);
+  }
+
+  Future<void> _saveCurrentRoute() async {
+    final poi = _selectedPoi;
+    final selected = _selectedRoute;
+    if (poi == null || selected == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('kiwi.saved.routes') ?? <String>[];
+    final record = jsonEncode({
+      'savedAt': DateTime.now().toIso8601String(),
+      'destination': {
+        'name': poi.name,
+        'latitude': poi.latLng.latitude,
+        'longitude': poi.latLng.longitude,
+      },
+      'mode': selected.mode.apiValue,
+      'durationSeconds': selected.durationSeconds,
+      'distanceMeters': selected.distanceMeters,
+      'stops': _routeStops.map((stop) => {
+        'label': stop.label,
+        'latitude': stop.location.latitude,
+        'longitude': stop.location.longitude,
+      }).toList(),
+    });
+    saved.removeWhere((item) {
+      try {
+        final existing = jsonDecode(item) as Map<String, dynamic>;
+        final destination = existing['destination'] as Map<String, dynamic>?;
+        return destination?['name'] == poi.name;
+      } catch (_) {
+        return false;
+      }
+    });
+    saved.insert(0, record);
+    if (saved.length > 20) saved.removeRange(20, saved.length);
+    await prefs.setStringList('kiwi.saved.routes', saved);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Route saved on this device')),
+      );
+    }
+  }
+
   void _toggleVoice() {
     setState(() => _voiceEnabled = !_voiceEnabled);
     _driveEngine.voiceEnabled = _voiceEnabled;
@@ -392,6 +464,11 @@ class _MapHomePageState extends State<MapHomePage> {
       final status = await GoogleMapsNavigator.setDestinations(
         Destinations(
           waypoints: <NavigationWaypoint>[
+            for (final stop in _routeStops)
+              NavigationWaypoint.withLatLngTarget(
+                title: stop.label,
+                target: stop.location,
+              ),
             if (poi.placeID.isNotEmpty)
               NavigationWaypoint.withPlaceID(title: poi.name, placeID: poi.placeID)
             else
@@ -440,6 +517,7 @@ class _MapHomePageState extends State<MapHomePage> {
         _routePlan = null;
         _selectedRouteId = null;
         _selectedPoi = null;
+        _routeStops.clear();
         _following = true;
       });
     } catch (error) {
@@ -545,6 +623,11 @@ class _MapHomePageState extends State<MapHomePage> {
     await controller.setNavigationHeaderEnabled(false);
     await controller.setNavigationFooterEnabled(false);
     await controller.setRecenterButtonEnabled(false);
+    await controller.setTrafficIncidentCardsEnabled(true);
+    await controller.setTrafficPromptsEnabled(true);
+    if (await controller.isIncidentReportingAvailable()) {
+      await controller.setReportIncidentButtonEnabled(true);
+    }
     await controller.setPadding(const EdgeInsets.fromLTRB(16, 125, 16, 215));
     _queueMapRefresh();
   }
@@ -759,9 +842,12 @@ class _MapHomePageState extends State<MapHomePage> {
                 selectedMode: _selectedMode,
                 selectedRouteId: _selectedRouteId,
                 busy: _busy,
+                stopCount: _routeStops.length,
                 onModeChanged: _selectMode,
                 onRouteSelected: _selectRoute,
                 onStart: () => unawaited(_navigateToSelectedPoi()),
+                onAddStop: () => unawaited(_addStop()),
+                onSave: () => unawaited(_saveCurrentRoute()),
                 onClose: () => unawaited(_clearRoutePreview()),
               ),
             ),
