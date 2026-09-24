@@ -58,7 +58,7 @@ export class GoogleMapAdapter {
   private focusSequence = 0;
 
   async init(options: InitOptions) {
-    if (!options.apiKey) throw new Error('VITE_GOOGLE_MAPS_API_KEY is not configured');
+    if (!options.apiKey) throw new Error('Google Maps browser key is not configured in Worker runtime');
 
     const mapId = options.mapId || 'DEMO_MAP_ID';
     setOptions({
