@@ -6,13 +6,16 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
+import 'data/route_repository.dart';
 import 'domain/coordinate_formatter.dart';
 import 'domain/radar_geometry.dart';
+import 'domain/route_option.dart';
 import 'drive/device_heading.dart';
 import 'drive/drive_engine.dart';
 import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/navigation_overlay.dart';
+import 'widgets/route_preview_sheet.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +63,7 @@ class _MapHomePageState extends State<MapHomePage> {
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
 
   final DriveEngine _driveEngine = DriveEngine();
+  final RouteRepository _routeRepository = RouteRepository();
   GoogleMapViewController? _browseController;
   GoogleNavigationViewController? _navigationController;
   StreamSubscription<Position>? _positionSubscription;
@@ -76,6 +80,10 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _voiceEnabled = true;
   bool _lanesEnabled = true;
   String _destinationTitle = 'Destination';
+  RoutePlan? _routePlan;
+  KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
+  String? _selectedRouteId;
+  bool _routePreviewLoading = false;
 
   PointOfInterest? _selectedPoi;
   bool _navigationSessionInitialized = false;
@@ -190,15 +198,19 @@ class _MapHomePageState extends State<MapHomePage> {
         _radarPolygon = null;
       }
       if (_following) {
+        final turnDistance = _driveEngine.navInfo?.distanceToCurrentStepMeters?.toDouble();
+        final nearJunction = _guidanceRunning && turnDistance != null && turnDistance < 140;
+        final veryNearJunction = _guidanceRunning && turnDistance != null && turnDistance < 45;
+        final lookAhead = veryNearJunction ? 38.0 : nearJunction ? 65.0 : 105.0;
         final cameraTarget = _guidanceRunning && heading != null
-            ? pointAtDistance(location, heading, 105)
+            ? pointAtDistance(location, heading, lookAhead)
             : location;
         await controller.moveCamera(CameraUpdate.newCameraPosition(
           CameraPosition(
             target: cameraTarget,
             bearing: heading ?? 0,
-            tilt: _guidanceRunning ? 40 : 0,
-            zoom: _guidanceRunning ? 17 : 16,
+            tilt: veryNearJunction ? 55 : nearJunction ? 50 : _guidanceRunning ? 42 : 0,
+            zoom: veryNearJunction ? 19.2 : nearJunction ? 18.4 : _guidanceRunning ? 17.2 : 16,
           ),
         ));
       }
@@ -215,6 +227,108 @@ class _MapHomePageState extends State<MapHomePage> {
   void _recenter() {
     _following = true;
     _queueMapRefresh();
+  }
+
+  void _showRouteOverview() {
+    _following = false;
+    final controller = _navigationController;
+    if (controller != null) unawaited(controller.showRouteOverview());
+  }
+
+  Future<void> _clearRoutePreview() async {
+    final controller = _browseController;
+    if (controller != null) {
+      try { await controller.clearPolylines(); } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      _routePlan = null;
+      _selectedRouteId = null;
+      _selectedMode = KiwiTravelMode.drive;
+      _routePreviewLoading = false;
+      _selectedPoi = null;
+    });
+  }
+
+  Future<void> _loadRoutePreview(PointOfInterest poi) async {
+    final origin = _gpsLocation;
+    if (origin == null) {
+      setState(() => _message = 'Waiting for GPS before calculating routes.');
+      return;
+    }
+    setState(() {
+      _routePreviewLoading = true;
+      _routePlan = null;
+      _selectedMode = KiwiTravelMode.drive;
+      _selectedRouteId = null;
+      _message = null;
+    });
+    try {
+      final plan = await _routeRepository.fetch(origin: origin, destination: poi.latLng);
+      final firstDrive = plan.forMode(KiwiTravelMode.drive).firstOrNull;
+      if (!mounted) return;
+      setState(() {
+        _routePlan = plan;
+        _selectedRouteId = firstDrive?.id;
+      });
+      await _renderRoutePreview();
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Could not preview routes: $error');
+    } finally {
+      if (mounted) setState(() => _routePreviewLoading = false);
+    }
+  }
+
+  RouteOption? get _selectedRoute {
+    final plan = _routePlan;
+    if (plan == null) return null;
+    for (final route in plan.forMode(_selectedMode)) {
+      if (route.id == _selectedRouteId) return route;
+    }
+    return plan.forMode(_selectedMode).firstOrNull;
+  }
+
+  Future<void> _renderRoutePreview() async {
+    final controller = _browseController;
+    final plan = _routePlan;
+    if (controller == null || plan == null) return;
+    await controller.clearPolylines();
+    final selected = _selectedRoute;
+    final options = <PolylineOptions>[];
+    for (final route in plan.forMode(_selectedMode)) {
+      if (route.points.length < 2) continue;
+      final active = route.id == selected?.id;
+      options.add(PolylineOptions(
+        points: route.points,
+        strokeColor: active ? const Color(0xFF3036D9) : const Color(0xFF8A94A0),
+        strokeWidth: active ? 8 : 5,
+        zIndex: active ? 20 : 10,
+        clickable: false,
+      ));
+    }
+    if (options.isNotEmpty) await controller.addPolylines(options);
+    if (selected != null && selected.points.length >= 2) {
+      final bounds = LatLngBounds.createBoundsFromPoints(selected.points);
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, padding: 72),
+        duration: const Duration(milliseconds: 420),
+      );
+    }
+  }
+
+  void _selectMode(KiwiTravelMode mode) {
+    final plan = _routePlan;
+    if (plan == null || plan.forMode(mode).isEmpty) return;
+    setState(() {
+      _selectedMode = mode;
+      _selectedRouteId = plan.forMode(mode).first.id;
+    });
+    unawaited(_renderRoutePreview());
+  }
+
+  void _selectRoute(RouteOption route) {
+    setState(() => _selectedRouteId = route.id);
+    unawaited(_renderRoutePreview());
   }
 
   void _toggleVoice() {
@@ -273,6 +387,8 @@ class _MapHomePageState extends State<MapHomePage> {
     try {
       if (!await _ensureNavigationSession()) return;
 
+      final selectedRoute = _selectedRoute;
+      final routeToken = selectedRoute?.routeToken;
       final status = await GoogleMapsNavigator.setDestinations(
         Destinations(
           waypoints: <NavigationWaypoint>[
@@ -289,10 +405,18 @@ class _MapHomePageState extends State<MapHomePage> {
             showStopSigns: true,
             showTrafficLights: true,
           ),
-          routingOptions: RoutingOptions(
-            travelMode: NavigationTravelMode.driving,
-            alternateRoutesStrategy: NavigationAlternateRoutesStrategy.one,
-          ),
+          routeTokenOptions: routeToken != null && routeToken.isNotEmpty
+              ? RouteTokenOptions(
+                  routeToken: routeToken,
+                  travelMode: NavigationTravelMode.driving,
+                )
+              : null,
+          routingOptions: routeToken == null || routeToken.isEmpty
+              ? RoutingOptions(
+                  travelMode: NavigationTravelMode.driving,
+                  alternateRoutesStrategy: NavigationAlternateRoutesStrategy.one,
+                )
+              : null,
         ),
       );
 
@@ -313,7 +437,10 @@ class _MapHomePageState extends State<MapHomePage> {
       setState(() {
         _guidanceRunning = true;
         _destinationTitle = poi.name;
+        _routePlan = null;
+        _selectedRouteId = null;
         _selectedPoi = null;
+        _following = true;
       });
     } catch (error) {
       if (!mounted) return;
@@ -370,8 +497,11 @@ class _MapHomePageState extends State<MapHomePage> {
   void _onPoiClicked(PointOfInterest poi) {
     setState(() {
       _selectedPoi = poi;
+      _routePlan = null;
+      _selectedRouteId = null;
       _message = null;
     });
+    unawaited(_loadRoutePreview(poi));
   }
 
   void _onSearchSelected(DestinationSuggestion suggestion) {
@@ -391,6 +521,9 @@ class _MapHomePageState extends State<MapHomePage> {
     _navigationController = null;
     _radarPolygon = null;
     await controller.settings.setTrafficEnabled(true);
+    await controller.settings.setRotateGesturesEnabled(true);
+    await controller.settings.setTiltGesturesEnabled(true);
+    await controller.settings.setScrollGesturesDuringRotateOrZoomEnabled(true);
     if (await Permission.locationWhenInUse.isGranted) {
       await controller.setMyLocationEnabled(true);
     }
@@ -403,6 +536,9 @@ class _MapHomePageState extends State<MapHomePage> {
   ) async {
     await controller.setMyLocationEnabled(true);
     await controller.settings.setTrafficEnabled(true);
+    await controller.settings.setRotateGesturesEnabled(true);
+    await controller.settings.setTiltGesturesEnabled(true);
+    await controller.settings.setScrollGesturesDuringRotateOrZoomEnabled(true);
     _navigationController = controller;
     _browseController = null;
     _radarPolygon = null;
@@ -427,6 +563,9 @@ class _MapHomePageState extends State<MapHomePage> {
                     onCameraMoveStarted: (_, isGesture) { if (isGesture) _following = false; },
                     initialNavigationUIEnabledPreference:
                         NavigationUIEnabledPreference.automatic,
+                    initialRotateGesturesEnabled: true,
+                    initialTiltGesturesEnabled: true,
+                    initialScrollGesturesEnabledDuringRotateOrZoom: true,
                     initialForceNightMode: NavigationForceNightMode.auto,
                     onPoiClicked: _onPoiClicked,
                   )
@@ -439,11 +578,14 @@ class _MapHomePageState extends State<MapHomePage> {
                       target: _auckland,
                       zoom: 14,
                     ),
+                    initialRotateGesturesEnabled: true,
+                    initialTiltGesturesEnabled: true,
+                    initialScrollGesturesEnabledDuringRotateOrZoom: true,
                     initialMapColorScheme: MapColorScheme.followSystem,
                     onPoiClicked: _onPoiClicked,
                     onMapClicked: (_) {
-                      if (_selectedPoi != null) {
-                        setState(() => _selectedPoi = null);
+                      if (_selectedPoi != null || _routePlan != null) {
+                        unawaited(_clearRoutePreview());
                       }
                     },
                   ),
@@ -536,6 +678,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         lanesEnabled: _lanesEnabled,
                         onEnd: () => unawaited(_stopNavigation()),
                         onRecenter: _recenter,
+                        onOverview: _showRouteOverview,
                         onVoiceToggle: _toggleVoice,
                         onLanesToggle: () => setState(() => _lanesEnabled = !_lanesEnabled),
                       )
@@ -592,7 +735,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (_selectedPoi != null && !_guidanceRunning)
+          if (_selectedPoi != null && !_guidanceRunning && _routePlan == null)
             Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(
@@ -600,11 +743,26 @@ class _MapHomePageState extends State<MapHomePage> {
                 child: PointerInterceptor(
                   child: _PlaceCard(
                     poi: _selectedPoi!,
-                    busy: _busy,
-                    onClose: () => setState(() => _selectedPoi = null),
-                    onNavigate: _navigateToSelectedPoi,
+                    busy: _routePreviewLoading,
+                    onClose: () => unawaited(_clearRoutePreview()),
+                    onNavigate: () => unawaited(_loadRoutePreview(_selectedPoi!)),
                   ),
                 ),
+              ),
+            ),
+          if (_selectedPoi != null && _routePlan != null && !_guidanceRunning)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: RoutePreviewSheet(
+                destinationTitle: _selectedPoi!.name,
+                plan: _routePlan!,
+                selectedMode: _selectedMode,
+                selectedRouteId: _selectedRouteId,
+                busy: _busy,
+                onModeChanged: _selectMode,
+                onRouteSelected: _selectRoute,
+                onStart: () => unawaited(_navigateToSelectedPoi()),
+                onClose: () => unawaited(_clearRoutePreview()),
               ),
             ),
         ],
