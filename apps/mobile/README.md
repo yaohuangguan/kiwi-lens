@@ -33,6 +33,8 @@ pnpm mobile:dev
 
 `pnpm mobile:dev` 和 `pnpm mobile:run` 都会自动执行 `flutter pub get` 并选择可用的移动设备。在 macOS 上会自动启用 Flutter Swift Package Manager，优先使用已连接的 iPhone 或已启动的 iOS Simulator；如果没有运行中的 iOS 设备，会尝试自动启动可用的 iPhone Simulator。其他平台优先使用 Android 设备/模拟器，没有运行中的 Android 设备时会从 `flutter emulators` 列表中启动 AVD。
 
+在 macOS/iOS 上启动器会为 `flutter run` 自动添加 `--no-dds`。Flutter 3.47 的 iOS Simulator 偶尔会在 Xcode 已成功编译后，因本机 Dart Development Service WebSocket 代理连接失败而退出；直接连接 VM Service 可以绕过这一层，同时保留普通开发运行和 hot reload。`flutter_tts` 当前出现的 Swift Package Manager compatibility 提示只是 warning，Flutter 仍会通过 CocoaPods 集成它。
+
 可以手动查看环境：
 
 ```bash
