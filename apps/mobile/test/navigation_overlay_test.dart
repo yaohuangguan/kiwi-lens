@@ -24,6 +24,7 @@ void main() {
           lanesEnabled: true,
           onEnd: () {},
           onRecenter: () {},
+          onOverview: () {},
           onVoiceToggle: () {},
           onLanesToggle: () {},
         )),
