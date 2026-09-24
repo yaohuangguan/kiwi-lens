@@ -59,6 +59,30 @@ class TransitLeg {
   );
 }
 
+class RouteStepInfo {
+  const RouteStepInfo({
+    required this.instruction,
+    required this.distanceMeters,
+    required this.location,
+  });
+
+  final String instruction;
+  final int distanceMeters;
+  final LatLng location;
+
+  factory RouteStepInfo.fromJson(Map<String, dynamic> json) {
+    final pair = json['location'] as List<dynamic>? ?? const [];
+    return RouteStepInfo(
+      instruction: json['instruction'] as String? ?? '',
+      distanceMeters: (json['distance'] as num?)?.round() ?? 0,
+      location: LatLng(
+        latitude: pair.length > 1 ? (pair[1] as num).toDouble() : 0,
+        longitude: pair.isNotEmpty ? (pair[0] as num).toDouble() : 0,
+      ),
+    );
+  }
+}
+
 class TrafficInterval {
   const TrafficInterval({
     required this.startPolylinePointIndex,
@@ -70,13 +94,14 @@ class TrafficInterval {
   final int endPolylinePointIndex;
   final String speed;
 
-  factory TrafficInterval.fromJson(Map<String, dynamic> json) => TrafficInterval(
-    startPolylinePointIndex:
-        (json['startPolylinePointIndex'] as num?)?.round() ?? 0,
-    endPolylinePointIndex:
-        (json['endPolylinePointIndex'] as num?)?.round() ?? 0,
-    speed: json['speed'] as String? ?? 'normal',
-  );
+  factory TrafficInterval.fromJson(Map<String, dynamic> json) =>
+      TrafficInterval(
+        startPolylinePointIndex:
+            (json['startPolylinePointIndex'] as num?)?.round() ?? 0,
+        endPolylinePointIndex:
+            (json['endPolylinePointIndex'] as num?)?.round() ?? 0,
+        speed: json['speed'] as String? ?? 'normal',
+      );
 }
 
 class TrafficSummary {
@@ -116,6 +141,7 @@ class RouteOption {
     this.labels = const [],
     this.warnings = const [],
     this.transit = const [],
+    this.steps = const [],
   });
 
   final String id;
@@ -130,6 +156,7 @@ class RouteOption {
   final List<String> labels;
   final List<String> warnings;
   final List<TransitLeg> transit;
+  final List<RouteStepInfo> steps;
   final TrafficSummary traffic;
   final List<TrafficInterval> trafficIntervals;
   final String provider;
@@ -142,10 +169,12 @@ class RouteOption {
     final coordinates = (json['coordinates'] as List<dynamic>? ?? const [])
         .whereType<List<dynamic>>()
         .where((pair) => pair.length >= 2)
-        .map((pair) => LatLng(
-              latitude: (pair[1] as num).toDouble(),
-              longitude: (pair[0] as num).toDouble(),
-            ))
+        .map(
+          (pair) => LatLng(
+            latitude: (pair[1] as num).toDouble(),
+            longitude: (pair[0] as num).toDouble(),
+          ),
+        )
         .toList(growable: false);
     final encoded = json['encodedPolyline'] as String?;
     return RouteOption(
@@ -155,16 +184,28 @@ class RouteOption {
       staticDurationSeconds: (json['staticDurationSeconds'] as num?)?.round(),
       trafficDelaySeconds: (json['trafficDelaySeconds'] as num?)?.round(),
       distanceMeters: (json['distanceMeters'] as num?)?.round() ?? 0,
-      points: coordinates.isNotEmpty ? coordinates : decodePolyline(encoded ?? ''),
+      points: coordinates.isNotEmpty
+          ? coordinates
+          : decodePolyline(encoded ?? ''),
       routeToken: json['routeToken'] as String?,
       description: json['description'] as String? ?? '',
-      labels: (json['labels'] as List<dynamic>? ?? const []).whereType<String>().toList(growable: false),
-      warnings: (json['warnings'] as List<dynamic>? ?? const []).whereType<String>().toList(growable: false),
+      labels: (json['labels'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
+      warnings: (json['warnings'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
       transit: (json['transit'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(TransitLeg.fromJson)
           .toList(growable: false),
-      traffic: TrafficSummary.fromJson(json['traffic'] as Map<String, dynamic>?),
+      steps: (json['steps'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(RouteStepInfo.fromJson)
+          .toList(growable: false),
+      traffic: TrafficSummary.fromJson(
+        json['traffic'] as Map<String, dynamic>?,
+      ),
       trafficIntervals: (json['trafficIntervals'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(TrafficInterval.fromJson)

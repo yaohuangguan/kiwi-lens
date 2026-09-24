@@ -7,8 +7,10 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import '../data/camera_repository.dart';
 import '../data/speed_limit_repository.dart';
 import '../domain/geo_math.dart';
+import '../domain/route_option.dart';
 import '../domain/safety_camera.dart';
 import 'camera_matcher.dart';
+import 'route_camera_matcher.dart';
 import 'voice_engine.dart';
 
 class DriveEngine extends ChangeNotifier {
@@ -29,9 +31,14 @@ class DriveEngine extends ChangeNotifier {
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final Set<String> _spokenAlerts = <String>{};
-  final Set<String> _spokenGuidance = <String>{};
+  final RouteCameraMatcher _routeMatcher = const RouteCameraMatcher();
 
   List<SafetyCamera> _cameras = const [];
+  RouteOption? _route;
+  List<RouteCameraMatch> routeCameras = const [];
+  List<SafetyCamera> get cameras => _cameras;
+  int get routeCameraCount => routeCameras.length;
+  LatLng? get snappedLocation => _lastSnappedLocation;
   LatLng? _lastSnappedLocation;
   LatLng? _lastSpeedLimitLocation;
   DateTime? _lastSpeedLimitLookup;
@@ -45,6 +52,9 @@ class DriveEngine extends ChangeNotifier {
   double speedKph = 0;
   int? speedLimitKph;
   bool voiceEnabled = true;
+
+  Future<void> setVoiceLanguage(String language) =>
+      _voiceEngine.setLanguage(language);
   String? speedLimitZoneName;
   SpeedAlertSeverity speedSeverity = SpeedAlertSeverity.notSpeeding;
   double? percentageAboveLimit;
@@ -61,7 +71,7 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
 
     await _voiceEngine.initialize();
-    await _loadCameras();
+    await loadCameras(force: true);
 
     final snapped =
         await GoogleMapsNavigator.setRoadSnappedLocationUpdatedListener(
@@ -83,7 +93,6 @@ class DriveEngine extends ChangeNotifier {
         guidanceRunning =
             event.navInfo.navState == NavState.enroute ||
             event.navInfo.navState == NavState.rerouting;
-        if (guidanceRunning) unawaited(_maybeSpeakGuidance(event.navInfo));
         notifyListeners();
       }, numNextStepsToPreview: 3),
     );
@@ -104,17 +113,35 @@ class DriveEngine extends ChangeNotifier {
     );
   }
 
-  Future<void> _loadCameras() async {
+  Future<void> loadCameras({bool force = false}) async {
+    if (loadingCameras || (!force && _cameras.isNotEmpty)) return;
     loadingCameras = true;
     notifyListeners();
     try {
       _cameras = await _cameraRepository.fetchCameras();
+      _recomputeRouteCameras();
+      error = null;
     } catch (exception) {
       error = 'Could not load safety cameras: $exception';
     } finally {
       loadingCameras = false;
       notifyListeners();
     }
+  }
+
+  void setRoute(RouteOption? route) {
+    _route = route;
+    _spokenAlerts.clear();
+    _recomputeRouteCameras();
+    upcomingCamera = null;
+    upcomingCameraDistanceMeters = null;
+    notifyListeners();
+  }
+
+  void _recomputeRouteCameras() {
+    routeCameras = _route == null
+        ? const []
+        : _routeMatcher.match(_route!, _cameras);
   }
 
   void _onRoadSnappedLocation(RoadSnappedLocationUpdatedEvent event) {
@@ -143,12 +170,32 @@ class DriveEngine extends ChangeNotifier {
     _lastSnappedLocation = current;
     unawaited(_refreshSpeedLimit(current));
 
-    final match = _cameraMatcher.findUpcoming(
-      latitude: current.latitude,
-      longitude: current.longitude,
-      cameras: _cameras,
-      headingDegrees: _headingDegrees,
-    );
+    CameraMatch? match;
+    final route = _route;
+    if (route != null) {
+      final upcoming = _routeMatcher.upcoming(
+        current,
+        route.points,
+        routeCameras,
+      );
+      final progress = _routeMatcher.project(current, route.points);
+      if (upcoming != null && progress != null) {
+        match = CameraMatch(
+          camera: upcoming.camera,
+          distanceMeters: (upcoming.alongMeters - progress.alongMeters).clamp(
+            0,
+            1200,
+          ),
+        );
+      }
+    } else {
+      match = _cameraMatcher.findUpcoming(
+        latitude: current.latitude,
+        longitude: current.longitude,
+        cameras: _cameras,
+        headingDegrees: _headingDegrees,
+      );
+    }
 
     upcomingCamera = match?.camera;
     upcomingCameraDistanceMeters = match?.distanceMeters;
@@ -175,32 +222,6 @@ class DriveEngine extends ChangeNotifier {
 
   Future<void> speakMessage(String message) async {
     if (!voiceEnabled) return;
-    await _voiceEngine.guidance(message);
-  }
-
-  Future<void> _maybeSpeakGuidance(NavInfo info) async {
-    if (!voiceEnabled) return;
-    final step = info.currentStep;
-    final distance = info.distanceToCurrentStepMeters;
-    if (step == null || distance == null) return;
-    final instruction = step.fullInstructions?.trim().isNotEmpty == true
-        ? step.fullInstructions!.trim()
-        : step.fullRoadName?.trim() ?? '';
-    if (instruction.isEmpty) return;
-
-    String? bucket;
-    if (distance <= 70) {
-      bucket = 'now';
-    } else if (distance <= 350) {
-      bucket = 'soon';
-    }
-    if (bucket == null) return;
-
-    final key = '${instruction.toLowerCase()}:$bucket';
-    if (!_spokenGuidance.add(key)) return;
-    final message = bucket == 'now'
-        ? instruction
-        : 'In ${distance.round()} metres, $instruction';
     await _voiceEngine.guidance(message);
   }
 
@@ -242,28 +263,24 @@ class DriveEngine extends ChangeNotifier {
   Future<void> _maybeAlert(CameraMatch match) async {
     if (!voiceEnabled) return;
     final distance = match.distanceMeters;
-
-    if (distance <= 150) {
-      final key = '${match.camera.id}:150';
-      if (_spokenAlerts.add(key)) {
-        _spokenAlerts.add('${match.camera.id}:500');
-        await _voiceEngine.cameraAlert(
-          distanceMeters: 150,
-          cameraType: match.camera.type,
-        );
-      }
-      return;
+    if (distance <= 0) return;
+    final threshold = distance <= 300
+        ? 300
+        : distance <= 800
+        ? 800
+        : null;
+    if (threshold == null) return;
+    if (threshold == 300) {
+      _spokenAlerts.add('${match.camera.id}:800');
     }
-
-    if (distance <= 500) {
-      final key = '${match.camera.id}:500';
-      if (_spokenAlerts.add(key)) {
-        await _voiceEngine.cameraAlert(
-          distanceMeters: 500,
-          cameraType: match.camera.type,
-        );
-      }
-    }
+    final key = '${match.camera.id}:$threshold';
+    if (!_spokenAlerts.add(key)) return;
+    await _voiceEngine.cameraAlert(
+      distanceMeters: threshold,
+      cameraType: match.camera.type,
+      roadName: match.camera.location,
+      speedLimit: speedLimitKph?.toString(),
+    );
   }
 
   Future<void> stop() async {
@@ -272,7 +289,8 @@ class DriveEngine extends ChangeNotifier {
     }
     _subscriptions.clear();
     _spokenAlerts.clear();
-    _spokenGuidance.clear();
+    _route = null;
+    routeCameras = const [];
     active = false;
     guidanceRunning = false;
     upcomingCamera = null;

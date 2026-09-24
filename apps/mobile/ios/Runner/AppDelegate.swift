@@ -25,6 +25,32 @@ import UIKit
       name: "kiwi_lens/device_heading",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     ).setStreamHandler(headingHandler)
+    FlutterMethodChannel(
+      name: "kiwi_lens/share",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    ).setMethodCallHandler { [weak self] call, result in
+      guard call.method == "shareText",
+            let arguments = call.arguments as? [String: Any],
+            let text = arguments["text"] as? String,
+            !text.isEmpty else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      DispatchQueue.main.async {
+        guard let root = self?.window?.rootViewController ??
+          (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+          result(FlutterError(code: "NO_WINDOW", message: "No active iOS window", details: nil))
+          return
+        }
+        let share = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let popover = share.popoverPresentationController {
+          popover.sourceView = root.view
+          popover.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)
+        }
+        (root.presentedViewController ?? root).present(share, animated: true)
+        result(nil)
+      }
+    }
   }
 }
 

@@ -33,8 +33,13 @@ class NavigationOverlay extends StatefulWidget {
     required this.onEnd,
     required this.onRecenter,
     required this.onOverview,
-    required this.onRotateLeft,
-    required this.onRotateRight,
+    required this.northUp,
+    required this.onCompassToggle,
+    required this.onReport,
+    required this.onSearchAlongRoute,
+    required this.onDirections,
+    required this.onShare,
+    required this.onSettings,
     required this.onVoiceToggle,
     required this.onLanesToggle,
   });
@@ -47,8 +52,13 @@ class NavigationOverlay extends StatefulWidget {
   final VoidCallback onEnd;
   final VoidCallback onRecenter;
   final VoidCallback onOverview;
-  final VoidCallback onRotateLeft;
-  final VoidCallback onRotateRight;
+  final bool northUp;
+  final VoidCallback onCompassToggle;
+  final VoidCallback onReport;
+  final VoidCallback onSearchAlongRoute;
+  final VoidCallback onDirections;
+  final VoidCallback onShare;
+  final VoidCallback onSettings;
   final VoidCallback onVoiceToggle;
   final VoidCallback onLanesToggle;
 
@@ -158,6 +168,80 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               ),
             ),
           ),
+          if (widget.lanesEnabled && (step?.lanes?.isNotEmpty ?? false))
+            Positioned(
+              top: 113,
+              left: 14,
+              right: 98,
+              child: PointerInterceptor(
+                child: Material(
+                  color: _ink,
+                  borderRadius: BorderRadius.circular(17),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 10,
+                    ),
+                    child: Wrap(
+                      spacing: 7,
+                      runSpacing: 5,
+                      children: [
+                        const Text(
+                          'LANES',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        for (final lane in step!.lanes!)
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 38),
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  lane.laneDirections.any(
+                                    (direction) => direction.isRecommended,
+                                  )
+                                  ? _lime
+                                  : const Color(0xFF30453B),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              lane.laneDirections
+                                  .map((direction) {
+                                    final name = direction.laneShape.name
+                                        .toLowerCase();
+                                    return name.contains('left')
+                                        ? '←'
+                                        : name.contains('right')
+                                        ? '→'
+                                        : '↑';
+                                  })
+                                  .toSet()
+                                  .join(),
+                              style: TextStyle(
+                                color:
+                                    lane.laneDirections.any(
+                                      (direction) => direction.isRecommended,
+                                    )
+                                    ? _ink
+                                    : Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             top: 132,
             right: 15,
@@ -165,37 +249,19 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               child: Column(
                 children: [
                   _MapControl(
-                    icon: Icons.navigation_rounded,
-                    tooltip: 'Recenter and follow',
+                    icon: widget.northUp
+                        ? Icons.explore_rounded
+                        : Icons.navigation_rounded,
+                    tooltip: widget.northUp
+                        ? 'North up · tap for follow view'
+                        : 'Follow view · tap for north up',
+                    onTap: widget.onCompassToggle,
+                  ),
+                  const SizedBox(height: 9),
+                  _MapControl(
+                    icon: Icons.my_location_rounded,
+                    tooltip: 'Recenter',
                     onTap: widget.onRecenter,
-                  ),
-                  const SizedBox(height: 9),
-                  _MapControl(
-                    icon: Icons.route_rounded,
-                    tooltip: 'Route overview',
-                    onTap: widget.onOverview,
-                  ),
-                  const SizedBox(height: 9),
-                  _MapControl(
-                    icon: Icons.rotate_left_rounded,
-                    tooltip: 'Rotate map left',
-                    onTap: widget.onRotateLeft,
-                  ),
-                  const SizedBox(height: 9),
-                  _MapControl(
-                    icon: Icons.rotate_right_rounded,
-                    tooltip: 'Rotate map right',
-                    onTap: widget.onRotateRight,
-                  ),
-                  const SizedBox(height: 9),
-                  _MapControl(
-                    icon: widget.voiceEnabled
-                        ? Icons.volume_up_rounded
-                        : Icons.volume_off_rounded,
-                    tooltip: widget.voiceEnabled
-                        ? 'Mute guidance'
-                        : 'Enable guidance',
-                    onTap: widget.onVoiceToggle,
                   ),
                 ],
               ),
@@ -261,7 +327,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
           if (camera != null && cameraDistance != null)
             Positioned(
               left: 14,
-              bottom: bottomInset + (expanded ? 292 : 231),
+              bottom: bottomInset + (expanded ? 370 : 231),
               child: PointerInterceptor(
                 child: Container(
                   constraints: const BoxConstraints(maxWidth: 235),
@@ -384,7 +450,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
                           children: [
-                            _TripStat(label: 'Cameras on route', value: '—'),
+                            _TripStat(
+                              label: 'Cameras on route',
+                              value: '${widget.engine.routeCameraCount}',
+                            ),
                             _TripStat(
                               label: 'Distance',
                               value: _distance(
@@ -427,55 +496,53 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         ],
                       ),
                       if (expanded) ...[
-                        const SizedBox(height: 13),
-                        if (widget.lanesEnabled &&
-                            (step?.lanes?.isNotEmpty ?? false))
-                          Wrap(
-                            spacing: 6,
-                            children: [
-                              for (final lane in step!.lanes!)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        lane.laneDirections.any(
-                                          (direction) =>
-                                              direction.isRecommended,
-                                        )
-                                        ? _lime
-                                        : const Color(0xFFF0F4EE),
-                                    borderRadius: BorderRadius.circular(9),
-                                  ),
-                                  child: Text(
-                                    lane.laneDirections
-                                        .map((direction) {
-                                          final name = direction.laneShape.name
-                                              .toLowerCase();
-                                          return name.contains('left')
-                                              ? '←'
-                                              : name.contains('right')
-                                              ? '→'
-                                              : '↑';
-                                        })
-                                        .toSet()
-                                        .join(),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ),
-                            ],
+                        const SizedBox(height: 15),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Trip tools',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
                           ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Radar shows 250 m ahead of the phone. Route camera total is unavailable from native guidance.',
-                          style: TextStyle(
-                            color: Color(0xFF68756E),
-                            fontSize: 11,
-                          ),
+                        ),
+                        const SizedBox(height: 9),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _ActionButton(
+                              icon: Icons.add_a_photo_rounded,
+                              label: 'Add a report',
+                              onTap: widget.onReport,
+                            ),
+                            _ActionButton(
+                              icon: Icons.share_rounded,
+                              label: 'Share ETA snapshot',
+                              onTap: widget.onShare,
+                            ),
+                            _ActionButton(
+                              icon: Icons.search_rounded,
+                              label: 'Search along route',
+                              onTap: widget.onSearchAlongRoute,
+                            ),
+                            _ActionButton(
+                              icon: Icons.route_rounded,
+                              label: 'Preview route',
+                              onTap: widget.onOverview,
+                            ),
+                            _ActionButton(
+                              icon: Icons.list_alt_rounded,
+                              label: 'Directions',
+                              onTap: widget.onDirections,
+                            ),
+                            _ActionButton(
+                              icon: Icons.settings_rounded,
+                              label: 'Settings',
+                              onTap: widget.onSettings,
+                            ),
+                          ],
                         ),
                       ],
                     ],
@@ -586,4 +653,46 @@ class _MapControl extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: (MediaQuery.sizeOf(context).width - 48) / 2,
+    child: Material(
+      color: const Color(0xFFF0F4F0),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, color: _ink, size: 19),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }

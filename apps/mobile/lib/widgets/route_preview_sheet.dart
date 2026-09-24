@@ -37,6 +37,8 @@ class RoutePreviewSheet extends StatelessWidget {
     required this.selectedRouteId,
     required this.busy,
     required this.stopCount,
+    required this.cameraCount,
+    required this.customOrigin,
     required this.onModeChanged,
     required this.onRouteSelected,
     required this.onStart,
@@ -54,6 +56,8 @@ class RoutePreviewSheet extends StatelessWidget {
   final String? selectedRouteId;
   final bool busy;
   final int stopCount;
+  final int cameraCount;
+  final bool customOrigin;
   final ValueChanged<KiwiTravelMode> onModeChanged;
   final ValueChanged<RouteOption> onRouteSelected;
   final VoidCallback onStart;
@@ -278,6 +282,26 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 9),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Chip(
+                        avatar: const Icon(Icons.speed_rounded, size: 18),
+                        label: Text('$cameraCount cameras on selected route'),
+                        backgroundColor: const Color(0xFFF0F7E1),
+                      ),
+                    ),
+                    if (customOrigin)
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Custom origin is for route preview; live guidance starts from your GPS.',
+                          style: TextStyle(
+                            color: Color(0xFF795D22),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 10),
                     Row(
                       children: [

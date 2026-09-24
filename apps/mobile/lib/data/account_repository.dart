@@ -7,29 +7,39 @@ import 'package:http/http.dart' as http;
 import 'api_config.dart';
 
 class AccountProfile {
-  const AccountProfile({required this.email, required this.routes, required this.places, required this.reviews});
+  const AccountProfile({
+    required this.email,
+    required this.routes,
+    required this.places,
+    required this.reviews,
+    required this.recentDestinations,
+  });
 
   final String email;
   final List<Map<String, dynamic>> routes;
   final List<Map<String, dynamic>> places;
   final List<Map<String, dynamic>> reviews;
+  final List<Map<String, dynamic>> recentDestinations;
 
   factory AccountProfile.fromJson(Map<String, dynamic> json) {
-    List<Map<String, dynamic>> list(String key) => (json[key] as List<dynamic>? ?? const [])
-        .whereType<Map<String, dynamic>>().toList(growable: false);
+    List<Map<String, dynamic>> list(String key) =>
+        (json[key] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .toList(growable: false);
     return AccountProfile(
       email: (json['user'] as Map<String, dynamic>?)?['email'] as String? ?? '',
       routes: list('routeHistory'),
       places: list('savedPlaces'),
       reviews: list('reviews'),
+      recentDestinations: list('recentDestinations'),
     );
   }
 }
 
 class AccountRepository extends ChangeNotifier {
   AccountRepository({http.Client? client, FlutterSecureStorage? storage})
-      : _client = client ?? http.Client(),
-        _storage = storage ?? const FlutterSecureStorage();
+    : _client = client ?? http.Client(),
+      _storage = storage ?? const FlutterSecureStorage();
 
   static const _storageKey = 'kiwi_lens_session';
   final http.Client _client;
@@ -38,10 +48,17 @@ class AccountRepository extends ChangeNotifier {
   AccountProfile? profile;
   bool loading = false;
 
-  Future<http.Response> _request(String path, {String method = 'GET', Object? body}) async {
+  Future<http.Response> _request(
+    String path, {
+    String method = 'GET',
+    Object? body,
+  }) async {
     final headers = <String, String>{
       if (_session != null) 'cookie': 'kiwi_session=$_session',
-      if (method != 'GET') ...{'content-type': 'application/json', 'x-kiwi-client': 'mobile'},
+      if (method != 'GET') ...{
+        'content-type': 'application/json',
+        'x-kiwi-client': 'mobile',
+      },
     };
     final request = http.Request(method, Uri.parse('$workerBaseUrl$path'))
       ..headers.addAll(headers);
@@ -52,9 +69,14 @@ class AccountRepository extends ChangeNotifier {
 
   Map<String, dynamic> _body(http.Response response) {
     final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) throw StateError('Invalid account response');
+    if (decoded is! Map<String, dynamic>) {
+      throw StateError('Invalid account response');
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(decoded['error'] as String? ?? 'Account request failed (${response.statusCode})');
+      throw StateError(
+        decoded['error'] as String? ??
+            'Account request failed (${response.statusCode})',
+      );
     }
     return decoded;
   }
@@ -71,18 +93,33 @@ class AccountRepository extends ChangeNotifier {
       }
       profile = AccountProfile.fromJson(_body(response));
       notifyListeners();
-    } catch (_) { /* Guest navigation remains available while offline. */ }
+    } catch (_) {
+      /* Guest navigation remains available while offline. */
+    }
   }
 
-  Future<void> authenticate(String email, String password, {required bool register}) async {
+  Future<void> authenticate(
+    String email,
+    String password, {
+    required bool register,
+  }) async {
     loading = true;
     notifyListeners();
     try {
-      final response = await _request(register ? '/api/auth/register' : '/api/auth/login',
-          method: 'POST', body: {'email': email.trim(), 'password': password, 'language': 'en', 'voiceEnabled': true});
+      final response = await _request(
+        register ? '/api/auth/register' : '/api/auth/login',
+        method: 'POST',
+        body: {
+          'email': email.trim(),
+          'password': password,
+          'language': 'en',
+          'voiceEnabled': true,
+        },
+      );
       final next = AccountProfile.fromJson(_body(response));
       final cookie = response.headers['set-cookie'] ?? '';
-      final match = RegExp(r'(?:^|;\s*)kiwi_session=([0-9a-f]{64})').firstMatch(cookie);
+      final match = RegExp(r'(?:^|;\s*)kiwi_session=([0-9a-f]{64})')
+          .firstMatch(cookie);
       if (match == null) throw StateError('Sign-in session was not returned');
       _session = match.group(1);
       await _storage.write(key: _storageKey, value: _session);
@@ -95,7 +132,9 @@ class AccountRepository extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    try { await _request('/api/auth/logout', method: 'POST'); } catch (_) {}
+    try {
+      await _request('/api/auth/logout', method: 'POST');
+    } catch (_) {}
     _session = null;
     profile = null;
     await _storage.delete(key: _storageKey);
@@ -108,33 +147,101 @@ class AccountRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> recordRoute({required String destinationName, required double latitude,
-      required double longitude, required String mode, required int distanceMeters,
-      required int durationSeconds}) async {
+  Future<void> recordDestination({
+    required String label,
+    required double latitude,
+    required double longitude,
+  }) async {
     if (_session == null) return;
-    profile = AccountProfile.fromJson(_body(await _request('/api/profile/routes', method: 'POST', body: {
-      'destinationName': destinationName, 'latitude': latitude, 'longitude': longitude,
-      'mode': mode, 'distanceMeters': distanceMeters, 'durationSeconds': durationSeconds,
-    })));
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile/destinations',
+          method: 'POST',
+          body: {'label': label, 'latitude': latitude, 'longitude': longitude},
+        ),
+      ),
+    );
     notifyListeners();
   }
 
-  Future<void> saveFavorite({required String placeId, required String name,
-      required double latitude, required double longitude, required bool favorite}) async {
+  Future<void> recordRoute({
+    required String destinationName,
+    required double latitude,
+    required double longitude,
+    required String mode,
+    required int distanceMeters,
+    required int durationSeconds,
+  }) async {
+    if (_session == null) return;
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile/routes',
+          method: 'POST',
+          body: {
+            'destinationName': destinationName,
+            'latitude': latitude,
+            'longitude': longitude,
+            'mode': mode,
+            'distanceMeters': distanceMeters,
+            'durationSeconds': durationSeconds,
+          },
+        ),
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<void> saveFavorite({
+    required String placeId,
+    required String name,
+    required double latitude,
+    required double longitude,
+    required bool favorite,
+  }) async {
     if (_session == null) throw StateError('Sign in to sync favorite places');
-    profile = AccountProfile.fromJson(_body(await _request('/api/profile/places', method: 'POST', body: {
-      'placeId': placeId, 'name': name, 'address': '', 'latitude': latitude,
-      'longitude': longitude, 'isFavorite': favorite, 'note': '',
-    })));
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile/places',
+          method: 'POST',
+          body: {
+            'placeId': placeId,
+            'name': name,
+            'address': '',
+            'latitude': latitude,
+            'longitude': longitude,
+            'isFavorite': favorite,
+            'note': '',
+          },
+        ),
+      ),
+    );
     notifyListeners();
   }
 
-  Future<void> saveReview({required String placeId, required String placeName,
-      required int rating, required String comment}) async {
+  Future<void> saveReview({
+    required String placeId,
+    required String placeName,
+    required int rating,
+    required String comment,
+  }) async {
     if (_session == null) throw StateError('Sign in to save a review');
-    profile = AccountProfile.fromJson(_body(await _request('/api/profile/reviews', method: 'POST', body: {
-      'placeId': placeId, 'placeName': placeName, 'rating': rating, 'comment': comment,
-    })));
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile/reviews',
+          method: 'POST',
+          body: {
+            'placeId': placeId,
+            'placeName': placeName,
+            'rating': rating,
+            'comment': comment,
+          },
+        ),
+      ),
+    );
     notifyListeners();
   }
 

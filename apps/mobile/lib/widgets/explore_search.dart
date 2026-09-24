@@ -19,10 +19,18 @@ class ExploreSearch extends StatefulWidget {
     super.key,
     required this.currentLocation,
     required this.onSelected,
+    this.origin,
+    this.onOriginSelected,
+    this.onFocusChanged,
+    this.recent = const [],
   });
 
   final LatLng? currentLocation;
   final ValueChanged<DestinationSuggestion> onSelected;
+  final DestinationSuggestion? origin;
+  final ValueChanged<DestinationSuggestion?>? onOriginSelected;
+  final ValueChanged<bool>? onFocusChanged;
+  final List<DestinationSuggestion> recent;
 
   @override
   State<ExploreSearch> createState() => _ExploreSearchState();
@@ -30,6 +38,10 @@ class ExploreSearch extends StatefulWidget {
 
 class _ExploreSearchState extends State<ExploreSearch> {
   final _controller = TextEditingController();
+  final _originController = TextEditingController();
+  final _destinationFocus = FocusNode();
+  final _originFocus = FocusNode();
+  bool _editingOrigin = false;
   final _client = http.Client();
   Timer? _debounce;
   bool _suggestConfigured = true;
@@ -43,6 +55,8 @@ class _ExploreSearchState extends State<ExploreSearch> {
   @override
   void initState() {
     super.initState();
+    _destinationFocus.addListener(_focusChanged);
+    _originFocus.addListener(_focusChanged);
     unawaited(_refreshCurrentLocationLabel(widget.currentLocation));
   }
 
@@ -68,6 +82,15 @@ class _ExploreSearchState extends State<ExploreSearch> {
     if (moved >= 120) {
       unawaited(_refreshCurrentLocationLabel(current));
     }
+  }
+
+  void _focusChanged() {
+    if (_originFocus.hasFocus) _editingOrigin = true;
+    if (_destinationFocus.hasFocus) _editingOrigin = false;
+    widget.onFocusChanged?.call(
+      _originFocus.hasFocus || _destinationFocus.hasFocus,
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _refreshCurrentLocationLabel(LatLng? location) async {
@@ -97,11 +120,15 @@ class _ExploreSearchState extends State<ExploreSearch> {
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
+    _originController.dispose();
+    _destinationFocus.dispose();
+    _originFocus.dispose();
     _client.close();
     super.dispose();
   }
 
-  void _search(String text) {
+  void _search(String text, {required bool origin}) {
+    _editingOrigin = origin;
     _debounce?.cancel();
     final request = ++_request;
     final query = text.trim();
@@ -200,25 +227,36 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Current location',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
+                          TextField(
+                            controller: _originController,
+                            focusNode: _originFocus,
+                            onChanged: (value) => _search(value, origin: true),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              hintText: widget.origin?.label ?? locationText,
+                              hintStyle: const TextStyle(
+                                color: Color(0xFF788780),
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                          Text(
-                            locationText,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: Color(0xFF788780),
-                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    if (widget.origin != null)
+                      IconButton(
+                        tooltip: 'Use current location',
+                        icon: const Icon(Icons.close_rounded, size: 19),
+                        onPressed: () {
+                          _originController.clear();
+                          widget.onOriginSelected?.call(null);
+                        },
+                      ),
                   ],
                 ),
                 const Divider(height: 19),
@@ -233,7 +271,8 @@ class _ExploreSearchState extends State<ExploreSearch> {
                     Expanded(
                       child: TextField(
                         controller: _controller,
-                        onChanged: _search,
+                        focusNode: _destinationFocus,
+                        onChanged: (value) => _search(value, origin: false),
                         decoration: const InputDecoration(
                           isDense: true,
                           border: InputBorder.none,
@@ -256,16 +295,23 @@ class _ExploreSearchState extends State<ExploreSearch> {
                 style: const TextStyle(color: Color(0xFFB64B3A), fontSize: 12),
               ),
             ),
-          if (_results.isNotEmpty)
+          if (_results.isNotEmpty ||
+              (_destinationFocus.hasFocus &&
+                  _controller.text.isEmpty &&
+                  widget.recent.isNotEmpty))
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 260),
               child: ListView.separated(
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
-                itemCount: _results.length,
+                itemCount: _results.isNotEmpty
+                    ? _results.length
+                    : widget.recent.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, index) {
-                  final result = _results[index];
+                  final result = _results.isNotEmpty
+                      ? _results[index]
+                      : widget.recent[index];
                   return ListTile(
                     dense: true,
                     leading: const Icon(
@@ -281,10 +327,18 @@ class _ExploreSearchState extends State<ExploreSearch> {
                     onTap: () {
                       _debounce?.cancel();
                       _request++;
-                      _controller.text = result.label;
+                      if (_editingOrigin) {
+                        _originController.text = result.label;
+                      } else {
+                        _controller.text = result.label;
+                      }
                       FocusScope.of(context).unfocus();
                       setState(() => _results = const []);
-                      widget.onSelected(result);
+                      if (_editingOrigin) {
+                        widget.onOriginSelected?.call(result);
+                      } else {
+                        widget.onSelected(result);
+                      }
                     },
                   );
                 },

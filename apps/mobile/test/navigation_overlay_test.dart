@@ -4,7 +4,9 @@ import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
 import 'package:kiwi_lens_mobile/widgets/navigation_overlay.dart';
 
 void main() {
-  testWidgets('compact navigation layout fits a small iPhone and expands', (tester) async {
+  testWidgets('compact navigation layout fits a small iPhone and expands', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(375, 667);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -14,32 +16,46 @@ void main() {
     final engine = DriveEngine();
     addTearDown(engine.dispose);
 
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: Stack(children: [
-        Positioned.fill(child: NavigationOverlay(
-          engine: engine,
-          destinationTitle: 'Te Whatu Stardome Observatory & Planetarium',
-          gpsAccuracy: 18,
-          voiceEnabled: true,
-          lanesEnabled: true,
-          onEnd: () {},
-          onRecenter: () {},
-          onOverview: () {},
-          onRotateLeft: () {},
-          onRotateRight: () {},
-          onVoiceToggle: () {},
-          onLanesToggle: () {},
-        )),
-      ])),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: NavigationOverlay(
+                  engine: engine,
+                  destinationTitle:
+                      'Te Whatu Stardome Observatory & Planetarium',
+                  gpsAccuracy: 18,
+                  voiceEnabled: true,
+                  lanesEnabled: true,
+                  onEnd: () {},
+                  onRecenter: () {},
+                  onOverview: () {},
+                  northUp: false,
+                  onCompassToggle: () {},
+                  onReport: () {},
+                  onSearchAlongRoute: () {},
+                  onDirections: () {},
+                  onShare: () {},
+                  onSettings: () {},
+                  onVoiceToggle: () {},
+                  onLanesToggle: () {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
     expect(tester.takeException(), isNull);
     expect(find.text('End navigation'), findsOneWidget);
     expect(find.text('GPS ±18 m'), findsOneWidget);
-    expect(find.textContaining('Radar shows'), findsNothing);
+    expect(find.text('Add a report'), findsNothing);
 
     await tester.tap(find.byKey(const Key('navigationSheetHandle')));
     await tester.pump();
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('Radar shows'), findsOneWidget);
+    expect(find.text('Add a report'), findsOneWidget);
   });
 }
