@@ -11,6 +11,12 @@ class VoiceEngine {
     await _tts.setVolume(1);
   }
 
+  Future<void> guidance(String message) async {
+    if (message.trim().isEmpty) return;
+    await _tts.stop();
+    await _tts.speak(message);
+  }
+
   Future<void> cameraAlert({
     required int distanceMeters,
     required String cameraType,
