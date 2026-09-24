@@ -26,7 +26,7 @@
     "mobile:devices": "flutter devices",
     "mobile:emulators": "flutter emulators",
     "mobile:dev": "node scripts/flutter-dev.mjs",
-    "mobile:run": "cd apps/mobile && flutter run",
+    "mobile:run": "node scripts/flutter-dev.mjs",
     "mobile:analyze": "cd apps/mobile && flutter analyze",
     "mobile:test": "cd apps/mobile && flutter test",
     "mobile:build:apk": "cd apps/mobile && flutter build apk"
