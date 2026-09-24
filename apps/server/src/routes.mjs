@@ -38,15 +38,57 @@ function transitSummary(route) {
   return items;
 }
 
-function trafficSummary(route) {
-  const intervals = route.travelAdvisory?.speedReadingIntervals || [];
+function trafficIntervals(route) {
+  return (route.travelAdvisory?.speedReadingIntervals || []).map((interval) => ({
+    startPolylinePointIndex: Number(interval.startPolylinePointIndex || 0),
+    endPolylinePointIndex: Number(interval.endPolylinePointIndex || 0),
+    speed: interval.speed === 'TRAFFIC_JAM'
+      ? 'trafficJam'
+      : interval.speed === 'SLOW'
+        ? 'slow'
+        : 'normal'
+  }));
+}
+
+function trafficSummary(intervals) {
   const counts = { normal: 0, slow: 0, trafficJam: 0 };
-  for (const interval of intervals) {
-    if (interval.speed === 'TRAFFIC_JAM') counts.trafficJam += 1;
-    else if (interval.speed === 'SLOW') counts.slow += 1;
-    else counts.normal += 1;
-  }
+  for (const interval of intervals) counts[interval.speed] += 1;
   return counts;
+}
+
+function routeSteps(route) {
+  const result = [];
+  for (const leg of route.legs || []) {
+    for (const step of leg.steps || []) {
+      const instruction = step.navigationInstruction || {};
+      const point = step.startLocation?.latLng;
+      if (!point) continue;
+      const maneuverName = String(instruction.maneuver || '').toLowerCase();
+      const modifier = maneuverName.includes('left')
+        ? 'left'
+        : maneuverName.includes('right')
+          ? 'right'
+          : maneuverName.includes('uturn')
+            ? 'uturn'
+            : undefined;
+      result.push({
+        distance: Number(step.distanceMeters || 0),
+        duration: seconds(step.staticDuration) || 0,
+        name: '',
+        instruction: instruction.instructions || '',
+        maneuver: maneuverName.includes('roundabout')
+          ? 'roundabout'
+          : maneuverName.includes('destination')
+            ? 'arrive'
+            : maneuverName.includes('depart')
+              ? 'depart'
+              : 'turn',
+        modifier,
+        location: [Number(point.longitude), Number(point.latitude)]
+      });
+    }
+  }
+  return result;
 }
 
 async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
@@ -82,6 +124,10 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
         'routes.routeToken',
         'routes.warnings',
         'routes.travelAdvisory.speedReadingIntervals',
+        'routes.legs.steps.distanceMeters',
+        'routes.legs.steps.staticDuration',
+        'routes.legs.steps.startLocation',
+        'routes.legs.steps.navigationInstruction',
         'routes.legs.steps.transitDetails'
       ].join(',')
     },
@@ -97,7 +143,8 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
   return (payload.routes || []).slice(0, driving ? 3 : 1).map((route, index) => {
     const durationSeconds = seconds(route.duration);
     const staticDurationSeconds = seconds(route.staticDuration);
-    const traffic = trafficSummary(route);
+    const intervals = trafficIntervals(route);
+    const traffic = trafficSummary(intervals);
     const warnings = Array.isArray(route.warnings) ? route.warnings : [];
     return {
       id: `${mode.toLowerCase()}-${index}`,
@@ -114,6 +161,8 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
       labels: Array.isArray(route.routeLabels) ? route.routeLabels : [],
       warnings,
       traffic,
+      trafficIntervals: intervals,
+      steps: routeSteps(route),
       transit: mode === 'TRANSIT' ? transitSummary(route) : [],
       provider: 'google'
     };
@@ -150,6 +199,8 @@ async function fallbackDrivingRoutes(from, to, stops = []) {
     labels: [],
     warnings: [],
     traffic: { normal: 0, slow: 0, trafficJam: 0 },
+    trafficIntervals: [],
+    steps: [],
     transit: [],
     provider: 'osm-fallback'
   }));
