@@ -137,15 +137,9 @@ Google 登录需要在同一 Google Cloud 项目的 Auth Platform 中创建两�
 1. **iOS 客户端**：Bundle ID 使用 `me.samyao.kiwilens`。复制 Client ID，并按 Google 提供的 reversed client ID 填写 URL scheme。
 2. **Web application 客户端**：作为服务端 ID token 的 audience。这里不需要将 client secret 放入移动端或仓库。
 
-在 `ios/Flutter/Secrets.xcconfig` 中填写三个公开标识：
+仓库中的 `Secrets.xcconfig.example` 已填入 Kiwi Lens 的三个公开 OAuth 标识；复制为被 Git 忽略的 `Secrets.xcconfig` 后，只需再填写 Maps API Key。若将来更换 OAuth 客户端，iOS Client ID、Web/Server Client ID 和 reversed URL scheme 必须同步更新。
 
-```text
-GOOGLE_IOS_CLIENT_ID=...apps.googleusercontent.com
-GOOGLE_SERVER_CLIENT_ID=...apps.googleusercontent.com
-GOOGLE_REVERSED_CLIENT_ID=com.googleusercontent.apps....
-```
-
-Cloudflare Worker 还需配置 `GOOGLE_OAUTH_CLIENT_IDS`，值为允许的 Web 与 iOS Client ID（英文逗号分隔），然后执行 D1 迁移 `0004_google_identity.sql` 并部署 Worker。缺少该配置时，Google 登录端点会明确报未配置，不会接受未经验证的 ID token。请勿填写或提交 OAuth client secret。
+Cloudflare Worker 的 `GOOGLE_OAUTH_CLIENT_IDS` 已配置为当前 Web 与 iOS Client ID，D1 迁移 `0004_google_identity.sql` 已应用。更换客户端时也需同步更新 Worker binding。Worker 会验证 Google ID token 的签名、发行方、有效期、邮箱验证状态和 audience；请勿填写或提交 OAuth client secret。
 
 首次登录的 Google 身份会创建 Kiwi Lens 账户；已经用邮箱密码注册的账户，需要先用密码登录，再在“我的”页面显式关联同邮箱 Google 账户，不会仅凭邮箱自动合并。iOS 上正式上架前，还要确认 Apple 的第三方登录审核要求，并按需提供 Sign in with Apple。
 
