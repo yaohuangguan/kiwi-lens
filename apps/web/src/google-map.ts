@@ -48,6 +48,7 @@ export class GoogleMapAdapter {
   private destinationMarker?: google.maps.marker.AdvancedMarkerElement;
   private routeOutline?: google.maps.Polyline;
   private routeLine?: google.maps.Polyline;
+  private alternativeLines: google.maps.Polyline[] = [];
   private radar?: google.maps.Polygon;
   private radarHeading: number | null = null;
   private pendingPosition?: { coordinate: Coordinate; heading: number | null };
@@ -87,7 +88,9 @@ export class GoogleMapAdapter {
       streetViewControl: false,
       fullscreenControl: false,
       cameraControl: false,
-      gestureHandling: 'greedy'
+      gestureHandling: 'greedy',
+      headingInteractionEnabled: true,
+      tiltInteractionEnabled: true
     });
 
     this.map.addListener('dragstart', options.onDragStart);
@@ -278,6 +281,25 @@ export class GoogleMapAdapter {
     this.radar.setPaths(points);
   }
 
+  renderRouteAlternatives(routes: Route[], selectedIndex = 0) {
+    if (!this.map) return;
+    for (const line of this.alternativeLines) line.setMap(null);
+    this.alternativeLines = [];
+    routes.forEach((route, index) => {
+      const path = route.coordinates.map(([lng, lat]) => ({ lat, lng }));
+      const line = new google.maps.Polyline({
+        map: this.map,
+        path,
+        strokeColor: index === selectedIndex ? '#4b42df' : '#87939b',
+        strokeWeight: index === selectedIndex ? 7 : 5,
+        strokeOpacity: index === selectedIndex ? .9 : .65,
+        clickable: false,
+        zIndex: index === selectedIndex ? 18 : 12
+      });
+      this.alternativeLines.push(line);
+    });
+  }
+
   renderRoute(route: Route, destination: Coordinate, navigating: boolean) {
     this.pendingRoute = { route, destination, navigating };
     if (!this.map || !this.AdvancedMarker) return;
@@ -322,6 +344,8 @@ export class GoogleMapAdapter {
 
   clearRoute() {
     this.pendingRoute = undefined;
+    for (const line of this.alternativeLines) line.setMap(null);
+    this.alternativeLines = [];
     this.routeOutline?.setMap(null);
     this.routeOutline = undefined;
     this.routeLine?.setMap(null);
@@ -343,7 +367,13 @@ export class GoogleMapAdapter {
 
   focusNavigation(coordinate: Coordinate, zoom = 17) {
     if (!this.map) return;
-    this.setView(coordinate, zoom);
+    const tilt = zoom >= 19 ? 55 : zoom >= 18 ? 50 : 45;
+    this.map.moveCamera({
+      center: { lat: coordinate[1], lng: coordinate[0] },
+      zoom,
+      heading: this.map.getHeading() || 0,
+      tilt
+    });
     const sequence = ++this.focusSequence;
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (sequence !== this.focusSequence || !this.map) return;
