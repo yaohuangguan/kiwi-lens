@@ -21,6 +21,22 @@ export type TrafficSummary = {
   trafficJam: number;
 };
 
+export type TrafficInterval = {
+  startPolylinePointIndex: number;
+  endPolylinePointIndex: number;
+  speed: 'normal' | 'slow' | 'trafficJam';
+};
+
+export type PlannerStep = {
+  distance: number;
+  duration: number;
+  name: string;
+  instruction: string;
+  maneuver: string;
+  modifier?: string;
+  location: Coordinate;
+};
+
 export type RouteOption = {
   id: string;
   mode: TravelMode;
@@ -35,6 +51,8 @@ export type RouteOption = {
   labels: string[];
   warnings: string[];
   traffic: TrafficSummary;
+  trafficIntervals: TrafficInterval[];
+  steps: PlannerStep[];
   transit: TransitLeg[];
   provider: string;
 };
@@ -104,7 +122,7 @@ export function routeFromOption(option: RouteOption): Route {
     coordinates,
     distance: option.distanceMeters,
     duration: option.durationSeconds,
-    steps: []
+    steps: option.steps || []
   };
 }
 
