@@ -36,9 +36,12 @@ class RoutePreviewSheet extends StatelessWidget {
     required this.selectedMode,
     required this.selectedRouteId,
     required this.busy,
+    required this.stopCount,
     required this.onModeChanged,
     required this.onRouteSelected,
     required this.onStart,
+    required this.onAddStop,
+    required this.onSave,
     required this.onClose,
   });
 
@@ -47,9 +50,12 @@ class RoutePreviewSheet extends StatelessWidget {
   final KiwiTravelMode selectedMode;
   final String? selectedRouteId;
   final bool busy;
+  final int stopCount;
   final ValueChanged<KiwiTravelMode> onModeChanged;
   final ValueChanged<RouteOption> onRouteSelected;
   final VoidCallback onStart;
+  final VoidCallback onAddStop;
+  final VoidCallback onSave;
   final VoidCallback onClose;
 
   @override
@@ -72,177 +78,323 @@ class RoutePreviewSheet extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 52,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD0D8D2),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        destinationTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                    IconButton(onPressed: onClose, icon: const Icon(Icons.close_rounded)),
-                  ],
-                ),
-                Row(
-                  children: [
-                    for (final mode in KiwiTravelMode.values)
-                      Expanded(
-                        child: InkWell(
-                          onTap: plan.forMode(mode).isEmpty ? null : () => onModeChanged(mode),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Opacity(
-                            opacity: plan.forMode(mode).isEmpty ? .35 : 1,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: selectedMode == mode
-                                    ? const Color(0xFFEAF4EA)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    _icon(mode),
-                                    color: selectedMode == mode ? _ink : Colors.black54,
-                                    size: 21,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    plan.forMode(mode).isEmpty
-                                        ? '—'
-                                        : _duration(plan.forMode(mode).first.durationSeconds),
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                if (routes.isNotEmpty) ...[
-                  const Divider(height: 20),
-                  SizedBox(
-                    height: 76,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: routes.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (context, index) {
-                        final route = routes[index];
-                        final active = route.id == selected?.id;
-                        final delay = route.trafficDelaySeconds;
-                        return InkWell(
-                          onTap: () => onRouteSelected(route),
-                          borderRadius: BorderRadius.circular(15),
-                          child: Container(
-                            width: 170,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                            decoration: BoxDecoration(
-                              color: active
-                                  ? const Color(0xFFF0F7E1)
-                                  : const Color(0xFFF5F7F5),
-                              borderRadius: BorderRadius.circular(15),
-                              border: Border.all(
-                                color: active
-                                    ? const Color(0xFF91B850)
-                                    : const Color(0xFFE2E7E3),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _duration(route.durationSeconds),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                Text(
-                                  '${_distance(route.distanceMeters)}'
-                                  '${delay != null && delay > 60 ? ' · +${_duration(delay)} traffic' : ''}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Color(0xFF68756E),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 520),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD0D8D2),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                   ),
-                ],
-                if (selected != null) ...[
-                  const SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(
                         child: Text(
-                          plan.trafficAvailable && selectedMode == KiwiTravelMode.drive
-                              ? (selected.trafficDelaySeconds ?? 0) > 60
-                                  ? 'Traffic-aware route · live conditions included'
-                                  : 'Fastest route based on current traffic'
-                              : selected.description.isNotEmpty
-                                  ? selected.description
-                                  : 'Route preview',
+                          destinationTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF5D6C64),
-                            fontSize: 12,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: busy || selectedMode != KiwiTravelMode.drive
-                            ? null
-                            : onStart,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _ink,
-                          foregroundColor: _lime,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 13,
-                          ),
-                        ),
-                        icon: busy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.navigation_rounded),
-                        label: Text(busy ? 'Starting…' : 'Start'),
+                      IconButton(
+                        onPressed: onClose,
+                        icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
+                  Row(
+                    children: [
+                      for (final mode in KiwiTravelMode.values)
+                        Expanded(
+                          child: InkWell(
+                            onTap: plan.forMode(mode).isEmpty
+                                ? null
+                                : () => onModeChanged(mode),
+                            borderRadius: BorderRadius.circular(14),
+                            child: Opacity(
+                              opacity: plan.forMode(mode).isEmpty ? .35 : 1,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: selectedMode == mode
+                                      ? const Color(0xFFEAF4EA)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      _icon(mode),
+                                      color: selectedMode == mode
+                                          ? _ink
+                                          : Colors.black54,
+                                      size: 21,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      plan.forMode(mode).isEmpty
+                                          ? '—'
+                                          : _duration(
+                                              plan.forMode(mode).first.durationSeconds,
+                                            ),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (routes.isNotEmpty) ...[
+                    const Divider(height: 20),
+                    SizedBox(
+                      height: 76,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: routes.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final route = routes[index];
+                          final active = route.id == selected?.id;
+                          final delay = route.trafficDelaySeconds;
+                          return InkWell(
+                            onTap: () => onRouteSelected(route),
+                            borderRadius: BorderRadius.circular(15),
+                            child: Container(
+                              width: 170,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 9,
+                              ),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? const Color(0xFFF0F7E1)
+                                    : const Color(0xFFF5F7F5),
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(
+                                  color: active
+                                      ? const Color(0xFF91B850)
+                                      : const Color(0xFFE2E7E3),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _duration(route.durationSeconds),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${_distance(route.distanceMeters)}'
+                                    '${delay != null && delay > 60 ? ' · +${_duration(delay)} traffic' : ''}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Color(0xFF68756E),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  if (selected != null) ...[
+                    const SizedBox(height: 10),
+                    if (selected.mode == KiwiTravelMode.drive &&
+                        (selected.traffic.hasIssues ||
+                            selected.warnings.isNotEmpty))
+                      _TrafficCard(route: selected),
+                    if (selected.mode == KiwiTravelMode.transit &&
+                        selected.transit.isNotEmpty)
+                      _TransitDetails(route: selected),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            plan.trafficAvailable &&
+                                    selectedMode == KiwiTravelMode.drive
+                                ? (selected.trafficDelaySeconds ?? 0) > 60
+                                    ? 'Traffic-aware route · live conditions included'
+                                    : 'Fastest route based on current traffic'
+                                : selected.description.isNotEmpty
+                                    ? selected.description
+                                    : 'Route preview',
+                            style: const TextStyle(
+                              color: Color(0xFF5D6C64),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: selectedMode == KiwiTravelMode.transit
+                              ? null
+                              : onAddStop,
+                          icon: const Icon(Icons.add_location_alt_outlined),
+                          label: Text(
+                            stopCount == 0 ? 'Add stop' : 'Stops $stopCount',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: onSave,
+                          icon: const Icon(Icons.bookmark_border_rounded),
+                          label: const Text('Save'),
+                        ),
+                        const Spacer(),
+                        FilledButton.icon(
+                          onPressed:
+                              busy || selectedMode != KiwiTravelMode.drive
+                                  ? null
+                                  : onStart,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _ink,
+                            foregroundColor: _lime,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 13,
+                            ),
+                          ),
+                          icon: busy
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.navigation_rounded),
+                          label: Text(busy ? 'Starting…' : 'Start'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TrafficCard extends StatelessWidget {
+  const _TrafficCard({required this.route});
+
+  final RouteOption route;
+
+  @override
+  Widget build(BuildContext context) {
+    final jam = route.traffic.trafficJam;
+    final slow = route.traffic.slow;
+    final text = jam > 0
+        ? '$jam heavy-traffic section${jam == 1 ? '' : 's'} ahead'
+        : '$slow slow section${slow == 1 ? '' : 's'} ahead';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF1C37A)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFF9A5A13)),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              route.warnings.isNotEmpty
+                  ? '$text · ${route.warnings.first}'
+                  : text,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TransitDetails extends StatelessWidget {
+  const _TransitDetails({required this.route});
+
+  final RouteOption route;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F5FA),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < route.transit.length; index++) ...[
+            if (index > 0) const Divider(height: 16),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.directions_transit_rounded, size: 20),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        [
+                          route.transit[index].lineName,
+                          route.transit[index].headsign,
+                        ].where((value) => value.isNotEmpty).join(' → '),
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${route.transit[index].departureStop} → '
+                        '${route.transit[index].arrivalStop}'
+                        '${route.transit[index].stopCount > 0 ? ' · ${route.transit[index].stopCount} stops' : ''}',
+                        style: const TextStyle(
+                          color: Color(0xFF657169),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
