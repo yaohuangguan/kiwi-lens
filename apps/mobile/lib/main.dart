@@ -18,6 +18,7 @@ import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/navigation_overlay.dart';
 import 'widgets/route_preview_sheet.dart';
+import 'widgets/transit_trip_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -86,6 +87,8 @@ class _MapHomePageState extends State<MapHomePage> {
   KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
+  bool _transitTripRunning = false;
+  RouteOption? _activeTransitRoute;
   final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
 
   PointOfInterest? _selectedPoi;
@@ -296,6 +299,16 @@ class _MapHomePageState extends State<MapHomePage> {
     return plan.forMode(_selectedMode).firstOrNull;
   }
 
+  Color _trafficColor(String speed, bool active) {
+    final alpha = active ? 0xFF : 0x66;
+    final rgb = speed == 'trafficJam'
+        ? 0xEA4335
+        : speed == 'slow'
+            ? 0xF9AB00
+            : 0x34A853;
+    return Color((alpha << 24) | rgb);
+  }
+
   Future<void> _renderRoutePreview() async {
     final controller = _browseController;
     final plan = _routePlan;
@@ -303,17 +316,44 @@ class _MapHomePageState extends State<MapHomePage> {
     await controller.clearPolylines();
     final selected = _selectedRoute;
     final options = <PolylineOptions>[];
+
     for (final route in plan.forMode(_selectedMode)) {
       if (route.points.length < 2) continue;
       final active = route.id == selected?.id;
       options.add(PolylineOptions(
         points: route.points,
-        strokeColor: active ? const Color(0xFF3036D9) : const Color(0xFF8A94A0),
-        strokeWidth: active ? 8 : 5,
-        zIndex: active ? 20 : 10,
+        strokeColor: active ? const Color(0xCC60716A) : const Color(0x3560716A),
+        strokeWidth: active ? 8 : 6,
+        zIndex: active ? 18 : 8,
         clickable: false,
       ));
+
+      if (_selectedMode == KiwiTravelMode.drive) {
+        final intervals = route.trafficIntervals.isEmpty
+            ? <TrafficInterval>[
+                TrafficInterval(
+                  startPolylinePointIndex: 0,
+                  endPolylinePointIndex: route.points.length - 1,
+                  speed: 'normal',
+                ),
+              ]
+            : route.trafficIntervals;
+        for (final interval in intervals) {
+          final start = interval.startPolylinePointIndex.clamp(0, route.points.length - 1);
+          final end = interval.endPolylinePointIndex.clamp(start + 1, route.points.length - 1);
+          final segment = route.points.sublist(start, end + 1);
+          if (segment.length < 2) continue;
+          options.add(PolylineOptions(
+            points: segment,
+            strokeColor: _trafficColor(interval.speed, active),
+            strokeWidth: active ? 8 : 6,
+            zIndex: active ? 25 : 12,
+            clickable: false,
+          ));
+        }
+      }
     }
+
     if (options.isNotEmpty) await controller.addPolylines(options);
     if (selected != null && selected.points.length >= 2) {
       final bounds = LatLngBounds.createBoundsFromPoints(selected.points);
@@ -447,9 +487,38 @@ class _MapHomePageState extends State<MapHomePage> {
     return true;
   }
 
+  NavigationTravelMode? get _nativeTravelMode => switch (_selectedMode) {
+    KiwiTravelMode.drive => NavigationTravelMode.driving,
+    KiwiTravelMode.walk => NavigationTravelMode.walking,
+    KiwiTravelMode.bicycle => NavigationTravelMode.cycling,
+    KiwiTravelMode.transit => null,
+  };
+
+  Future<void> _startTransitTrip(PointOfInterest poi, RouteOption route) async {
+    setState(() {
+      _transitTripRunning = true;
+      _activeTransitRoute = route;
+      _destinationTitle = poi.name;
+      _selectedPoi = null;
+      _following = true;
+    });
+    await _driveEngine.speakMessage('Transit trip started. Follow the itinerary.');
+    _queueMapRefresh();
+  }
+
+  Future<void> _stopTransitTrip() async {
+    if (!_transitTripRunning) return;
+    setState(() {
+      _transitTripRunning = false;
+      _activeTransitRoute = null;
+      _destinationTitle = 'Destination';
+    });
+  }
+
   Future<void> _navigateToSelectedPoi() async {
     final poi = _selectedPoi;
-    if (poi == null || _busy) return;
+    final selectedRoute = _selectedRoute;
+    if (poi == null || selectedRoute == null || _busy) return;
 
     setState(() {
       _busy = true;
@@ -457,10 +526,15 @@ class _MapHomePageState extends State<MapHomePage> {
     });
 
     try {
+      if (_selectedMode == KiwiTravelMode.transit) {
+        await _startTransitTrip(poi, selectedRoute);
+        return;
+      }
+
       if (!await _ensureNavigationSession()) return;
 
-      final selectedRoute = _selectedRoute;
-      final routeToken = selectedRoute?.routeToken;
+      final routeToken = selectedRoute.routeToken;
+      final travelMode = _nativeTravelMode!;
       final status = await GoogleMapsNavigator.setDestinations(
         Destinations(
           waypoints: <NavigationWaypoint>[
@@ -485,12 +559,12 @@ class _MapHomePageState extends State<MapHomePage> {
           routeTokenOptions: routeToken != null && routeToken.isNotEmpty
               ? RouteTokenOptions(
                   routeToken: routeToken,
-                  travelMode: NavigationTravelMode.driving,
+                  travelMode: travelMode,
                 )
               : null,
           routingOptions: routeToken == null || routeToken.isEmpty
               ? RoutingOptions(
-                  travelMode: NavigationTravelMode.driving,
+                  travelMode: travelMode,
                   alternateRoutesStrategy: NavigationAlternateRoutesStrategy.one,
                 )
               : null,
@@ -510,6 +584,13 @@ class _MapHomePageState extends State<MapHomePage> {
       }
 
       await GoogleMapsNavigator.startGuidance();
+      await _driveEngine.speakMessage(
+        _selectedMode == KiwiTravelMode.walk
+            ? 'Walking navigation started.'
+            : _selectedMode == KiwiTravelMode.bicycle
+                ? 'Cycling navigation started.'
+                : 'Navigation started. Drive safely.',
+      );
       if (!mounted) return;
       setState(() {
         _guidanceRunning = true;
@@ -670,7 +751,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     },
                   ),
           ),
-          if (!_guidanceRunning)
+          if (!_guidanceRunning && !_transitTripRunning)
             SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -733,7 +814,7 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
           ),
-          if (!_guidanceRunning)
+          if (!_guidanceRunning && !_transitTripRunning)
             Positioned(
               top: MediaQuery.paddingOf(context).top + 75,
               left: 16,
@@ -745,7 +826,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (_driveEngine.active && _selectedPoi == null)
+          if (_driveEngine.active && _selectedPoi == null && !_transitTripRunning)
             Positioned.fill(
               child: AnimatedBuilder(
                 animation: _driveEngine,
@@ -793,7 +874,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (!_driveEngine.active && _selectedPoi == null && !_guidanceRunning)
+          if (!_driveEngine.active && _selectedPoi == null && !_guidanceRunning && !_transitTripRunning)
             Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(
@@ -815,7 +896,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (_selectedPoi != null && !_guidanceRunning && _routePlan == null)
+          if (_selectedPoi != null && !_guidanceRunning && !_transitTripRunning && _routePlan == null)
             Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(
@@ -830,7 +911,17 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (_selectedPoi != null && _routePlan != null && !_guidanceRunning)
+          if (_transitTripRunning && _activeTransitRoute != null)
+            Positioned.fill(
+              child: TransitTripOverlay(
+                destinationTitle: _destinationTitle,
+                route: _activeTransitRoute!,
+                gpsAccuracy: _gpsAccuracy,
+                onEnd: () => unawaited(_stopTransitTrip()),
+                onRecenter: _recenter,
+              ),
+            ),
+          if (_selectedPoi != null && _routePlan != null && !_guidanceRunning && !_transitTripRunning)
             Align(
               alignment: Alignment.bottomCenter,
               child: RoutePreviewSheet(
