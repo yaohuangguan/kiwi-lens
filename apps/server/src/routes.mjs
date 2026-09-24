@@ -10,13 +10,56 @@ function waypoint([longitude, latitude]) {
   return { location: { latLng: { latitude, longitude } } };
 }
 
-async function googleModeRoutes(from, to, mode, apiKey) {
+function transitSummary(route) {
+  const items = [];
+  for (const leg of route.legs || []) {
+    for (const step of leg.steps || []) {
+      const details = step.transitDetails;
+      if (!details) continue;
+      const line = details.transitLine || {};
+      const vehicle = line.vehicle || {};
+      const stops = details.stopDetails || {};
+      items.push({
+        lineName: line.nameShort || line.name || '',
+        headsign: details.headsign || '',
+        vehicleType: vehicle.type || '',
+        vehicleName: vehicle.name?.text || '',
+        color: line.color || '',
+        textColor: line.textColor || '',
+        departureStop: stops.departureStop?.name || '',
+        arrivalStop: stops.arrivalStop?.name || '',
+        departureTime: stops.departureTime || null,
+        arrivalTime: stops.arrivalTime || null,
+        stopCount: Number(details.stopCount || 0),
+        agencies: (line.agencies || []).map((agency) => agency.name).filter(Boolean)
+      });
+    }
+  }
+  return items;
+}
+
+function trafficSummary(route) {
+  const intervals = route.travelAdvisory?.speedReadingIntervals || [];
+  const counts = { normal: 0, slow: 0, trafficJam: 0 };
+  for (const interval of intervals) {
+    if (interval.speed === 'TRAFFIC_JAM') counts.trafficJam += 1;
+    else if (interval.speed === 'SLOW') counts.slow += 1;
+    else counts.normal += 1;
+  }
+  return counts;
+}
+
+async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
   const driving = mode === 'DRIVE';
+  const supportsStops = mode !== 'TRANSIT';
   const body = {
     origin: waypoint(from),
     destination: waypoint(to),
+    ...(supportsStops && stops.length
+      ? { intermediates: stops.slice(0, 23).map(waypoint) }
+      : {}),
     travelMode: mode,
-    computeAlternativeRoutes: driving,
+    computeAlternativeRoutes: driving && stops.length === 0,
     languageCode: 'en-NZ',
     regionCode: 'NZ',
     units: 'METRIC',
@@ -37,7 +80,9 @@ async function googleModeRoutes(from, to, mode, apiKey) {
         'routes.routeLabels',
         'routes.description',
         'routes.routeToken',
-        'routes.warnings'
+        'routes.warnings',
+        'routes.travelAdvisory.speedReadingIntervals',
+        'routes.legs.steps.transitDetails'
       ].join(',')
     },
     body: JSON.stringify(body),
@@ -52,6 +97,8 @@ async function googleModeRoutes(from, to, mode, apiKey) {
   return (payload.routes || []).slice(0, driving ? 3 : 1).map((route, index) => {
     const durationSeconds = seconds(route.duration);
     const staticDurationSeconds = seconds(route.staticDuration);
+    const traffic = trafficSummary(route);
+    const warnings = Array.isArray(route.warnings) ? route.warnings : [];
     return {
       id: `${mode.toLowerCase()}-${index}`,
       mode: mode.toLowerCase(),
@@ -65,16 +112,19 @@ async function googleModeRoutes(from, to, mode, apiKey) {
       routeToken: route.routeToken || null,
       description: route.description || '',
       labels: Array.isArray(route.routeLabels) ? route.routeLabels : [],
-      warnings: Array.isArray(route.warnings) ? route.warnings : [],
+      warnings,
+      traffic,
+      transit: mode === 'TRANSIT' ? transitSummary(route) : [],
       provider: 'google'
     };
   });
 }
 
-async function fallbackDrivingRoutes(from, to) {
+async function fallbackDrivingRoutes(from, to, stops = []) {
+  const points = [from, ...stops.slice(0, 23), to];
   const routeUrl =
-    `https://routing.openstreetmap.de/routed-car/route/v1/driving/${from.join(',')};${to.join(',')}` +
-    '?overview=full&geometries=geojson&steps=false&alternatives=3';
+    `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}` +
+    `?overview=full&geometries=geojson&steps=false&alternatives=${stops.length ? 'false' : '3'}`;
   const response = await fetch(routeUrl, {
     headers: {
       'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)',
@@ -99,15 +149,17 @@ async function fallbackDrivingRoutes(from, to) {
     description: index === 0 ? 'Recommended route' : `Alternative ${index + 1}`,
     labels: [],
     warnings: [],
+    traffic: { normal: 0, slow: 0, trafficJam: 0 },
+    transit: [],
     provider: 'osm-fallback'
   }));
 }
 
-export async function routeOptions(from, to, env) {
+export async function routeOptions(from, to, env, stops = []) {
   if (env.GOOGLE_ROUTES_API_KEY) {
-    const modes = ['DRIVE', 'TRANSIT', 'WALK', 'BICYCLE'];
+    const modes = stops.length ? ['DRIVE', 'WALK', 'BICYCLE'] : ['DRIVE', 'TRANSIT', 'WALK', 'BICYCLE'];
     const settled = await Promise.allSettled(
-      modes.map((mode) => googleModeRoutes(from, to, mode, env.GOOGLE_ROUTES_API_KEY))
+      modes.map((mode) => googleModeRoutes(from, to, mode, env.GOOGLE_ROUTES_API_KEY, stops))
     );
     const options = settled.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
     const driving = options.filter((option) => option.mode === 'drive');
@@ -115,15 +167,17 @@ export async function routeOptions(from, to, env) {
       return {
         provider: 'google',
         trafficAvailable: true,
+        stopsApplied: stops.length,
         options
       };
     }
   }
 
-  const driving = await fallbackDrivingRoutes(from, to);
+  const driving = await fallbackDrivingRoutes(from, to, stops);
   return {
     provider: 'osm-fallback',
     trafficAvailable: false,
+    stopsApplied: stops.length,
     options: driving
   };
 }
