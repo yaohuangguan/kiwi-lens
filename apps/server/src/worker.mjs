@@ -84,8 +84,6 @@ async function handleApi(request, env, ctx) {
     return json({
       googleMapsApiKey: env.GOOGLE_MAPS_BROWSER_API_KEY,
       googleMapId: env.GOOGLE_MAP_ID || null
-    }, 200, {
-      'cache-control': 'public, max-age=300, stale-while-revalidate=3600'
     });
   }
   if (url.pathname === '/api/health') {
