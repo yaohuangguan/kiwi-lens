@@ -11,6 +11,9 @@
 			"/api/*"
 		]
 	},
+	"vars": {
+		"GOOGLE_MAP_ID": "ea4a0f74663866d5ba79ca1d"
+	},
 	"kv_namespaces": [
 		{
 			"binding": "CAMERA_DATA",
