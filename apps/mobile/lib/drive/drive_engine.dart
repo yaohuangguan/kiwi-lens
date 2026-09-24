@@ -29,6 +29,7 @@ class DriveEngine extends ChangeNotifier {
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final Set<String> _spokenAlerts = <String>{};
+  final Set<String> _spokenGuidance = <String>{};
 
   List<SafetyCamera> _cameras = const [];
   LatLng? _lastSnappedLocation;
@@ -80,6 +81,7 @@ class DriveEngine extends ChangeNotifier {
         guidanceRunning =
             event.navInfo.navState == NavState.enroute ||
             event.navInfo.navState == NavState.rerouting;
+        if (guidanceRunning) unawaited(_maybeSpeakGuidance(event.navInfo));
         notifyListeners();
       }, numNextStepsToPreview: 3),
     );
@@ -154,6 +156,37 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> speakMessage(String message) async {
+    if (!voiceEnabled) return;
+    await _voiceEngine.guidance(message);
+  }
+
+  Future<void> _maybeSpeakGuidance(NavInfo info) async {
+    if (!voiceEnabled) return;
+    final step = info.currentStep;
+    final distance = info.distanceToCurrentStepMeters;
+    if (step == null || distance == null) return;
+    final instruction = step.fullInstructions?.trim().isNotEmpty == true
+        ? step.fullInstructions!.trim()
+        : step.fullRoadName?.trim() ?? '';
+    if (instruction.isEmpty) return;
+
+    String? bucket;
+    if (distance <= 70) {
+      bucket = 'now';
+    } else if (distance <= 350) {
+      bucket = 'soon';
+    }
+    if (bucket == null) return;
+
+    final key = '${instruction.toLowerCase()}:$bucket';
+    if (!_spokenGuidance.add(key)) return;
+    final message = bucket == 'now'
+        ? instruction
+        : 'In ${distance.round()} metres, $instruction';
+    await _voiceEngine.guidance(message);
+  }
+
   Future<void> _refreshSpeedLimit(LatLng current) async {
     if (_speedLimitLookupPending) return;
     final now = DateTime.now();
@@ -222,6 +255,7 @@ class DriveEngine extends ChangeNotifier {
     }
     _subscriptions.clear();
     _spokenAlerts.clear();
+    _spokenGuidance.clear();
     active = false;
     guidanceRunning = false;
     upcomingCamera = null;
