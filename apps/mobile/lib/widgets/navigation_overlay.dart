@@ -32,6 +32,7 @@ class NavigationOverlay extends StatefulWidget {
     required this.lanesEnabled,
     required this.onEnd,
     required this.onRecenter,
+    required this.onOverview,
     required this.onVoiceToggle,
     required this.onLanesToggle,
   });
@@ -43,6 +44,7 @@ class NavigationOverlay extends StatefulWidget {
   final bool lanesEnabled;
   final VoidCallback onEnd;
   final VoidCallback onRecenter;
+  final VoidCallback onOverview;
   final VoidCallback onVoiceToggle;
   final VoidCallback onLanesToggle;
 
@@ -120,20 +122,33 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
             top: 132,
             right: 15,
             child: PointerInterceptor(
-              child: Material(
-                color: Colors.white,
-                elevation: 5,
-                borderRadius: BorderRadius.circular(18),
-                child: IconButton(
-                  onPressed: widget.onRecenter,
-                  tooltip: 'Recenter and face phone direction',
-                  icon: const Icon(Icons.navigation_rounded, color: _ink),
-                ),
+              child: Column(
+                children: [
+                  _MapControl(
+                    icon: Icons.navigation_rounded,
+                    tooltip: 'Recenter and follow',
+                    onTap: widget.onRecenter,
+                  ),
+                  const SizedBox(height: 9),
+                  _MapControl(
+                    icon: Icons.route_rounded,
+                    tooltip: 'Route overview',
+                    onTap: widget.onOverview,
+                  ),
+                  const SizedBox(height: 9),
+                  _MapControl(
+                    icon: widget.voiceEnabled
+                        ? Icons.volume_up_rounded
+                        : Icons.volume_off_rounded,
+                    tooltip: widget.voiceEnabled ? 'Mute guidance' : 'Enable guidance',
+                    onTap: widget.onVoiceToggle,
+                  ),
+                ],
               ),
             ),
           ),
           Positioned(
-            top: 201,
+            top: 315,
             right: 15,
             child: PointerInterceptor(
               child: Container(
@@ -315,4 +330,31 @@ class _Chip extends StatelessWidget {
       ),
     ),
   ));
+}
+
+
+class _MapControl extends StatelessWidget {
+  const _MapControl({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 5,
+      borderRadius: BorderRadius.circular(18),
+      child: IconButton(
+        onPressed: onTap,
+        tooltip: tooltip,
+        icon: Icon(icon, color: _ink),
+      ),
+    );
+  }
 }
