@@ -35,6 +35,27 @@ pnpm mobile:dev
 
 在 macOS/iOS 上启动器会为 `flutter run` 自动添加 `--no-dds`。Flutter 3.47 的 iOS Simulator 偶尔会在 Xcode 已成功编译后，因本机 Dart Development Service WebSocket 代理连接失败而退出；直接连接 VM Service 可以绕过这一层，同时保留普通开发运行和 hot reload。`flutter_tts` 当前出现的 Swift Package Manager compatibility 提示只是 warning，Flutter 仍会通过 CocoaPods 集成它。
 
+### iPhone 真机开发与 Release 安装
+
+连接 iPhone、解锁并信任 Mac，开启 iPhone Developer Mode。第一次还需要在 Xcode 中打开 `ios/Runner.xcworkspace`，在 **Runner → Signing & Capabilities** 勾选 Automatically manage signing，并选择自己的 Apple ID Personal Team。这个签名选择只需要配置一次。
+
+之后从仓库根目录可以直接使用：
+
+```bash
+# 真机 Debug，保留 hot reload
+pnpm mobile:ios
+
+# 构建 Release 并直接覆盖安装到已连接的 iPhone
+pnpm mobile:ios:install
+
+# 需要分发包时生成 IPA
+pnpm mobile:ios:ipa
+```
+
+`mobile:ios:install` 会执行 signed Release build，然后使用 Xcode `devicectl` 将 `build/ios/iphoneos/Runner.app` 安装到物理 iPhone，并尝试自动启动 Kiwi Lens。它不会调用 Flutter 的 `flutter install`，因为 Flutter install 会主动卸载旧 App；这里采用覆盖安装流程，更适合持续真机测试并尽量保留设备上的 App 数据。
+
+免费 Personal Team 可以用于自己的 iPhone 开发安装，但 provisioning 有效期较短，需要定期重新签名安装。IPA 的正式分发/TestFlight 则通常需要 Apple Developer Program。
+
 可以手动查看环境：
 
 ```bash
