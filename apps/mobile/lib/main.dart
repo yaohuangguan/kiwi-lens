@@ -89,6 +89,7 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _routePreviewLoading = false;
   bool _transitTripRunning = false;
   RouteOption? _activeTransitRoute;
+  RouteOption? _activeNavigationRoute;
   final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
 
   PointOfInterest? _selectedPoi;
@@ -322,7 +323,9 @@ class _MapHomePageState extends State<MapHomePage> {
       final active = route.id == selected?.id;
       options.add(PolylineOptions(
         points: route.points,
-        strokeColor: active ? const Color(0xCC60716A) : const Color(0x3560716A),
+        strokeColor: _selectedMode == KiwiTravelMode.drive
+            ? (active ? const Color(0xCC60716A) : const Color(0x3560716A))
+            : (active ? const Color(0xFF4285F4) : const Color(0x554285F4)),
         strokeWidth: active ? 8 : 6,
         zIndex: active ? 18 : 8,
         clickable: false,
@@ -600,6 +603,7 @@ class _MapHomePageState extends State<MapHomePage> {
       setState(() {
         _guidanceRunning = true;
         _destinationTitle = poi.name;
+        _activeNavigationRoute = selectedRoute;
         _routePlan = null;
         _selectedRouteId = null;
         _selectedPoi = null;
@@ -621,6 +625,7 @@ class _MapHomePageState extends State<MapHomePage> {
     if (!mounted) return;
     setState(() {
       _guidanceRunning = false;
+      _activeNavigationRoute = null;
       _destinationTitle = 'Destination';
     });
   }
@@ -712,6 +717,42 @@ class _MapHomePageState extends State<MapHomePage> {
     await controller.setTrafficIncidentCardsEnabled(true);
     await controller.setTrafficPromptsEnabled(true);
     await controller.setPadding(const EdgeInsets.fromLTRB(16, 125, 16, 215));
+    final activeRoute = _activeNavigationRoute;
+    if (_selectedMode == KiwiTravelMode.drive &&
+        activeRoute != null &&
+        activeRoute.points.length >= 2) {
+      final trafficOptions = <PolylineOptions>[];
+      final intervals = activeRoute.trafficIntervals.isEmpty
+          ? <TrafficInterval>[
+              TrafficInterval(
+                startPolylinePointIndex: 0,
+                endPolylinePointIndex: activeRoute.points.length - 1,
+                speed: 'normal',
+              ),
+            ]
+          : activeRoute.trafficIntervals;
+      for (final interval in intervals) {
+        final start = interval.startPolylinePointIndex
+            .clamp(0, activeRoute.points.length - 1)
+            .toInt();
+        if (start >= activeRoute.points.length - 1) continue;
+        final end = interval.endPolylinePointIndex
+            .clamp(start + 1, activeRoute.points.length - 1)
+            .toInt();
+        trafficOptions.add(
+          PolylineOptions(
+            points: activeRoute.points.sublist(start, end + 1),
+            strokeColor: _trafficColor(interval.speed, true),
+            strokeWidth: 8,
+            zIndex: 40,
+            clickable: false,
+          ),
+        );
+      }
+      if (trafficOptions.isNotEmpty) {
+        await controller.addPolylines(trafficOptions);
+      }
+    }
     _queueMapRefresh();
   }
 
