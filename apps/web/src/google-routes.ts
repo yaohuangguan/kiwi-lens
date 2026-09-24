@@ -44,41 +44,15 @@ export function enrichRouteLanes(route: Route, laneRoute?: Route): Route {
   };
 }
 
-export async function computeGoogleRoute(
-  from: Coordinate,
-  to: Coordinate,
-  language: 'zh' | 'en'
-): Promise<Route> {
-  const { Route: GoogleRoute } = await importLibrary('routes');
-
-  const { routes } = await GoogleRoute.computeRoutes({
-    origin: { lat: from[1], lng: from[0] },
-    destination: { lat: to[1], lng: to[0] },
-    travelMode: 'DRIVING',
-    routingPreference: 'TRAFFIC_AWARE',
-    polylineQuality: 'HIGH_QUALITY',
-    language: language === 'zh' ? 'zh-CN' : 'en-NZ',
-    region: 'NZ',
-    fields: [
-      'path',
-      'distanceMeters',
-      'durationMillis',
-      'viewport',
-      'legs'
-    ]
-  });
-
-  const selected = routes?.[0];
-  if (!selected?.path?.length) throw new Error('Google route geometry is empty');
-
+function convertGoogleRoute(selected: google.maps.routes.Route): Route {
+  if (!selected.path?.length) throw new Error('Google route geometry is empty');
   const coordinates: Coordinate[] = selected.path.map((point) => [point.lng, point.lat]);
   const steps: RouteStep[] = [];
-
   for (const leg of selected.legs || []) {
     for (const step of leg.steps || []) {
       const location = coordinateFromDirectional(step.startLocation) || coordinates[0]!;
       const parts = maneuverParts(step.maneuver ?? undefined);
-      const routeStep: RouteStep = {
+      steps.push({
         distance: step.distanceMeters || 0,
         duration: (step.staticDurationMillis || 0) / 1000,
         name: step.instructions || '',
@@ -86,15 +60,43 @@ export async function computeGoogleRoute(
         maneuver: parts.maneuver,
         modifier: parts.modifier,
         location
-      };
-      steps.push(routeStep);
+      });
     }
   }
-
   return {
     coordinates,
     distance: selected.distanceMeters || 0,
     duration: (selected.durationMillis || 0) / 1000,
     steps
   };
+}
+
+export async function computeGoogleRoutes(
+  from: Coordinate,
+  to: Coordinate,
+  language: 'zh' | 'en'
+): Promise<Route[]> {
+  const { Route: GoogleRoute } = await importLibrary('routes');
+  const { routes } = await GoogleRoute.computeRoutes({
+    origin: { lat: from[1], lng: from[0] },
+    destination: { lat: to[1], lng: to[0] },
+    travelMode: 'DRIVING',
+    routingPreference: 'TRAFFIC_AWARE',
+    computeAlternativeRoutes: true,
+    polylineQuality: 'HIGH_QUALITY',
+    language: language === 'zh' ? 'zh-CN' : 'en-NZ',
+    region: 'NZ',
+    fields: ['path', 'distanceMeters', 'durationMillis', 'viewport', 'legs']
+  });
+  const converted = (routes || []).slice(0, 3).filter((item) => item.path?.length).map(convertGoogleRoute);
+  if (!converted.length) throw new Error('Google route geometry is empty');
+  return converted;
+}
+
+export async function computeGoogleRoute(
+  from: Coordinate,
+  to: Coordinate,
+  language: 'zh' | 'en'
+): Promise<Route> {
+  return (await computeGoogleRoutes(from, to, language))[0]!;
 }
