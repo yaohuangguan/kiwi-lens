@@ -629,12 +629,24 @@ function clearDestination() {
   destination = null;
   destinationName = '';
   route = null;
+  drivingAlternatives = [];
+  selectedDrivingRoute = 0;
+  routePlan = null;
+  selectedTravelMode = 'drive';
+  routeStops.splice(0, routeStops.length);
   routeCameras = [];
   lastTurnKey = '';
   spokenCameras.clear();
 
   ($('destinationInput') as HTMLInputElement).value = '';
   $('searchResults').hidden = true;
+  $('stopEditor').hidden = true;
+  $('travelModes').hidden = true;
+  $('routeAlternatives').hidden = true;
+  $('routeInfoCards').hidden = true;
+  $('planningActions').hidden = true;
+  $('navTrafficCard').hidden = true;
+  renderStops();
   $('clearDestinationButton').hidden = true;
   ($('driveButton') as HTMLButtonElement).disabled = true;
 
@@ -656,6 +668,26 @@ function clearDestination() {
   map.clearRoute();
   renderCameras();
   if (current) map.setView(current, 15);
+}
+
+function saveCurrentRoute() {
+  if (!destination || !destinationName) return;
+  const saved = JSON.parse(localStorage.getItem('kiwi-saved-routes') || '[]') as unknown[];
+  const record = {
+    savedAt: new Date().toISOString(),
+    destinationName,
+    destination,
+    mode: selectedTravelMode,
+    stops: routeStops.map((stop) => ({ label: stop.label, coordinate: stop.coordinate })),
+    distance: selectedTravelMode === 'drive' ? route?.distance ?? null : selectedPlannerOption()?.distanceMeters ?? null,
+    duration: selectedTravelMode === 'drive' ? route?.duration ?? null : selectedPlannerOption()?.durationSeconds ?? null
+  };
+  const next = [record, ...saved.filter((item) => {
+    if (!item || typeof item !== 'object') return true;
+    return (item as { destinationName?: string }).destinationName !== destinationName;
+  })].slice(0, 20);
+  localStorage.setItem('kiwi-saved-routes', JSON.stringify(next));
+  toast(language === 'zh' ? '路线已保存到此设备' : 'Route saved on this device');
 }
 
 function speak(message: string) {
@@ -752,6 +784,10 @@ function updateGuidance() {
   $('navArrival').textContent = $('turnEta').textContent;
   if (maneuver) {
     const toTurn = maneuver.along - progress;
+    if (following) {
+      const zoom = toTurn < 45 ? 19.2 : toTurn < 140 ? 18.4 : 17.2;
+      map.focusNavigation(lookAheadCenter(current, latestHeading, route), zoom);
+    }
     const key = `${maneuver.step.location.join(',')}:${toTurn <= 100 ? '100' : '500'}`;
     if (toTurn > 0 && toTurn <= 500 && key !== lastTurnKey) {
       lastTurnKey = key;
@@ -1049,10 +1085,12 @@ function initBottomSheet() {
 
 $('originInput').addEventListener('focus', () => { searchTarget = 'origin'; });
 $('destinationInput').addEventListener('focus', () => { searchTarget = 'destination'; });
-for (const [id, target] of [['originInput', 'origin'], ['destinationInput', 'destination']] as const) {
+$('stopInput').addEventListener('focus', () => { searchTarget = 'stop'; $('stopEditor').hidden = false; });
+for (const [id, target] of [['originInput', 'origin'], ['destinationInput', 'destination'], ['stopInput', 'stop']] as const) {
   $(id).addEventListener('keydown', (event) => { if ((event as KeyboardEvent).key === 'Enter') { (event.target as HTMLInputElement).blur(); void search(target); } });
 }
 $('searchButton').onclick = () => void search('destination');
+$('stopSearchButton').onclick = () => void search('stop');
 initAutocomplete({
   origin: $('originInput') as HTMLInputElement,
   destination: $('destinationInput') as HTMLInputElement,
@@ -1082,6 +1120,18 @@ $('useGpsButton').onclick = () => {
   if (destination) void planRoute();
 };
 $('clearDestinationButton').onclick = clearDestination;
+$('addStopButton').onclick = () => {
+  $('stopEditor').hidden = false;
+  ($('stopInput') as HTMLInputElement).focus();
+};
+$('saveRouteButton').onclick = saveCurrentRoute;
+$('travelModes').addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-mode]');
+  if (!button || button.disabled) return;
+  selectedTravelMode = button.dataset.mode as TravelMode;
+  if (selectedTravelMode === 'drive') applyDrivingRoute(selectedDrivingRoute);
+  renderRoutePlanner();
+});
 $('driveButton').onclick = () => navigating ? stopNavigation() : void startNavigation();
 $('navEndButton').onclick = () => stopNavigation();
 $('navDataButton').onclick = () => showOverlay('dataOverlay');
@@ -1117,6 +1167,12 @@ $('navLanesChip').onclick = () => {
   updateGuidance();
 };
 $('navGpsChip').onclick = () => { if (current) ($('recenterButton') as HTMLButtonElement).click(); else requestGps(); };
+$('navOverviewChip').onclick = () => {
+  if (!route) return;
+  following = false;
+  $('followButton').classList.remove('active');
+  map.fitRoute(route);
+};
 $('navSheetHandle').onclick = () => {
   const expanded = $('navSecondary').hidden;
   $('navSecondary').hidden = !expanded;
