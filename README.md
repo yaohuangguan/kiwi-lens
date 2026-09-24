@@ -50,9 +50,9 @@ pnpm mobile:build:apk
 
 首次运行前仍需安装 Flutter SDK、Android SDK，并在 Android Studio Device Manager 至少创建一个 AVD。Google 地图/导航功能还需要在 `apps/mobile/android/local.properties` 配置 `MAPS_API_KEY`；没有有效 Key 时应用可以启动，但 Google 地图/导航能力不会正常工作。
 
-Web Google Maps 配置复制 `apps/web/.env.example` 到 `apps/web/.env.local`，填写 `VITE_GOOGLE_MAPS_API_KEY`。浏览器 API Key 会出现在客户端，这是 Google Maps Web 的正常工作方式，因此必须在 Google Cloud 中限制 **HTTP referrer**，并只允许项目实际使用的 Maps JavaScript / Places / Routes 能力。可选配置 `VITE_GOOGLE_MAP_ID`；未配置时开发阶段使用 `DEMO_MAP_ID`。
+Web/PWA 不再依赖任何 `VITE_GOOGLE_*` 构建变量。Google Maps 浏览器 Key 由 Cloudflare Worker 的 `GOOGLE_MAPS_BROWSER_API_KEY` runtime binding 通过同域 `/api/config` 提供；因此 GitHub Actions、本机部署和 Cloudflare 部署使用同一套运行时配置，不会再出现本机可用、CI 构建后 Key 丢失的问题。浏览器 API Key 最终仍会发送到客户端，这是 Google Maps JavaScript API 的正常工作方式，所以必须在 Google Cloud 中启用 **HTTP referrer** 限制，并只允许项目实际使用的 Maps JavaScript / Places / Routes 能力。
 
-当前生产 Worker/PWA 地址是 `https://kiwi-lens.nzs.workers.dev`。同域部署时保持 `VITE_API_BASE_URL` 为空；其他域名托管的 Web 前端才指向这个 Worker。Google Maps 的 `RefererNotAllowedMapError` 不是 Worker CORS：请在 Google Cloud Console 的 **网页 API Key → Application restrictions → Websites** 添加 `https://kiwi-lens.nzs.workers.dev/*`（本地开发另加 `http://localhost:5173/*`），并启用 Maps JavaScript API、Places API、Routes API 与 Billing。不要取消 Key 限制。iOS Navigation SDK 使用独立的 iOS bundle ID 限制 Key。
+当前生产 Worker/PWA 地址是 `https://kiwi-lens.nzs.workers.dev`。Google Maps 的 `RefererNotAllowedMapError` 不是 Worker CORS：请在 Google Cloud Console 的 **网页 API Key → Application restrictions → Websites** 添加 `https://kiwi-lens.nzs.workers.dev/*`（本地开发另加 `http://localhost:5173/*`），并启用 Maps JavaScript API、Places API、Routes API 与 Billing。不要取消 Key 限制。iOS Navigation SDK 使用独立的 iOS bundle ID 限制 Key。
 
 地址补全等公开 GET API 支持跨域读取；账号登录/资料仍要求与 Worker 同域，以维持 SameSite cookie 和 CSRF 保护。更换 Worker 域名后请从新地址安装 PWA，旧域名的 Service Worker 不会自动迁移。
 
@@ -83,11 +83,12 @@ pnpm install
 pnpm exec wrangler login
 pnpm exec wrangler whoami
 pnpm db:migrate:remote
+pnpm exec wrangler secret put GOOGLE_MAPS_BROWSER_API_KEY
 pnpm exec wrangler secret put GOOGLE_ROUTES_API_KEY
 pnpm deploy
 ```
 
-`GOOGLE_ROUTES_API_KEY` is used by the Worker for multimodal route previews, live-traffic summaries, transit legs/transfers, and intermediate-stop planning. Use a server-side key restricted to the Routes API; do not reuse or commit the browser Maps key.
+`GOOGLE_MAPS_BROWSER_API_KEY` is the HTTP-referrer-restricted browser key returned by `/api/config` for Maps JavaScript/Places/Routes. `GOOGLE_ROUTES_API_KEY` stays server-side and is used by the Worker for multimodal route previews, live-traffic summaries, transit legs/transfers, and intermediate-stop planning. Do not reuse the unrestricted server key in the browser.
 
 本地开发首次使用账号功能前执行：
 
@@ -111,19 +112,6 @@ pnpm exec wrangler kv namespace create CAMERA_DATA
 
 然后把返回的 namespace ID 填入 `wrangler.jsonc`。本地 `wrangler dev` 使用本地 KV/D1，与线上数据分离。
 
-### 可选：Web 单独部署到 Vercel
-
-`apps/web` 本身是 Vite SPA，可以单独部署到 Vercel，但它仍依赖 Cloudflare Worker API。推荐生产环境仍使用 Cloudflare 同域方案。
-
-如果需要 Vercel Preview：
-
-1. Vercel Root Directory 设为 `apps/web`。
-2. Build Command 使用 `pnpm build`，Output Directory 使用 `dist`。
-3. 增加环境变量 `VITE_API_BASE_URL=https://<your-worker>.workers.dev`。
-4. Worker API 允许跨域 GET 请求。
-
-不设置 `VITE_API_BASE_URL` 时，Web 默认使用同域 `/api/*`，适用于 Cloudflare full-stack 部署。
-
 ## 导航能力与限制
 
 - 浏览器前台 Geolocation 实时跟随位置，使用 Screen Wake Lock 尽可能保持屏幕唤醒。
@@ -139,6 +127,7 @@ pnpm exec wrangler kv namespace create CAMERA_DATA
 
 本地 Worker 默认监听 `http://localhost:8787`，生产环境同域提供 PWA 与 API。字段见 [OpenAPI 契约](packages/contracts/openapi.yaml)。
 
+- `GET /api/config`：PWA 运行时 Google Maps 浏览器配置
 - `GET /api/health`：服务状态与摄像头数量
 - `GET /api/cameras`：完整摄像头数据、更新时间和同步状态
 - `GET /api/search?q=Auckland`：新西兰地址搜索
