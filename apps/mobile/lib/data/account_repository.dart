@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
@@ -9,6 +10,8 @@ import 'api_config.dart';
 class AccountProfile {
   const AccountProfile({
     required this.email,
+    required this.displayName,
+    required this.providers,
     required this.routes,
     required this.places,
     required this.reviews,
@@ -16,6 +19,8 @@ class AccountProfile {
   });
 
   final String email;
+  final String displayName;
+  final List<String> providers;
   final List<Map<String, dynamic>> routes;
   final List<Map<String, dynamic>> places;
   final List<Map<String, dynamic>> reviews;
@@ -28,6 +33,15 @@ class AccountProfile {
             .toList(growable: false);
     return AccountProfile(
       email: (json['user'] as Map<String, dynamic>?)?['email'] as String? ?? '',
+      displayName:
+          (json['user'] as Map<String, dynamic>?)?['displayName'] as String? ??
+          '',
+      providers:
+          ((json['user'] as Map<String, dynamic>?)?['providers']
+                      as List<dynamic>? ??
+                  const [])
+              .whereType<String>()
+              .toList(),
       routes: list('routeHistory'),
       places: list('savedPlaces'),
       reviews: list('reviews'),
@@ -42,6 +56,9 @@ class AccountRepository extends ChangeNotifier {
       _storage = storage ?? const FlutterSecureStorage();
 
   static const _storageKey = 'kiwi_lens_session';
+  Future<void>? _googleReady;
+  Future<void> _initializeGoogle() =>
+      _googleReady ??= GoogleSignIn.instance.initialize();
   final http.Client _client;
   final FlutterSecureStorage _storage;
   String? _session;
@@ -131,12 +148,86 @@ class AccountRepository extends ChangeNotifier {
     }
   }
 
+  Future<void> authenticateWithGoogle({bool link = false}) async {
+    loading = true;
+    notifyListeners();
+    try {
+      await _initializeGoogle();
+      if (!GoogleSignIn.instance.supportsAuthenticate()) {
+        throw StateError('Google sign-in is unavailable on this device');
+      }
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw StateError('Google did not return an ID token');
+      }
+      final response = await _request(
+        link ? '/api/auth/google/link' : '/api/auth/google',
+        method: 'POST',
+        body: {'idToken': idToken},
+      );
+      final next = AccountProfile.fromJson(_body(response));
+      if (!link) {
+        final cookie = response.headers['set-cookie'] ?? '';
+        final match = RegExp(r'(?:^|;\s*)kiwi_session=([0-9a-f]{64})')
+            .firstMatch(cookie);
+        if (match == null) throw StateError('Sign-in session was not returned');
+        _session = match.group(1);
+        await _storage.write(key: _storageKey, value: _session);
+      }
+      profile = next;
+      notifyListeners();
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateDisplayName(String name) async {
+    if (_session == null) throw StateError('Sign in to edit your profile');
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile/details',
+          method: 'PATCH',
+          body: {'displayName': name.trim()},
+        ),
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<void> updatePreferences({
+    required String language,
+    required bool voiceEnabled,
+  }) async {
+    if (_session == null) return;
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile',
+          method: 'PATCH',
+          body: {
+            'language': language == 'zh-CN' ? 'zh' : 'en',
+            'voiceEnabled': voiceEnabled,
+          },
+        ),
+      ),
+    );
+    notifyListeners();
+  }
+
   Future<void> signOut() async {
     try {
       await _request('/api/auth/logout', method: 'POST');
     } catch (_) {}
     _session = null;
     profile = null;
+    if (_googleReady != null) {
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {}
+    }
     await _storage.delete(key: _storageKey);
     notifyListeners();
   }

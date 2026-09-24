@@ -4,6 +4,10 @@ import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
 import 'package:kiwi_lens_mobile/widgets/navigation_overlay.dart';
 
 void main() {
+  test('navigation distances never show negative metres', () {
+    expect(navigationDistanceLabel(-25), '0 m');
+    expect(navigationDistanceLabel(1500), '1.5 km');
+  });
   testWidgets('compact navigation layout fits a small iPhone and expands', (
     tester,
   ) async {
@@ -39,6 +43,7 @@ void main() {
                   onDirections: () {},
                   onShare: () {},
                   onSettings: () {},
+                  onLayers: () {},
                   onVoiceToggle: () {},
                   onLanesToggle: () {},
                 ),
@@ -57,5 +62,12 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.text('Add a report'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const Key('navigationSheetSurface')),
+      const Offset(0, 170),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Add a report'), findsNothing);
   });
 }

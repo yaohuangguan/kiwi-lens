@@ -130,6 +130,25 @@ me.samyao.kiwilens
 
 `Secrets.xcconfig` 已被 Git 忽略。
 
+### Google 登录
+
+Google 登录需要在同一 Google Cloud 项目的 Auth Platform 中创建两个 OAuth 2.0 客户端：
+
+1. **iOS 客户端**：Bundle ID 使用 `me.samyao.kiwilens`。复制 Client ID，并按 Google 提供的 reversed client ID 填写 URL scheme。
+2. **Web application 客户端**：作为服务端 ID token 的 audience。这里不需要将 client secret 放入移动端或仓库。
+
+在 `ios/Flutter/Secrets.xcconfig` 中填写三个公开标识：
+
+```text
+GOOGLE_IOS_CLIENT_ID=...apps.googleusercontent.com
+GOOGLE_SERVER_CLIENT_ID=...apps.googleusercontent.com
+GOOGLE_REVERSED_CLIENT_ID=com.googleusercontent.apps....
+```
+
+Cloudflare Worker 还需配置 `GOOGLE_OAUTH_CLIENT_IDS`，值为允许的 Web 与 iOS Client ID（英文逗号分隔），然后执行 D1 迁移 `0004_google_identity.sql` 并部署 Worker。缺少该配置时，Google 登录端点会明确报未配置，不会接受未经验证的 ID token。请勿填写或提交 OAuth client secret。
+
+首次登录的 Google 身份会创建 Kiwi Lens 账户；已经用邮箱密码注册的账户，需要先用密码登录，再在“我的”页面显式关联同邮箱 Google 账户，不会仅凭邮箱自动合并。iOS 上正式上架前，还要确认 Apple 的第三方登录审核要求，并按需提供 Sign in with Apple。
+
 #### 自己的 iPhone 免费安装
 
 WSL 可以完成代码开发、测试和 Android 构建，但 iOS 最终编译、签名和安装必须在 macOS + Xcode 上完成。测试自己的 iPhone 不要求先加入付费 Apple Developer Program；可以在 Xcode 登录普通 Apple Account，并使用自动生成的 Personal Team 做开发签名。
@@ -180,7 +199,7 @@ DriveEngine
 Kiwi Lens Drive HUD
 ```
 
-当前 Drive Mode 即使没有设置目的地也可以启动。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 500 m 和 150 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 会继续消费 Google NavInfo，显示转弯、剩余距离和可用的推荐车道。
+当前 Drive Mode 即使没有设置目的地也可以启动。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 800 m 和 300 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 会继续消费 Google NavInfo，显示转弯、剩余距离和可用的推荐车道。
 
 摄像头数据目前没有执法方向，因此 Free Drive 的匹配策略刻意保守：优先前进方向锥形范围内的摄像头，避免侧路或身后的明显误报。真实驾驶测试后再调提醒距离与 heading 阈值。
 

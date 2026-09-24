@@ -1,4 +1,5 @@
 import { pbkdf2, scrypt } from 'node:crypto';
+import { verifyGoogleIdToken } from './google_token.mjs';
 
 const encoder = new TextEncoder();
 const COOKIE_NAME = 'kiwi_session';
@@ -89,7 +90,9 @@ async function userFromRequest(db, request) {
 }
 
 async function userProfile(db, user) {
-  const profile = await db.prepare('SELECT language, voice_enabled FROM profiles WHERE user_id = ?').bind(user.id).first();
+  const profile = await db.prepare('SELECT language, voice_enabled, display_name FROM profiles WHERE user_id = ?').bind(user.id).first();
+  const googleIdentity = await db.prepare('SELECT google_sub FROM google_identities WHERE user_id = ?').bind(user.id).first();
+  const passwordUser = await db.prepare('SELECT password_hash FROM users WHERE id = ?').bind(user.id).first();
   const recent = await db.prepare(`SELECT label, latitude, longitude FROM recent_destinations
     WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20`).bind(user.id).all();
   const saved = await db.prepare(`SELECT place_id AS placeId, name, address, latitude, longitude,
@@ -105,7 +108,9 @@ async function userProfile(db, user) {
     rating, comment, updated_at AS updatedAt
     FROM place_reviews WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100`).bind(user.id).all();
   return {
-    user: { id: user.id, email: user.email },
+    user: { id: user.id, email: user.email, displayName: profile?.display_name || '', providers: [
+      ...(passwordUser?.password_hash ? ['password'] : []), ...(googleIdentity ? ['google'] : [])
+    ] },
     language: profile?.language === 'zh' ? 'zh' : 'en',
     voiceEnabled: profile?.voice_enabled !== 0,
     recentDestinations: recent.results || [],
@@ -200,6 +205,39 @@ export async function handleAccount(request, env) {
     return issueSession(db, user, request);
   }
 
+  if (path === '/api/auth/google' && request.method === 'POST') {
+    if (!env.GOOGLE_OAUTH_CLIENT_IDS) return response({ error: 'Google sign-in is not configured' }, 503);
+    const body = await readBody(request);
+    let identity;
+    try {
+      identity = await verifyGoogleIdToken(body?.idToken, env.GOOGLE_OAUTH_CLIENT_IDS);
+    } catch {
+      return response({ error: 'Google sign-in could not be verified' }, 401);
+    }
+    if (!validEmail(identity.email)) return response({ error: 'Google email is unavailable' }, 401);
+    const linked = await db.prepare(`SELECT users.id, users.email FROM google_identities
+      JOIN users ON users.id = google_identities.user_id WHERE google_sub = ?`).bind(identity.sub).first();
+    if (linked) return issueSession(db, linked, request);
+    // Never take over a password account based solely on an email claim.
+    const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(identity.email).first();
+    if (existing) return response({ error: 'This email already has an account. Sign in with email first, then link Google in My Account.' }, 409);
+    const user = { id: crypto.randomUUID(), email: identity.email };
+    try {
+      await db.batch([
+        db.prepare('INSERT INTO users (id, email, password_salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+          .bind(user.id, user.email, '', '', Date.now()),
+        db.prepare('INSERT INTO profiles (user_id, language, voice_enabled, display_name) VALUES (?, ?, ?, ?)')
+          .bind(user.id, 'en', 1, identity.name),
+        db.prepare('INSERT INTO google_identities (google_sub, user_id, created_at) VALUES (?, ?, ?)')
+          .bind(identity.sub, user.id, Date.now())
+      ]);
+    } catch (error) {
+      if (/UNIQUE/i.test(String(error))) return response({ error: 'Google account is already linked. Try signing in again.' }, 409);
+      throw error;
+    }
+    return issueSession(db, user, request);
+  }
+
   if (path === '/api/auth/logout' && request.method === 'POST') {
     const token = sessionToken(request);
     if (token) await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await digest(token)).run();
@@ -209,6 +247,31 @@ export async function handleAccount(request, env) {
   const user = await userFromRequest(db, request);
   if (!user) return response({ error: 'Not signed in' }, 401);
   if ((path === '/api/auth/me' || path === '/api/profile') && request.method === 'GET') {
+    return response(await userProfile(db, user));
+  }
+  if (path === '/api/auth/google/link' && request.method === 'POST') {
+    if (!env.GOOGLE_OAUTH_CLIENT_IDS) return response({ error: 'Google sign-in is not configured' }, 503);
+    const body = await readBody(request);
+    let identity;
+    try {
+      identity = await verifyGoogleIdToken(body?.idToken, env.GOOGLE_OAUTH_CLIENT_IDS);
+    } catch {
+      return response({ error: 'Google sign-in could not be verified' }, 401);
+    }
+    if (identity.email !== user.email) return response({ error: 'Google email must match your account email' }, 409);
+    const existing = await db.prepare('SELECT user_id FROM google_identities WHERE google_sub = ?').bind(identity.sub).first();
+    if (existing && existing.user_id !== user.id) return response({ error: 'Google account is linked elsewhere' }, 409);
+    const already = await db.prepare('SELECT google_sub FROM google_identities WHERE user_id = ?').bind(user.id).first();
+    if (already && already.google_sub !== identity.sub) return response({ error: 'A different Google account is already linked' }, 409);
+    if (!already) await db.prepare('INSERT INTO google_identities (google_sub, user_id, created_at) VALUES (?, ?, ?)')
+      .bind(identity.sub, user.id, Date.now()).run();
+    return response(await userProfile(db, user));
+  }
+  if (path === '/api/profile/details' && request.method === 'PATCH') {
+    const body = await readBody(request);
+    const displayName = typeof body?.displayName === 'string' ? body.displayName.trim() : null;
+    if (displayName === null || displayName.length > 100) return response({ error: 'Display name must be at most 100 characters' }, 400);
+    await db.prepare('UPDATE profiles SET display_name = ? WHERE user_id = ?').bind(displayName, user.id).run();
     return response(await userProfile(db, user));
   }
   if (path === '/api/profile' && request.method === 'PATCH') {

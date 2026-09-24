@@ -7,10 +7,11 @@ import '../drive/drive_engine.dart';
 const _ink = Color(0xFF0B1717);
 const _lime = Color(0xFFC8F169);
 
-String _distance(num? metres) {
-  if (metres == null) return '—';
-  if (metres >= 1000) return '${(metres / 1000).toStringAsFixed(1)} km';
-  return '${metres.round()} m';
+String navigationDistanceLabel(num? metres) {
+  if (metres == null || !metres.isFinite) return '—';
+  final safe = metres < 0 ? 0 : metres;
+  if (safe >= 1000) return '${(safe / 1000).toStringAsFixed(1)} km';
+  return '${safe.round()} m';
 }
 
 IconData _maneuverIcon(Maneuver? maneuver) {
@@ -40,6 +41,7 @@ class NavigationOverlay extends StatefulWidget {
     required this.onDirections,
     required this.onShare,
     required this.onSettings,
+    required this.onLayers,
     required this.onVoiceToggle,
     required this.onLanesToggle,
   });
@@ -59,6 +61,7 @@ class NavigationOverlay extends StatefulWidget {
   final VoidCallback onDirections;
   final VoidCallback onShare;
   final VoidCallback onSettings;
+  final VoidCallback onLayers;
   final VoidCallback onVoiceToggle;
   final VoidCallback onLanesToggle;
 
@@ -68,6 +71,14 @@ class NavigationOverlay extends StatefulWidget {
 
 class _NavigationOverlayState extends State<NavigationOverlay> {
   bool expanded = false;
+  double _sheetDrag = 0;
+
+  void _settleSheet(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final movement = _sheetDrag.abs() > 24 ? _sheetDrag : velocity / 12;
+    if (movement.abs() > 24) setState(() => expanded = movement < 0);
+    _sheetDrag = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +91,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     final arrival = remainingSeconds == null
         ? '—'
         : TimeOfDay.fromDateTime(
-            DateTime.now().add(Duration(seconds: remainingSeconds)),
+            DateTime.now().add(
+              Duration(seconds: remainingSeconds.clamp(0, 86400)),
+            ),
           ).format(context);
     final speeding =
         widget.engine.speedLimitKph != null &&
@@ -118,7 +131,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            _distance(nav?.distanceToCurrentStepMeters),
+                            navigationDistanceLabel(
+                              nav?.distanceToCurrentStepMeters,
+                            ),
                             style: const TextStyle(
                               color: _lime,
                               fontSize: 25,
@@ -155,7 +170,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                           ),
                         ),
                         Text(
-                          _distance(nav?.distanceToFinalDestinationMeters),
+                          navigationDistanceLabel(
+                            nav?.distanceToFinalDestinationMeters,
+                          ),
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 11,
@@ -263,6 +280,12 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     tooltip: 'Recenter',
                     onTap: widget.onRecenter,
                   ),
+                  const SizedBox(height: 9),
+                  _MapControl(
+                    icon: Icons.layers_rounded,
+                    tooltip: 'Map layers',
+                    onTap: widget.onLayers,
+                  ),
                 ],
               ),
             ),
@@ -360,7 +383,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Camera · ${_distance(cameraDistance)}',
+                              'Camera · ${navigationDistanceLabel(cameraDistance)}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 14,
@@ -388,164 +411,177 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
             left: 0,
             right: 0,
             child: PointerInterceptor(
-              child: Material(
-                color: Colors.white,
-                elevation: 18,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(27),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, 5, 16, bottomInset + 15),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      InkWell(
-                        key: const Key('navigationSheetHandle'),
-                        onTap: () => setState(() => expanded = !expanded),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 7),
-                          child: Container(
-                            width: 51,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFD0D8D2),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Row(
+              child: GestureDetector(
+                key: const Key('navigationSheetSurface'),
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: (_) => _sheetDrag = 0,
+                onVerticalDragUpdate: (details) =>
+                    _sheetDrag += details.delta.dy,
+                onVerticalDragEnd: _settleSheet,
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.bottomCenter,
+                  child: Material(
+                    color: Colors.white,
+                    elevation: 18,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(27),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 5, 16, bottomInset + 15),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: Text(
-                              widget.destinationTitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w900,
+                          InkWell(
+                            key: const Key('navigationSheetHandle'),
+                            onTap: () => setState(() => expanded = !expanded),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              child: Container(
+                                width: 51,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD0D8D2),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          FilledButton.icon(
-                            onPressed: widget.onEnd,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: _lime,
-                              foregroundColor: _ink,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  widget.destinationTitle,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              FilledButton.icon(
+                                onPressed: widget.onEnd,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _lime,
+                                  foregroundColor: _ink,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                icon: const Icon(Icons.stop_rounded, size: 18),
+                                label: const Text('End navigation'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          const Divider(height: 1),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              children: [
+                                _TripStat(
+                                  label: 'Cameras on route',
+                                  value: '${widget.engine.routeCameraCount}',
+                                ),
+                                _TripStat(
+                                  label: 'Distance',
+                                  value: navigationDistanceLabel(
+                                    nav?.distanceToFinalDestinationMeters,
+                                  ),
+                                ),
+                                _TripStat(label: 'Arrival', value: arrival),
+                              ],
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _Chip(
+                                icon: widget.voiceEnabled
+                                    ? Icons.volume_up_rounded
+                                    : Icons.volume_off_rounded,
+                                label: widget.voiceEnabled
+                                    ? 'Voice ✓'
+                                    : 'Voice off',
+                                onTap: widget.onVoiceToggle,
+                              ),
+                              const SizedBox(width: 6),
+                              _Chip(
+                                icon: Icons.alt_route_rounded,
+                                label: widget.lanesEnabled
+                                    ? 'Lanes ✓'
+                                    : 'Lanes off',
+                                onTap: widget.onLanesToggle,
+                              ),
+                              const SizedBox(width: 6),
+                              _Chip(
+                                icon: Icons.gps_fixed_rounded,
+                                label: widget.gpsAccuracy == null
+                                    ? 'GPS —'
+                                    : 'GPS ±${widget.gpsAccuracy!.round()} m',
+                                onTap: widget.onRecenter,
+                              ),
+                            ],
+                          ),
+                          if (expanded) ...[
+                            const SizedBox(height: 15),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Trip tools',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
                               ),
                             ),
-                            icon: const Icon(Icons.stop_rounded, size: 18),
-                            label: const Text('End navigation'),
-                          ),
+                            const SizedBox(height: 9),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _ActionButton(
+                                  icon: Icons.add_a_photo_rounded,
+                                  label: 'Add a report',
+                                  onTap: widget.onReport,
+                                ),
+                                _ActionButton(
+                                  icon: Icons.share_rounded,
+                                  label: 'Share ETA snapshot',
+                                  onTap: widget.onShare,
+                                ),
+                                _ActionButton(
+                                  icon: Icons.search_rounded,
+                                  label: 'Search along route',
+                                  onTap: widget.onSearchAlongRoute,
+                                ),
+                                _ActionButton(
+                                  icon: Icons.route_rounded,
+                                  label: 'Preview route',
+                                  onTap: widget.onOverview,
+                                ),
+                                _ActionButton(
+                                  icon: Icons.list_alt_rounded,
+                                  label: 'Directions',
+                                  onTap: widget.onDirections,
+                                ),
+                                _ActionButton(
+                                  icon: Icons.settings_rounded,
+                                  label: 'Settings',
+                                  onTap: widget.onSettings,
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      const Divider(height: 1),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Row(
-                          children: [
-                            _TripStat(
-                              label: 'Cameras on route',
-                              value: '${widget.engine.routeCameraCount}',
-                            ),
-                            _TripStat(
-                              label: 'Distance',
-                              value: _distance(
-                                nav?.distanceToFinalDestinationMeters,
-                              ),
-                            ),
-                            _TripStat(label: 'Arrival', value: arrival),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          _Chip(
-                            icon: widget.voiceEnabled
-                                ? Icons.volume_up_rounded
-                                : Icons.volume_off_rounded,
-                            label: widget.voiceEnabled
-                                ? 'Voice ✓'
-                                : 'Voice off',
-                            onTap: widget.onVoiceToggle,
-                          ),
-                          const SizedBox(width: 6),
-                          _Chip(
-                            icon: Icons.alt_route_rounded,
-                            label: widget.lanesEnabled
-                                ? 'Lanes ✓'
-                                : 'Lanes off',
-                            onTap: widget.onLanesToggle,
-                          ),
-                          const SizedBox(width: 6),
-                          _Chip(
-                            icon: Icons.gps_fixed_rounded,
-                            label: widget.gpsAccuracy == null
-                                ? 'GPS —'
-                                : 'GPS ±${widget.gpsAccuracy!.round()} m',
-                            onTap: widget.onRecenter,
-                          ),
-                        ],
-                      ),
-                      if (expanded) ...[
-                        const SizedBox(height: 15),
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Trip tools',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 9),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _ActionButton(
-                              icon: Icons.add_a_photo_rounded,
-                              label: 'Add a report',
-                              onTap: widget.onReport,
-                            ),
-                            _ActionButton(
-                              icon: Icons.share_rounded,
-                              label: 'Share ETA snapshot',
-                              onTap: widget.onShare,
-                            ),
-                            _ActionButton(
-                              icon: Icons.search_rounded,
-                              label: 'Search along route',
-                              onTap: widget.onSearchAlongRoute,
-                            ),
-                            _ActionButton(
-                              icon: Icons.route_rounded,
-                              label: 'Preview route',
-                              onTap: widget.onOverview,
-                            ),
-                            _ActionButton(
-                              icon: Icons.list_alt_rounded,
-                              label: 'Directions',
-                              onTap: widget.onDirections,
-                            ),
-                            _ActionButton(
-                              icon: Icons.settings_rounded,
-                              label: 'Settings',
-                              onTap: widget.onSettings,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
               ),

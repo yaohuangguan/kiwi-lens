@@ -262,10 +262,31 @@ class _ExploreSearchState extends State<ExploreSearch> {
                 const Divider(height: 19),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.crop_square_rounded,
-                      size: 19,
-                      color: Color(0xFF9ACF45),
+                    Semantics(
+                      label: 'Destination',
+                      child: Container(
+                        key: const Key('destinationSearchIcon'),
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFC8F169),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: const Color(0xFF477B36),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF153B32),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 11),
                     Expanded(
