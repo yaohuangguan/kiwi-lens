@@ -160,7 +160,14 @@ async function handleApi(request, env, ctx) {
     const from = validateCoordinatePair(url.searchParams.get('from'));
     const to = validateCoordinatePair(url.searchParams.get('to'));
     if (!from || !to) return json({ error: 'Valid NZ coordinates required' }, 400);
-    const routeUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${from.join(',')};${to.join(',')}?overview=full&geometries=geojson&steps=true`;
+    const stops = (url.searchParams.get('stops') || '')
+      .split(';')
+      .filter(Boolean)
+      .map((value) => validateCoordinatePair(value))
+      .filter(Boolean);
+    if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
+    const points = [from, ...stops, to];
+    const routeUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}?overview=full&geometries=geojson&steps=true`;
     const result = await upstreamJson(routeUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
     if (result.code !== 'Ok' || !result.routes?.length) return json({ error: 'No driving route found' }, 422);
     const selected = result.routes[0];
