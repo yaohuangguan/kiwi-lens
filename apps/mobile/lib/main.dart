@@ -339,8 +339,13 @@ class _MapHomePageState extends State<MapHomePage> {
               ]
             : route.trafficIntervals;
         for (final interval in intervals) {
-          final start = interval.startPolylinePointIndex.clamp(0, route.points.length - 1);
-          final end = interval.endPolylinePointIndex.clamp(start + 1, route.points.length - 1);
+          final start = interval.startPolylinePointIndex
+              .clamp(0, route.points.length - 1)
+              .toInt();
+          if (start >= route.points.length - 1) continue;
+          final end = interval.endPolylinePointIndex
+              .clamp(start + 1, route.points.length - 1)
+              .toInt();
           final segment = route.points.sublist(start, end + 1);
           if (segment.length < 2) continue;
           options.add(PolylineOptions(
