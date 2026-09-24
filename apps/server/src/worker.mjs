@@ -2,6 +2,7 @@ import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
 import { handleAccount } from './auth.mjs';
 import { handlePlaces } from './places.mjs';
+import { routeOptions } from './routes.mjs';
 
 const CAMERA_KEY = 'cameras/current';
 let lastSearchAt = 0;
@@ -132,6 +133,12 @@ async function handleApi(request, env, ctx) {
       source: 'NZTA National Speed Limit Register',
       sourceUrl: 'https://www.nzta.govt.nz/partners/speed-management/national-speed-limit-register'
     });
+  }
+  if (url.pathname === '/api/route-options') {
+    const from = validateCoordinatePair(url.searchParams.get('from'));
+    const to = validateCoordinatePair(url.searchParams.get('to'));
+    if (!from || !to) return json({ error: 'Valid NZ coordinates required' }, 400);
+    return json(await routeOptions(from, to, env));
   }
   if (url.pathname === '/api/search') {
     const query = (url.searchParams.get('q') || '').trim();
