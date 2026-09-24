@@ -59,6 +59,26 @@ class TransitLeg {
   );
 }
 
+class TrafficInterval {
+  const TrafficInterval({
+    required this.startPolylinePointIndex,
+    required this.endPolylinePointIndex,
+    required this.speed,
+  });
+
+  final int startPolylinePointIndex;
+  final int endPolylinePointIndex;
+  final String speed;
+
+  factory TrafficInterval.fromJson(Map<String, dynamic> json) => TrafficInterval(
+    startPolylinePointIndex:
+        (json['startPolylinePointIndex'] as num?)?.round() ?? 0,
+    endPolylinePointIndex:
+        (json['endPolylinePointIndex'] as num?)?.round() ?? 0,
+    speed: json['speed'] as String? ?? 'normal',
+  );
+}
+
 class TrafficSummary {
   const TrafficSummary({
     required this.normal,
@@ -88,6 +108,7 @@ class RouteOption {
     required this.points,
     required this.provider,
     required this.traffic,
+    required this.trafficIntervals,
     this.staticDurationSeconds,
     this.trafficDelaySeconds,
     this.routeToken,
@@ -110,6 +131,7 @@ class RouteOption {
   final List<String> warnings;
   final List<TransitLeg> transit;
   final TrafficSummary traffic;
+  final List<TrafficInterval> trafficIntervals;
   final String provider;
 
   factory RouteOption.fromJson(Map<String, dynamic> json) {
@@ -143,6 +165,10 @@ class RouteOption {
           .map(TransitLeg.fromJson)
           .toList(growable: false),
       traffic: TrafficSummary.fromJson(json['traffic'] as Map<String, dynamic>?),
+      trafficIntervals: (json['trafficIntervals'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TrafficInterval.fromJson)
+          .toList(growable: false),
       provider: json['provider'] as String? ?? 'unknown',
     );
   }
