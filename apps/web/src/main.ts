@@ -380,7 +380,16 @@ function renderStops() {
 function selectedPlannerOption(): PlannerRouteOption | null {
   if (!routePlan) return null;
   const options = routePlan.options.filter((option) => option.mode === selectedTravelMode);
+  if (selectedTravelMode === 'drive') return options[selectedDrivingRoute] || options[0] || null;
   return options[0] || null;
+}
+
+function trafficVisuals() {
+  const plannerDriving = routePlan?.options.filter((option) => option.mode === 'drive') || [];
+  return drivingAlternatives.map((item, index) => ({
+    route: item,
+    trafficIntervals: plannerDriving[index]?.trafficIntervals || []
+  }));
 }
 
 function renderRouteInfo(option: PlannerRouteOption | null) {
@@ -427,8 +436,8 @@ function applyDrivingRoute(index: number) {
   route = next;
   routeCameras = matchCamerasToRoute(cameras, route);
   renderCameras();
-  map.renderRouteAlternatives(drivingAlternatives, selectedDrivingRoute);
   map.renderRoute(route, destination, navigating);
+  map.renderTrafficRoutes(trafficVisuals(), selectedDrivingRoute);
   $('tripDistance').textContent = formatDistance(route.distance, language);
   $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
     language === 'zh' ? 'zh-NZ' : 'en-NZ',
@@ -488,7 +497,9 @@ function renderRoutePlanner() {
       alternatives.append(button);
     });
     alternatives.hidden = drivingAlternatives.length < 2;
-    renderRouteInfo(routePlan?.options.find((item) => item.mode === 'drive') || null);
+    renderRouteInfo(selectedPlannerOption());
+    ($('driveButton') as HTMLButtonElement).disabled = drivingAlternatives.length === 0;
+    $('driveLabel').textContent = language === 'zh' ? '开始导航' : 'Start';
     return;
   }
 
@@ -502,6 +513,8 @@ function renderRoutePlanner() {
     alternatives.hidden = false;
     if (destination) {
       const preview = routeFromOption(option);
+      route = preview;
+      routeCameras = [];
       if (preview.coordinates.length >= 2) map.renderRoute(preview, destination, false);
     }
     $('tripDistance').textContent = formatDistance(option.distanceMeters, language);
@@ -509,8 +522,14 @@ function renderRoutePlanner() {
       language === 'zh' ? 'zh-NZ' : 'en-NZ',
       { hour: '2-digit', minute: '2-digit' }
     );
-  } else alternatives.hidden = true;
-  ($('driveButton') as HTMLButtonElement).disabled = true;
+    ($('driveButton') as HTMLButtonElement).disabled = option.points?.length === 0;
+    $('driveLabel').textContent = selectedTravelMode === 'transit'
+      ? (language === 'zh' ? '开始行程' : 'Start trip')
+      : (language === 'zh' ? '开始导航' : 'Start');
+  } else {
+    alternatives.hidden = true;
+    ($('driveButton') as HTMLButtonElement).disabled = true;
+  }
   renderRouteInfo(option);
 }
 
@@ -690,14 +709,34 @@ function saveCurrentRoute() {
   toast(language === 'zh' ? '路线已保存到此设备' : 'Route saved on this device');
 }
 
+function primeVoice() {
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.resume();
+  const probe = new SpeechSynthesisUtterance('');
+  probe.volume = 0;
+  speechSynthesis.speak(probe);
+}
+
 function speak(message: string) {
   if (!voiceEnabled || !('speechSynthesis' in window)) return;
+  speechSynthesis.resume();
   const utterance = new SpeechSynthesisUtterance(message);
   utterance.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
-  utterance.rate = language === 'zh' ? 1.02 : .95;
+  utterance.rate = language === 'zh' ? .95 : .9;
+  utterance.pitch = 1;
   utterance.volume = 1;
+  const voices = speechSynthesis.getVoices();
+  const preferred = voices.find((voice) =>
+    language === 'zh'
+      ? voice.lang.toLowerCase().startsWith('zh')
+      : voice.lang.toLowerCase().startsWith('en-nz')
+  ) || voices.find((voice) => language === 'en' && voice.lang.toLowerCase().startsWith('en'));
+  if (preferred) utterance.voice = preferred;
   speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
+  window.setTimeout(() => {
+    speechSynthesis.resume();
+    speechSynthesis.speak(utterance);
+  }, 30);
 }
 
 function turnText(step: RouteStep) {
@@ -835,8 +874,12 @@ async function startNavigation() {
   map.focusNavigation(lookAhead);
   lastTurnKey = '';
   if (manualOrigin && current) { manualOrigin = null; void planRoute(); }
+  speak(
+    selectedTravelMode === 'transit'
+      ? (language === 'zh' ? '行程开始，请按照换乘信息出行。' : 'Trip started. Follow the transit itinerary.')
+      : (language === 'zh' ? '导航开始，请注意安全。' : 'Navigation started. Travel safely.')
+  );
   try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* browser may deny wake lock */ }
-  speak(language === 'zh' ? '导航开始，请注意安全。' : 'Navigation started. Drive safely.');
   updateGuidance();
 }
 
@@ -1129,10 +1172,18 @@ $('travelModes').addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-mode]');
   if (!button || button.disabled) return;
   selectedTravelMode = button.dataset.mode as TravelMode;
-  if (selectedTravelMode === 'drive') applyDrivingRoute(selectedDrivingRoute);
+  if (selectedTravelMode === 'drive') {
+    applyDrivingRoute(selectedDrivingRoute);
+  } else {
+    routeCameras = [];
+  }
   renderRoutePlanner();
 });
-$('driveButton').onclick = () => navigating ? stopNavigation() : void startNavigation();
+$('driveButton').onclick = () => {
+  primeVoice();
+  if (navigating) stopNavigation();
+  else void startNavigation();
+};
 $('navEndButton').onclick = () => stopNavigation();
 $('navDataButton').onclick = () => showOverlay('dataOverlay');
 $('poiClose').onclick = hidePoiCard;
