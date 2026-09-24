@@ -74,7 +74,7 @@ function toast(message: string) {
   toastTimeout = window.setTimeout(() => { element.hidden = true; }, 4500);
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const API_BASE_URL = '';
 
 async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { signal });
@@ -1314,20 +1314,29 @@ window.addEventListener('kiwi-account-change', () => {
   if (selectedPoi) renderPoiAccountState(selectedPoi);
 });
 
-void map.init({
-  apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-  mapId: import.meta.env.VITE_GOOGLE_MAP_ID || undefined,
-  language,
-  onDragStart: () => {
-    following = false;
-    $('followButton').classList.remove('active');
-  },
-  onMapClick: () => {
-    $('searchResults').hidden = true;
-    hidePoiCard();
-  },
-  onPoiSelected: showPoiCard
-}).catch((error) => {
+async function initializeMap() {
+  const config = await api<{
+    googleMapsApiKey: string;
+    googleMapId: string | null;
+  }>('/api/config');
+
+  await map.init({
+    apiKey: config.googleMapsApiKey,
+    mapId: config.googleMapId || undefined,
+    language,
+    onDragStart: () => {
+      following = false;
+      $('followButton').classList.remove('active');
+    },
+    onMapClick: () => {
+      $('searchResults').hidden = true;
+      hidePoiCard();
+    },
+    onPoiSelected: showPoiCard
+  });
+}
+
+void initializeMap().catch((error) => {
   toast(`Google Maps: ${String((error as Error).message)}`);
 });
 
