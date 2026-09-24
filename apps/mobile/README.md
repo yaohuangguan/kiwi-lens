@@ -31,7 +31,7 @@ pnpm mobile:doctor
 pnpm mobile:dev
 ```
 
-`pnpm mobile:dev` 会自动执行 `flutter pub get`，优先使用已连接的 Android 设备/模拟器；如果没有运行中的 Android 设备，会从已创建的 AVD 中选择一个启动并自动执行 `flutter run`。
+`pnpm mobile:dev` 和 `pnpm mobile:run` 都会自动执行 `flutter pub get` 并选择可用的移动设备。在 macOS 上会自动启用 Flutter Swift Package Manager，优先使用已连接的 iPhone 或已启动的 iOS Simulator；如果没有运行中的 iOS 设备，会尝试自动启动可用的 iPhone Simulator。其他平台优先使用 Android 设备/模拟器，没有运行中的 Android 设备时会从 `flutter emulators` 列表中启动 AVD。
 
 可以手动查看环境：
 
@@ -118,6 +118,7 @@ git clone git@github.com:yaohuangguan/kiwi-lens.git
 cd kiwi-lens
 corepack enable
 pnpm install
+flutter config --enable-swift-package-manager
 pnpm mobile:get
 cd apps/mobile
 cp ios/Flutter/Secrets.xcconfig.example ios/Flutter/Secrets.xcconfig
