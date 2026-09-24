@@ -77,6 +77,17 @@ async function upstreamJson(url, headers = {}) {
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+  if (url.pathname === '/api/config') {
+    if (!env.GOOGLE_MAPS_BROWSER_API_KEY) {
+      return json({ error: 'Google Maps browser key is not configured' }, 503);
+    }
+    return json({
+      googleMapsApiKey: env.GOOGLE_MAPS_BROWSER_API_KEY,
+      googleMapId: env.GOOGLE_MAP_ID || null
+    }, 200, {
+      'cache-control': 'public, max-age=300, stale-while-revalidate=3600'
+    });
+  }
   if (url.pathname === '/api/health') {
     const state = await readCameraState(env);
     return json({ ok: true, cameraCount: state.cameras.length, syncStatus: state.syncStatus });
