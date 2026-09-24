@@ -18,6 +18,67 @@ extension KiwiTravelModeUi on KiwiTravelMode {
   };
 }
 
+class TransitLeg {
+  const TransitLeg({
+    required this.lineName,
+    required this.headsign,
+    required this.vehicleType,
+    required this.vehicleName,
+    required this.departureStop,
+    required this.arrivalStop,
+    required this.stopCount,
+    this.departureTime,
+    this.arrivalTime,
+    this.agencies = const [],
+  });
+
+  final String lineName;
+  final String headsign;
+  final String vehicleType;
+  final String vehicleName;
+  final String departureStop;
+  final String arrivalStop;
+  final int stopCount;
+  final String? departureTime;
+  final String? arrivalTime;
+  final List<String> agencies;
+
+  factory TransitLeg.fromJson(Map<String, dynamic> json) => TransitLeg(
+    lineName: json['lineName'] as String? ?? '',
+    headsign: json['headsign'] as String? ?? '',
+    vehicleType: json['vehicleType'] as String? ?? '',
+    vehicleName: json['vehicleName'] as String? ?? '',
+    departureStop: json['departureStop'] as String? ?? '',
+    arrivalStop: json['arrivalStop'] as String? ?? '',
+    stopCount: (json['stopCount'] as num?)?.round() ?? 0,
+    departureTime: json['departureTime'] as String?,
+    arrivalTime: json['arrivalTime'] as String?,
+    agencies: (json['agencies'] as List<dynamic>? ?? const [])
+        .whereType<String>()
+        .toList(growable: false),
+  );
+}
+
+class TrafficSummary {
+  const TrafficSummary({
+    required this.normal,
+    required this.slow,
+    required this.trafficJam,
+  });
+
+  final int normal;
+  final int slow;
+  final int trafficJam;
+
+  bool get hasIssues => slow > 0 || trafficJam > 0;
+
+  factory TrafficSummary.fromJson(Map<String, dynamic>? json) => TrafficSummary(
+    normal: (json?['normal'] as num?)?.round() ?? 0,
+    slow: (json?['slow'] as num?)?.round() ?? 0,
+    trafficJam: (json?['trafficJam'] as num?)?.round() ?? 0,
+  );
+}
+
 class RouteOption {
   const RouteOption({
     required this.id,
@@ -26,12 +87,14 @@ class RouteOption {
     required this.distanceMeters,
     required this.points,
     required this.provider,
+    required this.traffic,
     this.staticDurationSeconds,
     this.trafficDelaySeconds,
     this.routeToken,
     this.description = '',
     this.labels = const [],
     this.warnings = const [],
+    this.transit = const [],
   });
 
   final String id;
@@ -45,6 +108,8 @@ class RouteOption {
   final String description;
   final List<String> labels;
   final List<String> warnings;
+  final List<TransitLeg> transit;
+  final TrafficSummary traffic;
   final String provider;
 
   factory RouteOption.fromJson(Map<String, dynamic> json) {
@@ -73,6 +138,11 @@ class RouteOption {
       description: json['description'] as String? ?? '',
       labels: (json['labels'] as List<dynamic>? ?? const []).whereType<String>().toList(growable: false),
       warnings: (json['warnings'] as List<dynamic>? ?? const []).whereType<String>().toList(growable: false),
+      transit: (json['transit'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TransitLeg.fromJson)
+          .toList(growable: false),
+      traffic: TrafficSummary.fromJson(json['traffic'] as Map<String, dynamic>?),
       provider: json['provider'] as String? ?? 'unknown',
     );
   }
@@ -83,11 +153,13 @@ class RoutePlan {
     required this.options,
     required this.trafficAvailable,
     required this.provider,
+    required this.stopsApplied,
   });
 
   final List<RouteOption> options;
   final bool trafficAvailable;
   final String provider;
+  final int stopsApplied;
 
   Iterable<RouteOption> forMode(KiwiTravelMode mode) =>
       options.where((option) => option.mode == mode);
