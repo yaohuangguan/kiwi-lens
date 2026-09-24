@@ -83,8 +83,11 @@ pnpm install
 pnpm exec wrangler login
 pnpm exec wrangler whoami
 pnpm db:migrate:remote
+pnpm exec wrangler secret put GOOGLE_ROUTES_API_KEY
 pnpm deploy
 ```
+
+`GOOGLE_ROUTES_API_KEY` is used by the Worker for multimodal route previews, live-traffic summaries, transit legs/transfers, and intermediate-stop planning. Use a server-side key restricted to the Routes API; do not reuse or commit the browser Maps key.
 
 本地开发首次使用账号功能前执行：
 
