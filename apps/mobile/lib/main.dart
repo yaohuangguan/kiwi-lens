@@ -625,9 +625,6 @@ class _MapHomePageState extends State<MapHomePage> {
     await controller.setRecenterButtonEnabled(false);
     await controller.setTrafficIncidentCardsEnabled(true);
     await controller.setTrafficPromptsEnabled(true);
-    if (await controller.isIncidentReportingAvailable()) {
-      await controller.setReportIncidentButtonEnabled(true);
-    }
     await controller.setPadding(const EdgeInsets.fromLTRB(16, 125, 16, 215));
     _queueMapRefresh();
   }
