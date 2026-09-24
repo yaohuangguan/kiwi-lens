@@ -354,9 +354,173 @@ async function initGps() {
   } else requestGps();
 }
 
-async function search(target: 'origin' | 'destination') {
+function renderStops() {
+  const editor = $('stopEditor');
+  const list = $('stopList');
+  list.replaceChildren();
+  routeStops.forEach((stop, index) => {
+    const chip = document.createElement('div');
+    chip.className = 'stop-chip';
+    const label = document.createElement('span');
+    label.textContent = `${index + 1}. ${stop.label}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.onclick = () => {
+      routeStops.splice(index, 1);
+      renderStops();
+      if (destination && (manualOrigin || current)) void planRoute();
+    };
+    chip.append(label, remove);
+    list.append(chip);
+  });
+  editor.hidden = routeStops.length === 0 && document.activeElement !== $('stopInput');
+}
+
+function selectedPlannerOption(): PlannerRouteOption | null {
+  if (!routePlan) return null;
+  const options = routePlan.options.filter((option) => option.mode === selectedTravelMode);
+  return options[0] || null;
+}
+
+function renderRouteInfo(option: PlannerRouteOption | null) {
+  const root = $('routeInfoCards');
+  const navCard = $('navTrafficCard');
+  root.replaceChildren();
+  root.hidden = true;
+  navCard.hidden = true;
+  navCard.replaceChildren();
+  if (!option) return;
+
+  if (option.mode === 'drive' && (option.traffic.slow > 0 || option.traffic.trafficJam > 0 || option.warnings.length)) {
+    const card = document.createElement('div');
+    card.className = 'route-info-card warning';
+    const jam = option.traffic.trafficJam;
+    const slow = option.traffic.slow;
+    const message = jam > 0
+      ? `${jam} heavy-traffic section${jam === 1 ? '' : 's'} ahead`
+      : `${slow} slow section${slow === 1 ? '' : 's'} ahead`;
+    card.innerHTML = `<strong>⚠ Traffic advisory</strong><span>${escapeHtml(message)}${option.warnings[0] ? ` · ${escapeHtml(option.warnings[0])}` : ''}</span>`;
+    root.append(card);
+    root.hidden = false;
+    navCard.textContent = `⚠ ${message}${option.warnings[0] ? ` · ${option.warnings[0]}` : ''}`;
+    navCard.hidden = false;
+  }
+
+  if (option.mode === 'transit' && option.transit.length) {
+    for (const leg of option.transit) {
+      const card = document.createElement('div');
+      card.className = 'route-info-card transit';
+      const title = [leg.lineName, leg.headsign].filter(Boolean).join(' → ') || leg.vehicleName || leg.vehicleType || 'Transit';
+      const details = [leg.departureStop, leg.arrivalStop].filter(Boolean).join(' → ');
+      card.innerHTML = `<strong>🚆 ${escapeHtml(title)}</strong><span>${escapeHtml(details)}${leg.stopCount ? ` · ${leg.stopCount} stops` : ''}</span>`;
+      root.append(card);
+    }
+    root.hidden = false;
+  }
+}
+
+function applyDrivingRoute(index: number) {
+  const next = drivingAlternatives[index];
+  if (!next || !destination) return;
+  selectedDrivingRoute = index;
+  route = next;
+  routeCameras = matchCamerasToRoute(cameras, route);
+  renderCameras();
+  map.renderRouteAlternatives(drivingAlternatives, selectedDrivingRoute);
+  map.renderRoute(route, destination, navigating);
+  $('tripDistance').textContent = formatDistance(route.distance, language);
+  $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
+    language === 'zh' ? 'zh-NZ' : 'en-NZ',
+    { hour: '2-digit', minute: '2-digit' }
+  );
+  $('navDistance').textContent = $('tripDistance').textContent;
+  $('navArrival').textContent = $('tripArrival').textContent;
+  $('navCameraCount').textContent = String(routeCameras.length);
+  $('cameraRouteCount').textContent = String(routeCameras.length);
+  $('navRouteSteps').textContent = String(route.steps.length);
+  $('sheetRouteSteps').textContent = String(route.steps.length);
+  ($('driveButton') as HTMLButtonElement).disabled = false;
+}
+
+function renderRoutePlanner() {
+  const modes = $('travelModes');
+  const alternatives = $('routeAlternatives');
+  const actions = $('planningActions');
+  modes.hidden = !routePlan && drivingAlternatives.length === 0;
+  actions.hidden = modes.hidden;
+  if (modes.hidden) {
+    alternatives.hidden = true;
+    $('routeInfoCards').hidden = true;
+    return;
+  }
+
+  const modeIds: Record<TravelMode, string> = {
+    drive: 'modeDriveTime',
+    transit: 'modeTransitTime',
+    walk: 'modeWalkTime',
+    bicycle: 'modeBicycleTime'
+  };
+  for (const mode of ['drive', 'transit', 'walk', 'bicycle'] as TravelMode[]) {
+    const option = routePlan?.options.find((item) => item.mode === mode);
+    $(modeIds[mode]).textContent = mode === 'drive' && drivingAlternatives[0]
+      ? formatModeDuration(drivingAlternatives[0].duration)
+      : formatModeDuration(option?.durationSeconds);
+    const button = modes.querySelector<HTMLButtonElement>(`button[data-mode="${mode}"]`);
+    if (button) {
+      const available = mode === 'drive' ? drivingAlternatives.length > 0 : Boolean(option);
+      button.disabled = !available;
+      button.classList.toggle('selected', selectedTravelMode === mode);
+    }
+  }
+
+  alternatives.replaceChildren();
+  if (selectedTravelMode === 'drive') {
+    drivingAlternatives.forEach((item, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'route-option-card' + (selectedDrivingRoute === index ? ' selected' : '');
+      button.innerHTML = `<strong>${escapeHtml(formatModeDuration(item.duration))}</strong><span>${escapeHtml(formatDistance(item.distance, language))}${index === 0 ? ' · recommended' : ''}</span>`;
+      button.onclick = () => {
+        applyDrivingRoute(index);
+        renderRoutePlanner();
+      };
+      alternatives.append(button);
+    });
+    alternatives.hidden = drivingAlternatives.length < 2;
+    renderRouteInfo(routePlan?.options.find((item) => item.mode === 'drive') || null);
+    return;
+  }
+
+  const option = selectedPlannerOption();
+  if (option) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'route-option-card selected';
+    button.innerHTML = `<strong>${escapeHtml(formatModeDuration(option.durationSeconds))}</strong><span>${escapeHtml(formatDistance(option.distanceMeters, language))}</span>`;
+    alternatives.append(button);
+    alternatives.hidden = false;
+    if (destination) {
+      const preview = routeFromOption(option);
+      if (preview.coordinates.length >= 2) map.renderRoute(preview, destination, false);
+    }
+    $('tripDistance').textContent = formatDistance(option.distanceMeters, language);
+    $('tripArrival').textContent = new Date(Date.now() + option.durationSeconds * 1000).toLocaleTimeString(
+      language === 'zh' ? 'zh-NZ' : 'en-NZ',
+      { hour: '2-digit', minute: '2-digit' }
+    );
+  } else alternatives.hidden = true;
+  ($('driveButton') as HTMLButtonElement).disabled = true;
+  renderRouteInfo(option);
+}
+
+async function search(target: 'origin' | 'destination' | 'stop') {
   searchTarget = target;
-  const input = target === 'origin' ? $('originInput') as HTMLInputElement : $('destinationInput') as HTMLInputElement;
+  const input = target === 'origin'
+    ? $('originInput') as HTMLInputElement
+    : target === 'stop'
+      ? $('stopInput') as HTMLInputElement
+      : $('destinationInput') as HTMLInputElement;
   const query = input.value.trim();
   if (query.length < 3) { toast(t(language, 'minQuery')); return; }
   const results = $('searchResults');
@@ -382,6 +546,10 @@ async function search(target: 'origin' | 'destination') {
         if (target === 'origin') {
           manualOrigin = coordinate;
           ($('originInput') as HTMLInputElement).value = place.label.split(',').slice(0, 2).join(',');
+        } else if (target === 'stop') {
+          routeStops.push({ label: place.label.split(',').slice(0, 2).join(','), coordinate });
+          ($('stopInput') as HTMLInputElement).value = '';
+          renderStops();
         } else {
           destination = coordinate;
           destinationName = place.label.split(',').slice(0, 2).join(',');
@@ -407,41 +575,45 @@ async function planRoute() {
   const signal = routeAbort.signal;
   $('tripEyebrow').textContent = 'CALCULATING ROUTE';
   $('tripTitle').textContent = t(language, 'routeCalculating');
+  selectedTravelMode = 'drive';
   try {
-    const laneRoutePromise = api<Route>(
-      `/api/route?from=${from.join(',')}&to=${destination.join(',')}`,
-      signal
-    ).catch(() => undefined);
-    const [googleRoute, laneRoute] = await Promise.all([
-      computeGoogleRoute(from, destination, language),
-      laneRoutePromise
-    ]);
+    const stopCoordinates = routeStops.map((stop) => stop.coordinate);
+    const stopQuery = stopCoordinates.length
+      ? `&stops=${encodeURIComponent(stopCoordinates.map((stop) => stop.join(',')).join(';'))}`
+      : '';
+    const plannerPromise = fetchRoutePlan(API_BASE_URL, from, destination, stopCoordinates, signal).catch(() => null);
+
+    if (stopCoordinates.length) {
+      const stopRoute = await api<Route>(
+        `/api/route?from=${from.join(',')}&to=${destination.join(',')}${stopQuery}`,
+        signal
+      );
+      drivingAlternatives = [stopRoute];
+    } else {
+      const laneRoutePromise = api<Route>(
+        `/api/route?from=${from.join(',')}&to=${destination.join(',')}`,
+        signal
+      ).catch(() => undefined);
+      const [googleRoutes, laneRoute] = await Promise.all([
+        computeGoogleRoutes(from, destination, language),
+        laneRoutePromise
+      ]);
+      drivingAlternatives = googleRoutes.map((item) => enrichRouteLanes(item, laneRoute));
+    }
+
+    routePlan = await plannerPromise;
     if (signal.aborted) return;
-    const next = enrichRouteLanes(googleRoute, laneRoute);
-    if (next.coordinates.length < 2) throw new Error('Route geometry is empty');
-    route = next;
-    routeCameras = matchCamerasToRoute(cameras, route);
-    renderCameras();
-    map.renderRoute(route, destination, navigating);
+    if (!drivingAlternatives.length) throw new Error('Route geometry is empty');
+    selectedDrivingRoute = 0;
+    applyDrivingRoute(0);
     $('tripEyebrow').textContent = navigating ? 'DRIVING MODE' : 'ROUTE READY';
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
-    $('tripDistance').textContent = formatDistance(route.distance, language);
     $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
-    $('navDistance').textContent = formatDistance(route.distance, language);
-    $('navCameraCount').textContent = String(routeCameras.length);
-    $('navRouteSteps').textContent = String(route.steps.length);
-    $('cameraRouteCount').textContent = String(routeCameras.length);
-    $('sheetRouteSteps').textContent = String(route.steps.length);
     $('sheetNextCamera').textContent = routeCameras.length
       ? formatDistance(Math.max(0, routeCameras[0]!.alongMeters), language)
       : '—';
     $('navNextCamera').textContent = $('sheetNextCamera').textContent;
-    $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
-      language === 'zh' ? 'zh-NZ' : 'en-NZ',
-      { hour: '2-digit', minute: '2-digit' }
-    );
-    $('navArrival').textContent = $('tripArrival').textContent;
-    ($('driveButton') as HTMLButtonElement).disabled = false;
+    renderRoutePlanner();
     if (navigating) updateGuidance();
   } catch (error) {
     if ((error as Error).name === 'AbortError' || signal.aborted) return;
