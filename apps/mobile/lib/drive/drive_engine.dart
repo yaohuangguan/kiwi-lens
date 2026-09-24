@@ -37,6 +37,7 @@ class DriveEngine extends ChangeNotifier {
   DateTime? _lastSpeedLimitLookup;
   bool _speedLimitLookupPending = false;
   double? _headingDegrees;
+  Completer<void>? _roadSnappedFixCompleter;
 
   bool active = false;
   bool guidanceRunning = false;
@@ -54,6 +55,7 @@ class DriveEngine extends ChangeNotifier {
 
   Future<void> start() async {
     if (active) return;
+    _roadSnappedFixCompleter = Completer<void>();
     active = true;
     error = null;
     notifyListeners();
@@ -117,6 +119,8 @@ class DriveEngine extends ChangeNotifier {
 
   void _onRoadSnappedLocation(RoadSnappedLocationUpdatedEvent event) {
     final current = event.location;
+    final fix = _roadSnappedFixCompleter;
+    if (fix != null && !fix.isCompleted) fix.complete();
     final previous = _lastSnappedLocation;
 
     if (previous != null) {
@@ -154,6 +158,19 @@ class DriveEngine extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  Future<bool> waitForRoadSnappedLocation({
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    if (_lastSnappedLocation != null) return true;
+    final fix = _roadSnappedFixCompleter ??= Completer<void>();
+    try {
+      await fix.future.timeout(timeout);
+      return _lastSnappedLocation != null;
+    } on TimeoutException {
+      return false;
+    }
   }
 
   Future<void> speakMessage(String message) async {
@@ -265,6 +282,8 @@ class DriveEngine extends ChangeNotifier {
     speedLimitKph = null;
     speedLimitZoneName = null;
     _lastSpeedLimitLocation = null;
+    _lastSnappedLocation = null;
+    _roadSnappedFixCompleter = null;
     _lastSpeedLimitLookup = null;
     notifyListeners();
   }

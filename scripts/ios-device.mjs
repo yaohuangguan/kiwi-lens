@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mobile = resolve(root, 'apps/mobile');
 const releaseApp = resolve(mobile, 'build/ios/iphoneos/Runner.app');
-const bundleId = 'space.ps6.kiwilens';
+const bundleId = 'me.samyao.kiwilens';
 const mode = process.argv[2] ?? 'install';
 
 function run(command, args, options = {}) {

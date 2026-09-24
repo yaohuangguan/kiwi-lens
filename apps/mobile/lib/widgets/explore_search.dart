@@ -6,6 +6,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/api_config.dart';
+import '../domain/geo_math.dart';
 
 class DestinationSuggestion {
   const DestinationSuggestion({required this.label, required this.location});
@@ -35,6 +36,62 @@ class _ExploreSearchState extends State<ExploreSearch> {
   List<DestinationSuggestion> _results = const [];
   String? _error;
   int _request = 0;
+  String _locationLabel = 'Locating current position…';
+  LatLng? _lastReverseLocation;
+  bool _reverseLookupPending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshCurrentLocationLabel(widget.currentLocation));
+  }
+
+  @override
+  void didUpdateWidget(covariant ExploreSearch oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final current = widget.currentLocation;
+    final previous = _lastReverseLocation;
+    if (current == null) {
+      if (_locationLabel != 'Locating current position…') {
+        setState(() => _locationLabel = 'Locating current position…');
+      }
+      return;
+    }
+    final moved = previous == null
+        ? double.infinity
+        : distanceMeters(
+            previous.latitude,
+            previous.longitude,
+            current.latitude,
+            current.longitude,
+          );
+    if (moved >= 120) {
+      unawaited(_refreshCurrentLocationLabel(current));
+    }
+  }
+
+  Future<void> _refreshCurrentLocationLabel(LatLng? location) async {
+    if (location == null || _reverseLookupPending) return;
+    _reverseLookupPending = true;
+    _lastReverseLocation = location;
+    try {
+      final uri = Uri.parse('$workerBaseUrl/api/reverse').replace(
+        queryParameters: {'at': '${location.longitude},${location.latitude}'},
+      );
+      final response = await _client.get(uri);
+      if (response.statusCode != 200) return;
+      final decoded = jsonDecode(response.body);
+      final label = decoded is Map<String, dynamic>
+          ? decoded['label']?.toString().trim()
+          : null;
+      if (!mounted || label == null || label.isEmpty) return;
+      setState(() => _locationLabel = label);
+    } catch (_) {
+      // Keep the last readable place if reverse lookup is temporarily unavailable.
+    } finally {
+      _reverseLookupPending = false;
+    }
+  }
 
   @override
   void dispose() {
@@ -49,41 +106,66 @@ class _ExploreSearchState extends State<ExploreSearch> {
     final request = ++_request;
     final query = text.trim();
     if (query.length < 3) {
-      setState(() { _results = const []; _error = null; });
+      setState(() {
+        _results = const [];
+        _error = null;
+      });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 420), () async {
       try {
         final near = widget.currentLocation;
-        final uri = Uri.parse('$workerBaseUrl/api/suggest').replace(queryParameters: {
-          'q': query,
-          'lang': 'en',
-          if (near != null) 'near': '${near.longitude},${near.latitude}',
-        });
-        var response = await _client.get(_suggestConfigured
-            ? uri
-            : Uri.parse('$workerBaseUrl/api/search').replace(queryParameters: {'q': query}));
+        final uri = Uri.parse('$workerBaseUrl/api/suggest').replace(
+          queryParameters: {
+            'q': query,
+            'lang': 'en',
+            if (near != null) 'near': '${near.longitude},${near.latitude}',
+          },
+        );
+        var response = await _client.get(
+          _suggestConfigured
+              ? uri
+              : Uri.parse('$workerBaseUrl/api/search')
+                    .replace(queryParameters: {'q': query}),
+        );
         if (_suggestConfigured && response.statusCode == 503) {
           _suggestConfigured = false;
-          response = await _client.get(Uri.parse('$workerBaseUrl/api/search')
-              .replace(queryParameters: {'q': query}));
-        }
-        if (response.statusCode != 200) throw StateError('Address search unavailable');
-        final decoded = jsonDecode(response.body) as List<dynamic>;
-        final places = decoded.whereType<Map<String, dynamic>>().map((item) {
-          final latitude = item['latitude'];
-          final longitude = item['longitude'];
-          if (latitude is! num || longitude is! num) return null;
-          return DestinationSuggestion(
-            label: item['label']?.toString() ?? 'Selected destination',
-            location: LatLng(latitude: latitude.toDouble(), longitude: longitude.toDouble()),
+          response = await _client.get(
+            Uri.parse('$workerBaseUrl/api/search')
+                .replace(queryParameters: {'q': query}),
           );
-        }).whereType<DestinationSuggestion>().toList();
+        }
+        if (response.statusCode != 200) {
+          throw StateError('Address search unavailable');
+        }
+        final decoded = jsonDecode(response.body) as List<dynamic>;
+        final places = decoded
+            .whereType<Map<String, dynamic>>()
+            .map((item) {
+              final latitude = item['latitude'];
+              final longitude = item['longitude'];
+              if (latitude is! num || longitude is! num) return null;
+              return DestinationSuggestion(
+                label: item['label']?.toString() ?? 'Selected destination',
+                location: LatLng(
+                  latitude: latitude.toDouble(),
+                  longitude: longitude.toDouble(),
+                ),
+              );
+            })
+            .whereType<DestinationSuggestion>()
+            .toList();
         if (!mounted || request != _request) return;
-        setState(() { _results = places; _error = null; });
+        setState(() {
+          _results = places;
+          _error = null;
+        });
       } catch (_) {
         if (!mounted || request != _request) return;
-        setState(() { _results = const []; _error = 'Address search is unavailable'; });
+        setState(() {
+          _results = const [];
+          _error = 'Address search is unavailable';
+        });
       }
     });
   }
@@ -93,74 +175,123 @@ class _ExploreSearchState extends State<ExploreSearch> {
     final location = widget.currentLocation;
     final locationText = location == null
         ? 'Locating current position…'
-        : '${location.latitude.toStringAsFixed(5)}, ${location.longitude.toStringAsFixed(5)}';
+        : _locationLabel;
     return Material(
       color: Colors.white,
       elevation: 11,
       borderRadius: BorderRadius.circular(21),
       clipBehavior: Clip.antiAlias,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 11, 14, 9),
-          child: Column(children: [
-            Row(children: [
-              const Icon(Icons.my_location_rounded, size: 19, color: Color(0xFF295747)),
-              const SizedBox(width: 11),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Current location', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                Text(locationText, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Color(0xFF788780), fontSize: 11)),
-              ])),
-            ]),
-            const Divider(height: 19),
-            Row(children: [
-              const Icon(Icons.crop_square_rounded, size: 19, color: Color(0xFF9ACF45)),
-              const SizedBox(width: 11),
-              Expanded(child: TextField(
-                controller: _controller,
-                onChanged: _search,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: 'Search destination',
-                  hintStyle: TextStyle(color: Color(0xFF8A968E)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 11, 14, 9),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.my_location_rounded,
+                      size: 19,
+                      color: Color(0xFF295747),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Current location',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            locationText,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF788780),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              )),
-              const Icon(Icons.search_rounded, color: Color(0xFF285747)),
-            ]),
-          ]),
-        ),
-        if (_error != null)
-          Padding(padding: const EdgeInsets.all(12),
-              child: Text(_error!, style: const TextStyle(color: Color(0xFFB64B3A), fontSize: 12))),
-        if (_results.isNotEmpty)
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 260),
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: EdgeInsets.zero,
-              itemCount: _results.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final result = _results[index];
-                return ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.place_outlined, color: Color(0xFF527C60)),
-                  title: Text(result.label, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12)),
-                  onTap: () {
-                    _debounce?.cancel();
-                    _request++;
-                    _controller.text = result.label;
-                    FocusScope.of(context).unfocus();
-                    setState(() => _results = const []);
-                    widget.onSelected(result);
-                  },
-                );
-              },
+                const Divider(height: 19),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.crop_square_rounded,
+                      size: 19,
+                      color: Color(0xFF9ACF45),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        onChanged: _search,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          hintText: 'Search destination',
+                          hintStyle: TextStyle(color: Color(0xFF8A968E)),
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.search_rounded, color: Color(0xFF285747)),
+                  ],
+                ),
+              ],
             ),
           ),
-      ]),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: Color(0xFFB64B3A), fontSize: 12),
+              ),
+            ),
+          if (_results.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _results.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final result = _results[index];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(
+                      Icons.place_outlined,
+                      color: Color(0xFF527C60),
+                    ),
+                    title: Text(
+                      result.label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    onTap: () {
+                      _debounce?.cancel();
+                      _request++;
+                      _controller.text = result.label;
+                      FocusScope.of(context).unfocus();
+                      setState(() => _results = const []);
+                      widget.onSelected(result);
+                    },
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

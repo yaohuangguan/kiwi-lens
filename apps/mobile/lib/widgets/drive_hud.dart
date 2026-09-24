@@ -48,6 +48,56 @@ class DriveHud extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
         child: Column(
           children: [
+            if (step == null)
+              PointerInterceptor(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF20B1717),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.directions_car_filled_rounded,
+                        color: Color(0xFFC8F169),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Drive mode',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'Safety camera alerts are active',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: onStop,
+                        icon: const Icon(Icons.close_rounded),
+                        color: Colors.white,
+                        tooltip: 'End drive',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if (step != null)
               PointerInterceptor(
                 child: Container(

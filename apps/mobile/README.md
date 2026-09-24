@@ -104,7 +104,7 @@ MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 生产 Key 应限制到 Android application：
 
 ```text
-package: space.ps6.kiwilens
+package: me.samyao.kiwilens
 SHA-1: <release signing certificate SHA-1>
 ```
 
@@ -125,7 +125,7 @@ MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 Bundle ID：
 
 ```text
-space.ps6.kiwilens
+me.samyao.kiwilens
 ```
 
 `Secrets.xcconfig` 已被 Git 忽略。

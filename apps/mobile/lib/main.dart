@@ -9,8 +9,8 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/account_repository.dart';
+import 'data/place_details_repository.dart';
 import 'data/route_repository.dart';
-import 'domain/coordinate_formatter.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/route_option.dart';
 import 'drive/device_heading.dart';
@@ -18,6 +18,7 @@ import 'drive/drive_engine.dart';
 import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/navigation_overlay.dart';
+import 'widgets/place_details_content.dart';
 import 'widgets/profile_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
@@ -69,6 +70,8 @@ class _MapHomePageState extends State<MapHomePage> {
 
   final DriveEngine _driveEngine = DriveEngine();
   final AccountRepository _account = AccountRepository();
+  final PlaceDetailsRepository _placeDetailsRepository =
+      PlaceDetailsRepository();
   final RouteRepository _routeRepository = RouteRepository();
   GoogleMapViewController? _browseController;
   GoogleNavigationViewController? _navigationController;
@@ -96,6 +99,10 @@ class _MapHomePageState extends State<MapHomePage> {
   final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
 
   PointOfInterest? _selectedPoi;
+  PlaceDetails? _placeDetails;
+  bool _placeDetailsLoading = false;
+  String? _placeDetailsError;
+  int _placeDetailsRequest = 0;
   bool _navigationSessionInitialized = false;
   bool _guidanceRunning = false;
   bool _busy = false;
@@ -122,6 +129,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _mapRefreshTimer?.cancel();
     _account.removeListener(_onAccountChanged);
     _account.dispose();
+    _placeDetailsRepository.dispose();
     _driveEngine.dispose();
     if (_navigationSessionInitialized) {
       GoogleMapsNavigator.cleanup();
@@ -203,7 +211,7 @@ class _MapHomePageState extends State<MapHomePage> {
   void _queueMapRefresh() {
     _mapRefreshTimer?.cancel();
     _mapRefreshTimer = Timer(
-      const Duration(milliseconds: 180),
+      const Duration(milliseconds: 350),
       () => unawaited(_refreshMap()),
     );
   }
@@ -213,7 +221,7 @@ class _MapHomePageState extends State<MapHomePage> {
       _refreshAgain = true;
       return;
     }
-    final controller = _guidanceRunning
+    final controller = _driveEngine.active
         ? _navigationController
         : _browseController;
     final location = _gpsLocation;
@@ -224,16 +232,18 @@ class _MapHomePageState extends State<MapHomePage> {
       if (heading != null) {
         final options = PolygonOptions(
           points: radarSector(location, heading),
-          fillColor: const Color(0x33AAF05F),
-          strokeColor: const Color(0x9986CB48),
-          strokeWidth: 1.5,
+          fillColor: const Color(0x332196F3),
+          strokeColor: const Color(0xAA1976D2),
+          strokeWidth: 1.4,
           geodesic: true,
           zIndex: 5,
         );
         if (_radarPolygon == null) {
           final polygon = (await controller.addPolygons([options])).first;
           if (controller ==
-              (_guidanceRunning ? _navigationController : _browseController)) {
+              (_driveEngine.active
+                  ? _navigationController
+                  : _browseController)) {
             _radarPolygon = polygon;
           }
         } else {
@@ -241,7 +251,9 @@ class _MapHomePageState extends State<MapHomePage> {
             _radarPolygon!.copyWith(options: options),
           ])).first;
           if (controller ==
-              (_guidanceRunning ? _navigationController : _browseController)) {
+              (_driveEngine.active
+                  ? _navigationController
+                  : _browseController)) {
             _radarPolygon = polygon;
           }
         }
@@ -249,41 +261,12 @@ class _MapHomePageState extends State<MapHomePage> {
         await controller.removePolygons([_radarPolygon!]);
         _radarPolygon = null;
       }
-      if (_following) {
-        final turnDistance = _driveEngine.navInfo?.distanceToCurrentStepMeters
-            ?.toDouble();
-        final nearJunction =
-            _guidanceRunning && turnDistance != null && turnDistance < 140;
-        final veryNearJunction =
-            _guidanceRunning && turnDistance != null && turnDistance < 45;
-        final lookAhead = veryNearJunction
-            ? 38.0
-            : nearJunction
-            ? 65.0
-            : 105.0;
-        final cameraTarget = _guidanceRunning && heading != null
-            ? pointAtDistance(location, heading, lookAhead)
-            : location;
-        await controller.moveCamera(
+      // During Drive/Navigation the native SDK owns the camera. Manually
+      // moving it on every GPS/heading update causes visible tug-of-war.
+      if (_following && !_driveEngine.active) {
+        await controller.animateCamera(
           CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: cameraTarget,
-              bearing: heading ?? 0,
-              tilt: veryNearJunction
-                  ? 55
-                  : nearJunction
-                  ? 50
-                  : _guidanceRunning
-                  ? 42
-                  : 0,
-              zoom: veryNearJunction
-                  ? 19.2
-                  : nearJunction
-                  ? 18.4
-                  : _guidanceRunning
-                  ? 17.2
-                  : 16,
-            ),
+            CameraPosition(target: location, bearing: 0, tilt: 0, zoom: 16),
           ),
         );
       }
@@ -300,11 +283,18 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _recenter() {
     _following = true;
+    final navigationController = _navigationController;
+    if (_driveEngine.active && navigationController != null) {
+      unawaited(
+        navigationController.followMyLocation(CameraPerspective.tilted),
+      );
+      return;
+    }
     _queueMapRefresh();
   }
 
   Future<void> _rotateMap(double degrees) async {
-    final controller = _guidanceRunning
+    final controller = _driveEngine.active
         ? _navigationController
         : _browseController;
     if (controller == null) return;
@@ -348,6 +338,10 @@ class _MapHomePageState extends State<MapHomePage> {
       _selectedMode = KiwiTravelMode.drive;
       _routePreviewLoading = false;
       _selectedPoi = null;
+      _placeDetails = null;
+      _placeDetailsLoading = false;
+      _placeDetailsError = null;
+      _placeDetailsRequest++;
       _routeStops.clear();
     });
   }
@@ -722,12 +716,27 @@ class _MapHomePageState extends State<MapHomePage> {
       if (!accepted) return false;
     }
 
-    await GoogleMapsNavigator.initializeNavigationSession(
-      taskRemovedBehavior: TaskRemovedBehavior.continueService,
-    );
+    try {
+      await GoogleMapsNavigator.initializeNavigationSession(
+        taskRemovedBehavior: TaskRemovedBehavior.continueService,
+      );
+    } on SessionInitializationException catch (error) {
+      if (!mounted) return false;
+      final message = switch (error.code) {
+        SessionInitializationError.termsNotAccepted =>
+          'Accept the Google Navigation terms to continue.',
+        SessionInitializationError.locationPermissionMissing =>
+          'Location permission is required for navigation.',
+        SessionInitializationError.notAuthorized => 'Navigation SDK authorization failed. Check the iOS API key and Bundle ID.',
+      };
+      setState(() => _message = message);
+      return false;
+    }
     await GoogleMapsNavigator.setAudioGuidance(
       NavigationAudioGuidanceSettings(
-        guidanceType: NavigationAudioGuidanceType.alertsAndGuidance,
+        guidanceType: _voiceEnabled
+            ? NavigationAudioGuidanceType.alertsAndGuidance
+            : NavigationAudioGuidanceType.silent,
         isBluetoothAudioEnabled: true,
         isVibrationEnabled: true,
       ),
@@ -801,6 +810,18 @@ class _MapHomePageState extends State<MapHomePage> {
 
       if (!await _ensureNavigationSession()) return;
 
+      final hasNavigationLocation = await _driveEngine
+          .waitForRoadSnappedLocation();
+      if (!hasNavigationLocation) {
+        if (mounted) {
+          setState(() {
+            _message =
+                'Waiting for an accurate GPS fix before starting navigation.';
+          });
+        }
+        return;
+      }
+
       final routeToken = selectedRoute.routeToken;
       final travelMode = _nativeTravelMode!;
       final useRouteToken =
@@ -860,6 +881,8 @@ class _MapHomePageState extends State<MapHomePage> {
       }
 
       await GoogleMapsNavigator.startGuidance();
+      await _navigationController?.setNavigationUIEnabled(true);
+      await _navigationController?.followMyLocation(CameraPerspective.tilted);
       await _driveEngine.speakMessage(
         _selectedMode == KiwiTravelMode.walk
             ? 'Walking navigation started.'
@@ -906,6 +929,8 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     await GoogleMapsNavigator.stopGuidance();
     await GoogleMapsNavigator.clearDestinations();
+    await _navigationController?.setNavigationUIEnabled(false);
+    await _navigationController?.followMyLocation(CameraPerspective.tilted);
     if (!mounted) return;
     setState(() {
       _guidanceRunning = false;
@@ -947,14 +972,48 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
+  Future<void> _loadPlaceDetails(PointOfInterest poi) async {
+    final request = ++_placeDetailsRequest;
+    if (poi.placeID.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _placeDetails = null;
+          _placeDetailsLoading = false;
+          _placeDetailsError = null;
+        });
+      }
+      return;
+    }
+    setState(() {
+      _placeDetails = null;
+      _placeDetailsLoading = true;
+      _placeDetailsError = null;
+    });
+    try {
+      final details = await _placeDetailsRepository.fetch(poi.placeID);
+      if (!mounted || request != _placeDetailsRequest) return;
+      setState(() {
+        _placeDetails = details;
+        _placeDetailsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || request != _placeDetailsRequest) return;
+      setState(() {
+        _placeDetailsLoading = false;
+        _placeDetailsError = 'More place details are temporarily unavailable.';
+      });
+    }
+  }
+
   void _onPoiClicked(PointOfInterest poi) {
+    if (_driveEngine.active || _transitTripRunning) return;
     setState(() {
       _selectedPoi = poi;
       _routePlan = null;
       _selectedRouteId = null;
       _message = null;
     });
-    unawaited(_loadRoutePreview(poi));
+    unawaited(_loadPlaceDetails(poi));
   }
 
   void _onSearchSelected(DestinationSuggestion suggestion) {
@@ -978,6 +1037,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _navigationController = null;
     _radarPolygon = null;
     await controller.settings.setTrafficEnabled(true);
+    await controller.settings.setCompassEnabled(true);
     await controller.settings.setRotateGesturesEnabled(true);
     await controller.settings.setTiltGesturesEnabled(true);
     await controller.settings.setScrollGesturesDuringRotateOrZoomEnabled(true);
@@ -993,6 +1053,7 @@ class _MapHomePageState extends State<MapHomePage> {
   ) async {
     await controller.setMyLocationEnabled(true);
     await controller.settings.setTrafficEnabled(true);
+    await controller.settings.setCompassEnabled(false);
     await controller.settings.setRotateGesturesEnabled(true);
     await controller.settings.setTiltGesturesEnabled(true);
     await controller.settings.setScrollGesturesDuringRotateOrZoomEnabled(true);
@@ -1002,6 +1063,8 @@ class _MapHomePageState extends State<MapHomePage> {
     await controller.setNavigationHeaderEnabled(false);
     await controller.setNavigationFooterEnabled(false);
     await controller.setRecenterButtonEnabled(false);
+    await controller.setNavigationUIEnabled(_guidanceRunning);
+    await controller.followMyLocation(CameraPerspective.tilted);
     await controller.setTrafficIncidentCardsEnabled(true);
     await controller.setTrafficPromptsEnabled(true);
     await controller.setPadding(const EdgeInsets.fromLTRB(16, 125, 16, 215));
@@ -1050,7 +1113,7 @@ class _MapHomePageState extends State<MapHomePage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: _guidanceRunning
+            child: _driveEngine.active
                 ? GoogleMapsNavigationView(
                     key: const ValueKey('navigation-view'),
                     onViewCreated: _onNavigationViewCreated,
@@ -1058,8 +1121,10 @@ class _MapHomePageState extends State<MapHomePage> {
                     onCameraMoveStarted: (_, isGesture) {
                       if (isGesture) _following = false;
                     },
-                    initialNavigationUIEnabledPreference:
-                        NavigationUIEnabledPreference.automatic,
+                    initialNavigationUIEnabledPreference: _guidanceRunning
+                        ? NavigationUIEnabledPreference.automatic
+                        : NavigationUIEnabledPreference.disabled,
+                    initialCompassEnabled: false,
                     initialRotateGesturesEnabled: true,
                     initialTiltGesturesEnabled: true,
                     initialScrollGesturesEnabledDuringRotateOrZoom: true,
@@ -1077,6 +1142,7 @@ class _MapHomePageState extends State<MapHomePage> {
                       target: _auckland,
                       zoom: 14,
                     ),
+                    initialCompassEnabled: true,
                     initialRotateGesturesEnabled: true,
                     initialTiltGesturesEnabled: true,
                     initialScrollGesturesEnabledDuringRotateOrZoom: true,
@@ -1089,7 +1155,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     },
                   ),
           ),
-          if (!_guidanceRunning && !_transitTripRunning)
+          if (!_driveEngine.active && !_transitTripRunning)
             Positioned(
               top: MediaQuery.paddingOf(context).top + 188,
               right: 16,
@@ -1132,7 +1198,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (!_guidanceRunning && !_transitTripRunning)
+          if (!_driveEngine.active && !_transitTripRunning)
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -1180,12 +1246,15 @@ class _MapHomePageState extends State<MapHomePage> {
                         ),
                       ),
                       const Spacer(),
-                      IconButton(
-                        onPressed: _showProfile,
-                        tooltip: 'My profile',
-                        icon: const Icon(
-                          Icons.person_rounded,
-                          color: Colors.white,
+                      Padding(
+                        padding: const EdgeInsets.only(right: 52),
+                        child: IconButton(
+                          onPressed: _showProfile,
+                          tooltip: 'My profile',
+                          icon: const Icon(
+                            Icons.person_rounded,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                       if (_guidanceRunning)
@@ -1203,7 +1272,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (!_guidanceRunning && !_transitTripRunning)
+          if (!_driveEngine.active && !_transitTripRunning)
             Positioned(
               top: MediaQuery.paddingOf(context).top + 75,
               left: 16,
@@ -1294,6 +1363,7 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
           if (_selectedPoi != null &&
+              !_driveEngine.active &&
               !_guidanceRunning &&
               !_transitTripRunning &&
               _routePlan == null)
@@ -1304,6 +1374,9 @@ class _MapHomePageState extends State<MapHomePage> {
                 child: PointerInterceptor(
                   child: _PlaceCard(
                     poi: _selectedPoi!,
+                    details: _placeDetails,
+                    detailsLoading: _placeDetailsLoading,
+                    detailsError: _placeDetailsError,
                     busy: _routePreviewLoading,
                     onClose: () => unawaited(_clearRoutePreview()),
                     onNavigate: () =>
@@ -1327,6 +1400,7 @@ class _MapHomePageState extends State<MapHomePage> {
             ),
           if (_selectedPoi != null &&
               _routePlan != null &&
+              !_driveEngine.active &&
               !_guidanceRunning &&
               !_transitTripRunning)
             Align(
@@ -1380,6 +1454,9 @@ class _BrandMark extends StatelessWidget {
 class _PlaceCard extends StatelessWidget {
   const _PlaceCard({
     required this.poi,
+    required this.details,
+    required this.detailsLoading,
+    required this.detailsError,
     required this.busy,
     required this.onClose,
     required this.onNavigate,
@@ -1389,6 +1466,9 @@ class _PlaceCard extends StatelessWidget {
   });
 
   final PointOfInterest poi;
+  final PlaceDetails? details;
+  final bool detailsLoading;
+  final String? detailsError;
   final bool busy;
   final VoidCallback onClose;
   final VoidCallback onNavigate;
@@ -1398,111 +1478,17 @@ class _PlaceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 18,
-      borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 14, 14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F5E8),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(
-                    Icons.place_rounded,
-                    color: Color(0xFF3D6C55),
-                  ),
-                ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        poi.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        formatCoordinate(
-                          poi.latLng.latitude,
-                          poi.latLng.longitude,
-                        ),
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: onClose,
-                  icon: const Icon(Icons.close_rounded),
-                  tooltip: 'Close',
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: onFavorite,
-                  tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
-                  icon: Icon(
-                    isFavorite
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                    color: isFavorite
-                        ? Colors.redAccent
-                        : const Color(0xFF315945),
-                  ),
-                ),
-                IconButton(
-                  onPressed: onReview,
-                  tooltip: 'My review',
-                  icon: const Icon(Icons.rate_review_outlined),
-                ),
-                const Spacer(),
-                FilledButton.icon(
-                  onPressed: busy ? null : onNavigate,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF18372D),
-                    foregroundColor: const Color(0xFFC8F169),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 13,
-                    ),
-                  ),
-                  icon: busy
-                      ? const SizedBox(
-                          width: 17,
-                          height: 17,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.navigation_rounded, size: 19),
-                  label: Text(busy ? 'Routing' : 'Navigate'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    return PlaceDetailsContent(
+      poi: poi,
+      details: details,
+      detailsLoading: detailsLoading,
+      detailsError: detailsError,
+      routeBusy: busy,
+      isFavorite: isFavorite,
+      onClose: onClose,
+      onNavigate: onNavigate,
+      onFavorite: onFavorite,
+      onReview: onReview,
     );
   }
 }

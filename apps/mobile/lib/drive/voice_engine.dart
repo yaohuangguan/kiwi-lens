@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 class VoiceEngine {
@@ -11,7 +12,9 @@ class VoiceEngine {
     await _tts.setLanguage('en-NZ');
     await _tts.setSpeechRate(0.48);
     await _tts.setVolume(1);
-    await _tts.setAudioAttributesForNavigation();
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _tts.setAudioAttributesForNavigation();
+    }
     _initialized = true;
   }
 
