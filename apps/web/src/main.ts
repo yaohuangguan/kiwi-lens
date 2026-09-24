@@ -386,8 +386,8 @@ function selectedPlannerOption(): PlannerRouteOption | null {
 
 function trafficVisuals() {
   const plannerDriving = routePlan?.options.filter((option) => option.mode === 'drive') || [];
-  return drivingAlternatives.map((item, index) => ({
-    route: item,
+  return drivingAlternatives.map((fallback, index) => ({
+    route: plannerDriving[index] ? routeFromOption(plannerDriving[index]!) : fallback,
     trafficIntervals: plannerDriving[index]?.trafficIntervals || []
   }));
 }
@@ -522,7 +522,7 @@ function renderRoutePlanner() {
       language === 'zh' ? 'zh-NZ' : 'en-NZ',
       { hour: '2-digit', minute: '2-digit' }
     );
-    ($('driveButton') as HTMLButtonElement).disabled = option.points?.length === 0;
+    ($('driveButton') as HTMLButtonElement).disabled = route?.coordinates.length ? false : true;
     $('driveLabel').textContent = selectedTravelMode === 'transit'
       ? (language === 'zh' ? '开始行程' : 'Start trip')
       : (language === 'zh' ? '开始导航' : 'Start');
