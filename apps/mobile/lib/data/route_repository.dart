@@ -16,11 +16,16 @@ class RouteRepository {
   Future<RoutePlan> fetch({
     required LatLng origin,
     required LatLng destination,
+    List<LatLng> stops = const [],
   }) async {
     final uri = Uri.parse('$baseUrl/api/route-options').replace(
       queryParameters: {
         'from': '${origin.longitude},${origin.latitude}',
         'to': '${destination.longitude},${destination.latitude}',
+        if (stops.isNotEmpty)
+          'stops': stops
+              .map((stop) => '${stop.longitude},${stop.latitude}')
+              .join(';'),
       },
     );
     final response = await _client.get(uri);
@@ -31,13 +36,16 @@ class RouteRepository {
     final options = (body['options'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(RouteOption.fromJson)
-        .where((option) => option.points.length >= 2 || option.mode != KiwiTravelMode.drive)
+        .where((option) =>
+            option.points.length >= 2 ||
+            option.mode == KiwiTravelMode.transit)
         .toList(growable: false);
     if (options.isEmpty) throw StateError('No routes available');
     return RoutePlan(
       options: options,
       trafficAvailable: body['trafficAvailable'] == true,
       provider: body['provider'] as String? ?? 'unknown',
+      stopsApplied: (body['stopsApplied'] as num?)?.round() ?? 0,
     );
   }
 }
