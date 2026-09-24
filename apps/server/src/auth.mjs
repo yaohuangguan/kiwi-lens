@@ -97,6 +97,13 @@ async function userProfile(db, user) {
     FROM place_bookmarks
     WHERE user_id = ? AND (is_favorite = 1 OR note <> '')
     ORDER BY updated_at DESC LIMIT 100`).bind(user.id).all();
+  const routes = await db.prepare(`SELECT id, destination_name AS destinationName,
+    destination_latitude AS latitude, destination_longitude AS longitude, mode,
+    distance_meters AS distanceMeters, duration_seconds AS durationSeconds, started_at AS startedAt
+    FROM route_history WHERE user_id = ? ORDER BY started_at DESC LIMIT 100`).bind(user.id).all();
+  const reviews = await db.prepare(`SELECT place_id AS placeId, place_name AS placeName,
+    rating, comment, updated_at AS updatedAt
+    FROM place_reviews WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100`).bind(user.id).all();
   return {
     user: { id: user.id, email: user.email },
     language: profile?.language === 'zh' ? 'zh' : 'en',
@@ -105,7 +112,9 @@ async function userProfile(db, user) {
     savedPlaces: (saved.results || []).map((place) => ({
       ...place,
       isFavorite: place.isFavorite === 1
-    }))
+    })),
+    routeHistory: routes.results || [],
+    reviews: reviews.results || []
   };
 }
 
@@ -145,7 +154,8 @@ export async function handleAccount(request, env) {
   if (!env.USER_DB) return response({ error: 'Account storage is not configured' }, 503);
   if (['POST', 'PATCH', 'DELETE'].includes(request.method)) {
     const origin = request.headers.get('origin');
-    if ((origin && origin !== new URL(request.url).origin) || request.headers.get('x-kiwi-client') !== 'web') {
+    const client = request.headers.get('x-kiwi-client');
+    if ((origin && origin !== new URL(request.url).origin) || !['web', 'mobile'].includes(client) || (client === 'mobile' && origin)) {
       return response({ error: 'Invalid request origin' }, 403);
     }
   }
@@ -255,6 +265,46 @@ export async function handleAccount(request, env) {
       await db.prepare('DELETE FROM place_bookmarks WHERE user_id = ? AND place_id = ?')
         .bind(user.id, placeId).run();
     }
+    return response(await userProfile(db, user));
+  }
+  if (path === '/api/profile/routes' && request.method === 'POST') {
+    const body = await readBody(request);
+    const name = typeof body?.destinationName === 'string' ? body.destinationName.trim() : '';
+    const mode = body?.mode;
+    const distance = body?.distanceMeters;
+    const duration = body?.durationSeconds;
+    if (!name || name.length > 200 || !['drive', 'transit', 'walk', 'bicycle'].includes(mode) ||
+      !(body.latitude > -48 && body.latitude < -34 && body.longitude > 166 && body.longitude < 179) ||
+      (distance != null && (!Number.isFinite(distance) || distance < 0 || distance > 5_000_000)) ||
+      (duration != null && (!Number.isFinite(duration) || duration < 0 || duration > 2_000_000))) {
+      return response({ error: 'Invalid route history' }, 400);
+    }
+    await db.prepare(`INSERT INTO route_history (id, user_id, destination_name,
+      destination_latitude, destination_longitude, mode, distance_meters, duration_seconds, started_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(crypto.randomUUID(), user.id, name, body.latitude, body.longitude, mode,
+        distance == null ? null : Math.round(distance), duration == null ? null : Math.round(duration), Date.now()).run();
+    await db.prepare(`DELETE FROM route_history WHERE user_id = ? AND id NOT IN
+      (SELECT id FROM route_history WHERE user_id = ? ORDER BY started_at DESC LIMIT 100)`)
+      .bind(user.id, user.id).run();
+    return response(await userProfile(db, user));
+  }
+  if (path === '/api/profile/reviews' && request.method === 'POST') {
+    const body = await readBody(request);
+    const placeId = typeof body?.placeId === 'string' ? body.placeId.trim() : '';
+    const placeName = typeof body?.placeName === 'string' ? body.placeName.trim() : '';
+    const comment = typeof body?.comment === 'string' ? body.comment.trim() : '';
+    const rating = body?.rating;
+    if (!placeId || placeId.length > 256 || !placeName || placeName.length > 200 ||
+      !Number.isInteger(rating) || rating < 1 || rating > 5 || comment.length > 2000) {
+      return response({ error: 'Invalid place review' }, 400);
+    }
+    await db.prepare(`INSERT INTO place_reviews
+      (user_id, place_id, place_name, rating, comment, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, place_id) DO UPDATE SET
+        place_name = excluded.place_name, rating = excluded.rating,
+        comment = excluded.comment, updated_at = excluded.updated_at`)
+      .bind(user.id, placeId, placeName, rating, comment, Date.now()).run();
     return response(await userProfile(db, user));
   }
   return response({ error: 'Not found' }, 404);

@@ -10,12 +10,16 @@ export type SavedPlace = {
   note: string;
   updatedAt: number;
 };
+export type RouteHistory = { id: string; destinationName: string; latitude: number; longitude: number; mode: string; distanceMeters: number | null; durationSeconds: number | null; startedAt: number };
+export type OwnReview = { placeId: string; placeName: string; rating: number; comment: string; updatedAt: number };
 export type AccountProfile = {
   user: { id: string; email: string };
   language: Language;
   voiceEnabled: boolean;
   recentDestinations: RecentDestination[];
   savedPlaces: SavedPlace[];
+  routeHistory: RouteHistory[];
+  reviews: OwnReview[];
 };
 
 let profile: AccountProfile | null = null;
@@ -57,6 +61,8 @@ const copy = {
 };
 
 export function isSignedIn() { return Boolean(profile); }
+export function currentProfile() { return profile; }
+export function ownReview(placeId: string) { return profile?.reviews?.find((review) => review.placeId === placeId) || null; }
 export function currentAccountEmail() { return profile?.user.email || ''; }
 export function recentDestinations() { return profile?.recentDestinations || []; }
 export function savedPlace(placeId: string) {
@@ -127,6 +133,7 @@ export function renderAccount() {
       profile = next;
       onProfileLoaded(next);
       renderAccount();
+      window.dispatchEvent(new Event('kiwi-account-change'));
     } catch (error) {
       status.textContent = (error as Error).message || words.error;
       submit.disabled = false;
@@ -183,4 +190,22 @@ export async function savePlace(input: {
   if (!profile) throw new Error('Sign in to save places');
   profile = await accountApi<AccountProfile>('/api/profile/places', 'POST', input);
   return savedPlace(input.placeId);
+}
+
+export async function rememberRoute(input: {
+  destinationName: string; latitude: number; longitude: number; mode: string;
+  distanceMeters: number | null; durationSeconds: number | null;
+}) {
+  if (!profile) return;
+  profile = await accountApi<AccountProfile>('/api/profile/routes', 'POST', input);
+  window.dispatchEvent(new Event('kiwi-account-change'));
+}
+
+export async function saveOwnReview(input: {
+  placeId: string; placeName: string; rating: number; comment: string;
+}) {
+  if (!profile) throw new Error('Sign in to save your review');
+  profile = await accountApi<AccountProfile>('/api/profile/reviews', 'POST', input);
+  window.dispatchEvent(new Event('kiwi-account-change'));
+  return ownReview(input.placeId);
 }

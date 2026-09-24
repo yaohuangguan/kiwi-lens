@@ -6,7 +6,8 @@ declare global {
 import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
-import { currentAccountEmail, initAccount, isSignedIn, recentDestinations, rememberDestination, rememberPreferences, renderAccount, savePlace, savedPlace, type AccountProfile } from './account';
+import { currentAccountEmail, initAccount, isSignedIn, ownReview, recentDestinations, rememberDestination, rememberPreferences, rememberRoute, renderAccount, saveOwnReview, savePlace, savedPlace, type AccountProfile } from './account';
+import { renderProfileView } from './profile-view';
 import { lookAheadCenter } from './navigation-view';
 import { initAutocomplete, type SuggestedPlace } from './autocomplete';
 import { GoogleMapAdapter, type PoiSelection } from './google-map';
@@ -35,6 +36,8 @@ let route: Route | null = null;
 let drivingAlternatives: Route[] = [];
 let selectedDrivingRoute = 0;
 let routePlan: PlannerRoutePlan | null = null;
+let drivingFromPlanner = false;
+let trafficLayerEnabled = true;
 let selectedTravelMode: TravelMode = 'drive';
 const routeStops: { label: string; coordinate: Coordinate }[] = [];
 let navigating = false;
@@ -387,8 +390,8 @@ function selectedPlannerOption(): PlannerRouteOption | null {
 function trafficVisuals() {
   const plannerDriving = routePlan?.options.filter((option) => option.mode === 'drive') || [];
   return drivingAlternatives.map((fallback, index) => ({
-    route: plannerDriving[index] ? routeFromOption(plannerDriving[index]!) : fallback,
-    trafficIntervals: plannerDriving[index]?.trafficIntervals || []
+    route: fallback,
+    trafficIntervals: drivingFromPlanner ? plannerDriving[index]?.trafficIntervals || [] : []
   }));
 }
 
@@ -400,6 +403,15 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
   navCard.hidden = true;
   navCard.replaceChildren();
   if (!option) return;
+  if (option.mode === 'drive' && !option.trafficIntervals.length) {
+    const card = document.createElement('div');
+    card.className = 'route-info-card';
+    card.textContent = language === 'zh'
+      ? '实时交通区间暂不可用；路线颜色不代表当前路况。'
+      : 'Live traffic segments are unavailable; route color does not indicate current traffic.';
+    root.append(card);
+    root.hidden = false;
+  }
 
   if (option.mode === 'drive' && (option.traffic.slow > 0 || option.traffic.trafficJam > 0 || option.warnings.length)) {
     const card = document.createElement('div');
@@ -437,7 +449,12 @@ function applyDrivingRoute(index: number) {
   routeCameras = matchCamerasToRoute(cameras, route);
   renderCameras();
   map.renderRoute(route, destination, navigating);
-  map.renderTrafficRoutes(trafficVisuals(), selectedDrivingRoute);
+  map.setTrafficEnabled(trafficLayerEnabled);
+  map.renderTrafficRoutes(trafficVisuals(), selectedDrivingRoute, (chosen) => {
+    if (chosen === selectedDrivingRoute || navigating) return;
+    applyDrivingRoute(chosen);
+    renderRoutePlanner();
+  });
   $('tripDistance').textContent = formatDistance(route.distance, language);
   $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
     language === 'zh' ? 'zh-NZ' : 'en-NZ',
@@ -458,7 +475,7 @@ function renderRoutePlanner() {
   const actions = $('planningActions');
   modes.hidden = !routePlan && drivingAlternatives.length === 0;
   actions.hidden = modes.hidden;
-  $('trafficLegend').hidden = modes.hidden || selectedTravelMode !== 'drive';
+  $('trafficLegend').hidden = modes.hidden || selectedTravelMode !== 'drive' || !routePlan?.trafficAvailable;
   if (modes.hidden) {
     alternatives.hidden = true;
     $('routeInfoCards').hidden = true;
@@ -516,13 +533,17 @@ function renderRoutePlanner() {
       const preview = routeFromOption(option);
       route = preview;
       routeCameras = [];
-      if (preview.coordinates.length >= 2) map.renderRoute(preview, destination, false);
+      map.clearTrafficRoutes();
+      map.setTrafficEnabled(false);
+      if (preview.coordinates.length >= 2) map.renderRoute(preview, destination, navigating);
     }
     $('tripDistance').textContent = formatDistance(option.distanceMeters, language);
     $('tripArrival').textContent = new Date(Date.now() + option.durationSeconds * 1000).toLocaleTimeString(
       language === 'zh' ? 'zh-NZ' : 'en-NZ',
       { hour: '2-digit', minute: '2-digit' }
     );
+    $('cameraRouteCount').textContent = '—';
+    $('navCameraCount').textContent = '—';
     ($('driveButton') as HTMLButtonElement).disabled = route?.coordinates.length ? false : true;
     $('driveLabel').textContent = selectedTravelMode === 'transit'
       ? (language === 'zh' ? '开始行程' : 'Start trip')
@@ -595,37 +616,36 @@ async function planRoute() {
   const signal = routeAbort.signal;
   $('tripEyebrow').textContent = 'CALCULATING ROUTE';
   $('tripTitle').textContent = t(language, 'routeCalculating');
-  selectedTravelMode = 'drive';
+  const requestedMode = navigating ? selectedTravelMode : 'drive';
   try {
     const stopCoordinates = routeStops.map((stop) => stop.coordinate);
     const stopQuery = stopCoordinates.length
       ? `&stops=${encodeURIComponent(stopCoordinates.map((stop) => stop.join(',')).join(';'))}`
       : '';
-    const plannerPromise = fetchRoutePlan(API_BASE_URL, from, destination, stopCoordinates, signal).catch(() => null);
-
-    if (stopCoordinates.length) {
-      const stopRoute = await api<Route>(
-        `/api/route?from=${from.join(',')}&to=${destination.join(',')}${stopQuery}`,
-        signal
-      );
-      drivingAlternatives = [stopRoute];
+    const [planner, laneRoute] = await Promise.all([
+      fetchRoutePlan(API_BASE_URL, from, destination, stopCoordinates, signal).catch(() => null),
+      api<Route>(`/api/route?from=${from.join(',')}&to=${destination.join(',')}${stopQuery}`, signal).catch(() => undefined)
+    ]);
+    routePlan = planner;
+    const plannedDriving = planner?.provider === 'google'
+      ? planner.options.filter((option) => option.mode === 'drive')
+      : [];
+    drivingFromPlanner = Boolean(plannedDriving?.length && plannedDriving.every((option) => routeFromOption(option).coordinates.length >= 2));
+    if (drivingFromPlanner) {
+      drivingAlternatives = plannedDriving!.map((option) => enrichRouteLanes(routeFromOption(option), laneRoute));
+    } else if (stopCoordinates.length) {
+      if (!laneRoute) throw new Error('Route geometry is empty');
+      drivingAlternatives = [laneRoute];
     } else {
-      const laneRoutePromise = api<Route>(
-        `/api/route?from=${from.join(',')}&to=${destination.join(',')}`,
-        signal
-      ).catch(() => undefined);
-      const [googleRoutes, laneRoute] = await Promise.all([
-        computeGoogleRoutes(from, destination, language),
-        laneRoutePromise
-      ]);
-      drivingAlternatives = googleRoutes.map((item) => enrichRouteLanes(item, laneRoute));
+      drivingAlternatives = (await computeGoogleRoutes(from, destination, language))
+        .map((item) => enrichRouteLanes(item, laneRoute));
     }
-
-    routePlan = await plannerPromise;
     if (signal.aborted) return;
     if (!drivingAlternatives.length) throw new Error('Route geometry is empty');
     selectedDrivingRoute = 0;
     applyDrivingRoute(0);
+    selectedTravelMode = requestedMode !== 'drive' && planner?.options.some((option) => option.mode === requestedMode)
+      ? requestedMode : 'drive';
     $('tripEyebrow').textContent = navigating ? 'DRIVING MODE' : 'ROUTE READY';
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
@@ -634,6 +654,7 @@ async function planRoute() {
       : '—';
     $('navNextCamera').textContent = $('sheetNextCamera').textContent;
     renderRoutePlanner();
+    if (navigating && selectedTravelMode !== 'drive') document.body.dataset.travelMode = selectedTravelMode;
     if (navigating) updateGuidance();
   } catch (error) {
     if ((error as Error).name === 'AbortError' || signal.aborted) return;
@@ -652,6 +673,7 @@ function clearDestination() {
   drivingAlternatives = [];
   selectedDrivingRoute = 0;
   routePlan = null;
+  drivingFromPlanner = false;
   selectedTravelMode = 'drive';
   routeStops.splice(0, routeStops.length);
   routeCameras = [];
@@ -693,7 +715,7 @@ function clearDestination() {
 
 function saveCurrentRoute() {
   if (!destination || !destinationName) return;
-  const saved = JSON.parse(localStorage.getItem('kiwi-saved-routes') || '[]') as unknown[];
+  const saved = JSON.parse(sessionStorage.getItem('kiwi-saved-routes') || '[]') as unknown[];
   const record = {
     savedAt: new Date().toISOString(),
     destinationName,
@@ -707,16 +729,14 @@ function saveCurrentRoute() {
     if (!item || typeof item !== 'object') return true;
     return (item as { destinationName?: string }).destinationName !== destinationName;
   })].slice(0, 20);
-  localStorage.setItem('kiwi-saved-routes', JSON.stringify(next));
-  toast(language === 'zh' ? '路线已保存到此设备' : 'Route saved on this device');
-}
-
-function primeVoice() {
-  if (!('speechSynthesis' in window)) return;
-  speechSynthesis.resume();
-  const probe = new SpeechSynthesisUtterance('');
-  probe.volume = 0;
-  speechSynthesis.speak(probe);
+  sessionStorage.setItem('kiwi-saved-routes', JSON.stringify(next));
+  if (isSignedIn()) {
+    void rememberRoute({
+      destinationName, latitude: destination[1], longitude: destination[0], mode: selectedTravelMode,
+      distanceMeters: record.distance, durationSeconds: record.duration
+    }).then(() => toast(language === 'zh' ? '路线已保存到账户' : 'Route saved to your account'))
+      .catch((error) => toast(String(error)));
+  } else toast(language === 'zh' ? '路线仅保留到本次会话' : 'Route saved for this session only');
 }
 
 function speak(message: string) {
@@ -735,10 +755,11 @@ function speak(message: string) {
   ) || voices.find((voice) => language === 'en' && voice.lang.toLowerCase().startsWith('en'));
   if (preferred) utterance.voice = preferred;
   speechSynthesis.cancel();
-  window.setTimeout(() => {
-    speechSynthesis.resume();
-    speechSynthesis.speak(utterance);
-  }, 30);
+  utterance.onerror = () => toast(language === 'zh'
+    ? '语音播放失败，请检查静音开关、音量和浏览器语音权限。'
+    : 'Voice playback failed. Check silent mode, volume and browser speech support.');
+  speechSynthesis.resume();
+  speechSynthesis.speak(utterance);
 }
 
 function turnText(step: RouteStep) {
@@ -827,7 +848,8 @@ function updateGuidance() {
     const toTurn = maneuver.along - progress;
     if (following) {
       const zoom = toTurn < 45 ? 19.2 : toTurn < 140 ? 18.4 : 17.2;
-      map.focusNavigation(lookAheadCenter(current, latestHeading, route), zoom);
+      const lookAhead = toTurn < 45 ? 35 : toTurn < 140 ? 60 : 150;
+      map.focusNavigation(lookAheadCenter(current, latestHeading, route, lookAhead), zoom);
     }
     const key = `${maneuver.step.location.join(',')}:${toTurn <= 100 ? '100' : '500'}`;
     if (toTurn > 0 && toTurn <= 500 && key !== lastTurnKey) {
@@ -865,8 +887,9 @@ async function startNavigation() {
   navigating = true;
   following = true;
   requestCompassFromGesture();
+  document.body.dataset.travelMode = selectedTravelMode;
   $('followButton').classList.add('active');
-  $('tripEyebrow').textContent = 'DRIVING MODE';
+  $('tripEyebrow').textContent = selectedTravelMode === 'drive' ? 'DRIVING MODE' : 'GUIDANCE MODE';
   $('driveLabel').textContent = t(language, 'stop');
   $('driveIcon').textContent = '■';
   $('drivingStatus').textContent = t(language, 'drivingStarted');
@@ -886,7 +909,15 @@ async function startNavigation() {
 }
 
 function stopNavigation(arrived = false) {
+  if (!navigating) return;
+  if (isSignedIn() && destination && route) {
+    void rememberRoute({
+      destinationName: destinationName || 'Destination', latitude: destination[1], longitude: destination[0],
+      mode: selectedTravelMode, distanceMeters: route.distance, durationSeconds: route.duration
+    }).catch(() => { /* Ending navigation must work even if account sync fails. */ });
+  }
   navigating = false;
+  delete document.body.dataset.travelMode;
   renderLaneGuidance();
   $('cameraAlert').hidden = true;
   setUiMode('explore');
@@ -921,6 +952,18 @@ function renderPoiAccountState(place: PoiSelection) {
   note.disabled = !signedIn;
   saveNote.disabled = !signedIn;
   note.value = stored?.note || '';
+  const review = ownReview(place.placeId);
+  const rating = $('poiOwnRating') as HTMLSelectElement;
+  const comment = $('poiOwnComment') as HTMLTextAreaElement;
+  const saveReview = $('poiSaveReview') as HTMLButtonElement;
+  rating.value = String(review?.rating || 5);
+  rating.disabled = !signedIn;
+  comment.value = review?.comment || '';
+  comment.disabled = !signedIn;
+  saveReview.disabled = !signedIn;
+  $('poiOwnReviewHint').textContent = signedIn
+    ? (language === 'zh' ? '仅保存在 Kiwi Lens 账户，不会发布到 Google' : 'Private to Kiwi Lens; not posted to Google')
+    : (language === 'zh' ? '登录后撰写私人评价' : 'Sign in to write a private review');
   $('poiAccountHint').textContent = signedIn
     ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)
     : (language === 'zh' ? '登录后同步收藏和备注' : 'Sign in to sync favorites and notes');
@@ -1128,6 +1171,23 @@ function initBottomSheet() {
   handle.addEventListener('pointercancel', finish);
 }
 
+async function saveSelectedReview() {
+  if (!selectedPoi || !isSignedIn()) {
+    toast(language === 'zh' ? '请先登录再评价地点。' : 'Sign in to review a place.');
+    return;
+  }
+  try {
+    await saveOwnReview({
+      placeId: selectedPoi.placeId,
+      placeName: selectedPoi.name,
+      rating: Number(($('poiOwnRating') as HTMLSelectElement).value),
+      comment: ($('poiOwnComment') as HTMLTextAreaElement).value.trim()
+    });
+    renderPoiAccountState(selectedPoi);
+    toast(language === 'zh' ? '私人评价已保存' : 'Private review saved');
+  } catch (error) { toast(String((error as Error).message)); }
+}
+
 $('originInput').addEventListener('focus', () => { searchTarget = 'origin'; });
 $('destinationInput').addEventListener('focus', () => { searchTarget = 'destination'; });
 $('stopInput').addEventListener('focus', () => { searchTarget = 'stop'; $('stopEditor').hidden = false; });
@@ -1178,11 +1238,11 @@ $('travelModes').addEventListener('click', (event) => {
     applyDrivingRoute(selectedDrivingRoute);
   } else {
     routeCameras = [];
+    map.clearTrafficRoutes();
   }
   renderRoutePlanner();
 });
 $('driveButton').onclick = () => {
-  primeVoice();
   if (navigating) stopNavigation();
   else void startNavigation();
 };
@@ -1195,6 +1255,7 @@ $('poiFavorite').onclick = () => {
   void saveSelectedPlace(!(savedPlace(selectedPoi.placeId)?.isFavorite ?? false));
 };
 $('poiSaveNote').onclick = () => void saveSelectedPlace();
+$('poiSaveReview').onclick = () => void saveSelectedReview();
 $('followButton').onclick = () => { requestCompassFromGesture(); following = !following; $('followButton').classList.toggle('active', following); if (following && current) { map.setFollowHeading(deviceHeading ?? latestHeading); const center = navigating && route ? lookAheadCenter(current, latestHeading, route) : current; if (navigating) map.focusNavigation(center); else map.panTo(center); } };
 $('recenterButton').onclick = () => {
   requestCompassFromGesture();
@@ -1220,6 +1281,22 @@ $('navLanesChip').onclick = () => {
   updateGuidance();
 };
 $('navGpsChip').onclick = () => { if (current) ($('recenterButton') as HTMLButtonElement).click(); else requestGps(); };
+$('trafficToggle').onclick = () => {
+  trafficLayerEnabled = !trafficLayerEnabled;
+  map.setTrafficEnabled(trafficLayerEnabled && selectedTravelMode === 'drive');
+  $('trafficToggle').classList.toggle('active', trafficLayerEnabled);
+  $('trafficToggle').setAttribute('aria-pressed', String(trafficLayerEnabled));
+};
+for (const [id, degrees] of [['rotateLeft', -45], ['rotateRight', 45]] as const) {
+  $(id).onclick = () => {
+    if (!map.rotateBy(degrees)) {
+      toast(language === 'zh' ? '旋转需要支持 WebGL 的矢量地图。' : 'Rotation needs a WebGL-capable vector map.');
+      return;
+    }
+    following = false;
+    $('followButton').classList.remove('active');
+  };
+}
 $('navOverviewChip').onclick = () => {
   if (!route) return;
   following = false;
@@ -1236,12 +1313,30 @@ $('navSheetHandle').onclick = () => {
   if (current && route && navigating && following) requestAnimationFrame(() => map.focusNavigation(lookAheadCenter(current!, latestHeading, route!)));
 };
 $('settingsButton').onclick = () => showOverlay('settingsOverlay');
+function showProfile() {
+  renderProfileView($('profileContent'), language, () => {
+    hideOverlay('profileOverlay');
+    showOverlay('settingsOverlay');
+  });
+  showOverlay('profileOverlay');
+}
+$('profileButton').onclick = showProfile;
+$('closeProfile').onclick = () => hideOverlay('profileOverlay');
 $('closeSettings').onclick = () => hideOverlay('settingsOverlay');
 $('dataButton').onclick = () => showOverlay('dataOverlay');
 $('closeData').onclick = () => hideOverlay('dataOverlay');
-for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
+for (const id of ['settingsOverlay', 'dataOverlay', 'profileOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
 function applyLanguage() {
   applyUiLanguage(language);
+  $('profileButton').setAttribute('aria-label', language === 'zh' ? '个人主页' : 'My profile');
+  $('profileButton').title = language === 'zh' ? '个人主页' : 'My profile';
+  $('profileTitle').textContent = language === 'zh' ? '个人主页' : 'My profile';
+  $('closeProfile').setAttribute('aria-label', language === 'zh' ? '关闭个人主页' : 'Close profile');
+  $('poiOwnReviewTitle').textContent = language === 'zh' ? '我的评价' : 'My review';
+  $('poiOwnRatingLabel').textContent = language === 'zh' ? '我的评分' : 'My rating';
+  $('poiOwnComment').setAttribute('placeholder', language === 'zh' ? '写下自己的私人评价' : 'Write a review for your own records');
+  $('poiSaveReview').textContent = language === 'zh' ? '保存我的评价' : 'Save my review';
+  if (!$('profileOverlay').hidden) showProfile();
   $('zhButton').classList.toggle('selected', language === 'zh');
   $('enButton').classList.toggle('selected', language === 'en');
   ($('originInput') as HTMLInputElement).placeholder = currentPlaceLabel ? `${t(language, 'currentPlace')}: ${currentPlaceLabel}` : t(language, 'origin');
@@ -1283,7 +1378,9 @@ $('voiceToggle').addEventListener('change', () => {
   voiceEnabled = ($('voiceToggle') as HTMLInputElement).checked;
   renderTripFlags();
   void rememberPreferences(language, voiceEnabled);
+  if (voiceEnabled) speak(language === 'zh' ? '语音提示已开启。' : 'Voice guidance is on.');
 });
+$('voiceTestButton').onclick = () => speak(language === 'zh' ? '语音测试。前方请注意路况。' : 'Voice test. Watch the road ahead.');
 ($('laneToggle') as HTMLInputElement).checked = laneGuidanceEnabled;
 $('laneToggle').addEventListener('change', () => {
   laneGuidanceEnabled = ($('laneToggle') as HTMLInputElement).checked;
@@ -1312,6 +1409,7 @@ window.gm_authFailure = () => {
 window.addEventListener('kiwi-account-change', () => {
   renderTripFlags();
   if (selectedPoi) renderPoiAccountState(selectedPoi);
+  if (!$('profileOverlay').hidden) showProfile();
 });
 
 async function initializeMap() {
@@ -1334,6 +1432,7 @@ async function initializeMap() {
     },
     onPoiSelected: showPoiCard
   });
+  map.setTrafficEnabled(trafficLayerEnabled);
 }
 
 void initializeMap().catch((error) => {

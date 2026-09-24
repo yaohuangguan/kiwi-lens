@@ -33,6 +33,8 @@ class NavigationOverlay extends StatefulWidget {
     required this.onEnd,
     required this.onRecenter,
     required this.onOverview,
+    required this.onRotateLeft,
+    required this.onRotateRight,
     required this.onVoiceToggle,
     required this.onLanesToggle,
   });
@@ -45,6 +47,8 @@ class NavigationOverlay extends StatefulWidget {
   final VoidCallback onEnd;
   final VoidCallback onRecenter;
   final VoidCallback onOverview;
+  final VoidCallback onRotateLeft;
+  final VoidCallback onRotateRight;
   final VoidCallback onVoiceToggle;
   final VoidCallback onLanesToggle;
 
@@ -137,6 +141,18 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   ),
                   const SizedBox(height: 9),
                   _MapControl(
+                    icon: Icons.rotate_left_rounded,
+                    tooltip: 'Rotate map left',
+                    onTap: widget.onRotateLeft,
+                  ),
+                  const SizedBox(height: 9),
+                  _MapControl(
+                    icon: Icons.rotate_right_rounded,
+                    tooltip: 'Rotate map right',
+                    onTap: widget.onRotateRight,
+                  ),
+                  const SizedBox(height: 9),
+                  _MapControl(
                     icon: widget.voiceEnabled
                         ? Icons.volume_up_rounded
                         : Icons.volume_off_rounded,
@@ -148,8 +164,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
             ),
           ),
           Positioned(
-            top: 315,
-            right: 15,
+            top: 232,
+            left: 15,
             child: PointerInterceptor(
               child: Container(
                 width: 84,

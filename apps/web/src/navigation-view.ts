@@ -3,10 +3,10 @@ import { nearestOnRoute, type Coordinate, type Route } from '@kiwi-lens/core';
 const EARTH_RADIUS_METRES = 6_371_008.8;
 
 /** Keeps the vehicle below the screen centre so more of the upcoming road is visible. */
-export function lookAheadCenter(position: Coordinate, gpsHeading: number | null, route: Route): Coordinate {
+export function lookAheadCenter(position: Coordinate, gpsHeading: number | null, route: Route, aheadMetres?: number): Coordinate {
   const projection = nearestOnRoute(position, route.coordinates);
   const heading = gpsHeading !== null && Number.isFinite(gpsHeading) ? gpsHeading : projection.bearing;
-  const metres = projection.offsetMeters < 100 ? 170 : 100;
+  const metres = aheadMetres ?? (projection.offsetMeters < 100 ? 170 : 100);
   const bearing = heading * Math.PI / 180;
   const latitude = position[1] * Math.PI / 180;
   const longitude = position[0] * Math.PI / 180;

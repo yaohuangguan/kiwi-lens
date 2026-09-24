@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'data/account_repository.dart';
 import 'data/route_repository.dart';
 import 'domain/coordinate_formatter.dart';
 import 'domain/radar_geometry.dart';
@@ -17,6 +18,7 @@ import 'drive/drive_engine.dart';
 import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/navigation_overlay.dart';
+import 'widgets/profile_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 
@@ -66,6 +68,7 @@ class _MapHomePageState extends State<MapHomePage> {
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
 
   final DriveEngine _driveEngine = DriveEngine();
+  final AccountRepository _account = AccountRepository();
   final RouteRepository _routeRepository = RouteRepository();
   GoogleMapViewController? _browseController;
   GoogleNavigationViewController? _navigationController;
@@ -101,9 +104,15 @@ class _MapHomePageState extends State<MapHomePage> {
   @override
   void initState() {
     super.initState();
+    _account.addListener(_onAccountChanged);
+    unawaited(_account.restore());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_startTracking());
     });
+  }
+
+  void _onAccountChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -111,6 +120,8 @@ class _MapHomePageState extends State<MapHomePage> {
     _positionSubscription?.cancel();
     _headingSubscription?.cancel();
     _mapRefreshTimer?.cancel();
+    _account.removeListener(_onAccountChanged);
+    _account.dispose();
     _driveEngine.dispose();
     if (_navigationSessionInitialized) {
       GoogleMapsNavigator.cleanup();
@@ -132,31 +143,55 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _startTracking() async {
-    if (_positionSubscription != null || !await _ensureLocationPermission()) return;
-    _headingSubscription = DeviceHeading.readings.listen((heading) {
-      _deviceHeading = heading;
-      _queueMapRefresh();
-    }, onError: (_) { /* iOS simulator and non-iOS use GPS course. */ });
-    _positionSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 2,
-      ),
-    ).listen(_onPosition, onError: (Object error) {
-      if (mounted) setState(() => _message = 'Location unavailable: $error');
-    });
+    if (_positionSubscription != null || !await _ensureLocationPermission()) {
+      return;
+    }
+    _headingSubscription = DeviceHeading.readings.listen(
+      (heading) {
+        _deviceHeading = heading;
+        _queueMapRefresh();
+      },
+      onError: (_) {
+        /* iOS simulator and non-iOS use GPS course. */
+      },
+    );
+    _positionSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+            distanceFilter: 2,
+          ),
+        ).listen(
+          _onPosition,
+          onError: (Object error) {
+            if (mounted) {
+              setState(() => _message = 'Location unavailable: $error');
+            }
+          },
+        );
     try {
-      _onPosition(await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best),
-      ));
-    } catch (_) { /* The location stream will retry. */ }
+      _onPosition(
+        await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.best,
+          ),
+        ),
+      );
+    } catch (_) {
+      /* The location stream will retry. */
+    }
   }
 
   void _onPosition(Position position) {
     if (!mounted) return;
-    _gpsLocation = LatLng(latitude: position.latitude, longitude: position.longitude);
+    _gpsLocation = LatLng(
+      latitude: position.latitude,
+      longitude: position.longitude,
+    );
     _gpsAccuracy = position.accuracy.isFinite ? position.accuracy : null;
-    if (position.speed >= 1.5 && position.heading.isFinite && position.heading >= 0) {
+    if (position.speed >= 1.5 &&
+        position.heading.isFinite &&
+        position.heading >= 0) {
       _travelHeading = position.heading % 360;
     } else {
       _travelHeading = null;
@@ -167,12 +202,20 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _queueMapRefresh() {
     _mapRefreshTimer?.cancel();
-    _mapRefreshTimer = Timer(const Duration(milliseconds: 180), () => unawaited(_refreshMap()));
+    _mapRefreshTimer = Timer(
+      const Duration(milliseconds: 180),
+      () => unawaited(_refreshMap()),
+    );
   }
 
   Future<void> _refreshMap() async {
-    if (_mapRefreshing) { _refreshAgain = true; return; }
-    final controller = _guidanceRunning ? _navigationController : _browseController;
+    if (_mapRefreshing) {
+      _refreshAgain = true;
+      return;
+    }
+    final controller = _guidanceRunning
+        ? _navigationController
+        : _browseController;
     final location = _gpsLocation;
     final heading = _deviceHeading ?? _travelHeading;
     if (controller == null || location == null) return;
@@ -189,14 +232,16 @@ class _MapHomePageState extends State<MapHomePage> {
         );
         if (_radarPolygon == null) {
           final polygon = (await controller.addPolygons([options])).first;
-          if (controller == (_guidanceRunning ? _navigationController : _browseController)) {
+          if (controller ==
+              (_guidanceRunning ? _navigationController : _browseController)) {
             _radarPolygon = polygon;
           }
         } else {
           final polygon = (await controller.updatePolygons([
             _radarPolygon!.copyWith(options: options),
           ])).first;
-          if (controller == (_guidanceRunning ? _navigationController : _browseController)) {
+          if (controller ==
+              (_guidanceRunning ? _navigationController : _browseController)) {
             _radarPolygon = polygon;
           }
         }
@@ -205,24 +250,46 @@ class _MapHomePageState extends State<MapHomePage> {
         _radarPolygon = null;
       }
       if (_following) {
-        final turnDistance = _driveEngine.navInfo?.distanceToCurrentStepMeters?.toDouble();
-        final nearJunction = _guidanceRunning && turnDistance != null && turnDistance < 140;
-        final veryNearJunction = _guidanceRunning && turnDistance != null && turnDistance < 45;
-        final lookAhead = veryNearJunction ? 38.0 : nearJunction ? 65.0 : 105.0;
+        final turnDistance = _driveEngine.navInfo?.distanceToCurrentStepMeters
+            ?.toDouble();
+        final nearJunction =
+            _guidanceRunning && turnDistance != null && turnDistance < 140;
+        final veryNearJunction =
+            _guidanceRunning && turnDistance != null && turnDistance < 45;
+        final lookAhead = veryNearJunction
+            ? 38.0
+            : nearJunction
+            ? 65.0
+            : 105.0;
         final cameraTarget = _guidanceRunning && heading != null
             ? pointAtDistance(location, heading, lookAhead)
             : location;
-        await controller.moveCamera(CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: cameraTarget,
-            bearing: heading ?? 0,
-            tilt: veryNearJunction ? 55 : nearJunction ? 50 : _guidanceRunning ? 42 : 0,
-            zoom: veryNearJunction ? 19.2 : nearJunction ? 18.4 : _guidanceRunning ? 17.2 : 16,
+        await controller.moveCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: cameraTarget,
+              bearing: heading ?? 0,
+              tilt: veryNearJunction
+                  ? 55
+                  : nearJunction
+                  ? 50
+                  : _guidanceRunning
+                  ? 42
+                  : 0,
+              zoom: veryNearJunction
+                  ? 19.2
+                  : nearJunction
+                  ? 18.4
+                  : _guidanceRunning
+                  ? 17.2
+                  : 16,
+            ),
           ),
-        ));
+        );
       }
-    } catch (_) { /* View may have been replaced during a mode change. */ }
-    finally {
+    } catch (_) {
+      /* View may have been replaced during a mode change. */
+    } finally {
       _mapRefreshing = false;
       if (_refreshAgain) {
         _refreshAgain = false;
@@ -236,6 +303,31 @@ class _MapHomePageState extends State<MapHomePage> {
     _queueMapRefresh();
   }
 
+  Future<void> _rotateMap(double degrees) async {
+    final controller = _guidanceRunning
+        ? _navigationController
+        : _browseController;
+    if (controller == null) return;
+    try {
+      final camera = await controller.getCameraPosition();
+      _following = false;
+      await controller.moveCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: camera.target,
+            zoom: camera.zoom,
+            tilt: camera.tilt,
+            bearing: (camera.bearing + degrees + 360) % 360,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = 'Map rotation unavailable: $error');
+      }
+    }
+  }
+
   void _showRouteOverview() {
     _following = false;
     final controller = _navigationController;
@@ -245,7 +337,9 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _clearRoutePreview() async {
     final controller = _browseController;
     if (controller != null) {
-      try { await controller.clearPolylines(); } catch (_) {}
+      try {
+        await controller.clearPolylines();
+      } catch (_) {}
     }
     if (!mounted) return;
     setState(() {
@@ -285,7 +379,9 @@ class _MapHomePageState extends State<MapHomePage> {
       });
       await _renderRoutePreview();
     } catch (error) {
-      if (mounted) setState(() => _message = 'Could not preview routes: $error');
+      if (mounted) {
+        setState(() => _message = 'Could not preview routes: $error');
+      }
     } finally {
       if (mounted) setState(() => _routePreviewLoading = false);
     }
@@ -305,9 +401,131 @@ class _MapHomePageState extends State<MapHomePage> {
     final rgb = speed == 'trafficJam'
         ? 0xEA4335
         : speed == 'slow'
-            ? 0xF9AB00
-            : 0x34A853;
+        ? 0xF9AB00
+        : speed == 'normal'
+        ? 0x34A853
+        : 0x087D58;
     return Color((alpha << 24) | rgb);
+  }
+
+  String _placeKey(PointOfInterest poi) => poi.placeID.isNotEmpty
+      ? poi.placeID
+      : 'coords:${poi.latLng.latitude.toStringAsFixed(5)},${poi.latLng.longitude.toStringAsFixed(5)}';
+
+  bool _isFavorite(PointOfInterest poi) =>
+      _account.profile?.places.any(
+        (place) =>
+            place['placeId'] == _placeKey(poi) && place['isFavorite'] == true,
+      ) ??
+      false;
+
+  void _showProfile() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => ProfileSheet(account: _account),
+    );
+  }
+
+  Future<void> _toggleFavorite(PointOfInterest poi) async {
+    if (_account.profile == null) {
+      _showProfile();
+      return;
+    }
+    try {
+      await _account.saveFavorite(
+        placeId: _placeKey(poi),
+        name: poi.name,
+        latitude: poi.latLng.latitude,
+        longitude: poi.latLng.longitude,
+        favorite: !_isFavorite(poi),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _message = '$error');
+    }
+  }
+
+  Future<void> _reviewPlace(PointOfInterest poi) async {
+    if (_account.profile == null) {
+      _showProfile();
+      return;
+    }
+    final existing = _account.profile?.reviews
+        .where((review) => review['placeId'] == _placeKey(poi))
+        .firstOrNull;
+    final comment = TextEditingController(
+      text: existing?['comment'] as String? ?? '',
+    );
+    var rating = (existing?['rating'] as num?)?.round() ?? 5;
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: Text(
+            'My review · ${poi.name}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                initialValue: rating,
+                decoration: const InputDecoration(labelText: 'Rating'),
+                items: [
+                  for (var value = 1; value <= 5; value++)
+                    DropdownMenuItem(
+                      value: value,
+                      child: Text('${'★' * value} ($value/5)'),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) update(() => rating = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: comment,
+                maxLines: 4,
+                maxLength: 2000,
+                decoration: const InputDecoration(
+                  labelText: 'Private comment',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const Text(
+                'Saved to Kiwi Lens only; not published to Google.',
+                style: TextStyle(fontSize: 11, color: Colors.black54),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save == true) {
+      try {
+        await _account.saveReview(
+          placeId: _placeKey(poi),
+          placeName: poi.name,
+          rating: rating,
+          comment: comment.text.trim(),
+        );
+      } catch (error) {
+        if (mounted) setState(() => _message = '$error');
+      }
+    }
+    comment.dispose();
   }
 
   Future<void> _renderRoutePreview() async {
@@ -321,15 +539,17 @@ class _MapHomePageState extends State<MapHomePage> {
     for (final route in plan.forMode(_selectedMode)) {
       if (route.points.length < 2) continue;
       final active = route.id == selected?.id;
-      options.add(PolylineOptions(
-        points: route.points,
-        strokeColor: _selectedMode == KiwiTravelMode.drive
-            ? (active ? const Color(0xCC60716A) : const Color(0x3560716A))
-            : (active ? const Color(0xFF4285F4) : const Color(0x554285F4)),
-        strokeWidth: active ? 8 : 6,
-        zIndex: active ? 18 : 8,
-        clickable: false,
-      ));
+      options.add(
+        PolylineOptions(
+          points: route.points,
+          strokeColor: _selectedMode == KiwiTravelMode.drive
+              ? (active ? const Color(0xCC60716A) : const Color(0x3560716A))
+              : (active ? const Color(0xFF4285F4) : const Color(0x554285F4)),
+          strokeWidth: active ? 8 : 6,
+          zIndex: active ? 18 : 8,
+          clickable: false,
+        ),
+      );
 
       if (_selectedMode == KiwiTravelMode.drive) {
         final intervals = route.trafficIntervals.isEmpty
@@ -337,7 +557,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 TrafficInterval(
                   startPolylinePointIndex: 0,
                   endPolylinePointIndex: route.points.length - 1,
-                  speed: 'normal',
+                  speed: 'unknown',
                 ),
               ]
             : route.trafficIntervals;
@@ -351,13 +571,15 @@ class _MapHomePageState extends State<MapHomePage> {
               .toInt();
           final segment = route.points.sublist(start, end + 1);
           if (segment.length < 2) continue;
-          options.add(PolylineOptions(
-            points: segment,
-            strokeColor: _trafficColor(interval.speed, active),
-            strokeWidth: active ? 8 : 6,
-            zIndex: active ? 25 : 12,
-            clickable: false,
-          ));
+          options.add(
+            PolylineOptions(
+              points: segment,
+              strokeColor: _trafficColor(interval.speed, active),
+              strokeWidth: active ? 8 : 6,
+              zIndex: active ? 25 : 12,
+              clickable: false,
+            ),
+          );
         }
       }
     }
@@ -426,11 +648,15 @@ class _MapHomePageState extends State<MapHomePage> {
       'mode': selected.mode.apiValue,
       'durationSeconds': selected.durationSeconds,
       'distanceMeters': selected.distanceMeters,
-      'stops': _routeStops.map((stop) => {
-        'label': stop.label,
-        'latitude': stop.location.latitude,
-        'longitude': stop.location.longitude,
-      }).toList(),
+      'stops': _routeStops
+          .map(
+            (stop) => {
+              'label': stop.label,
+              'latitude': stop.location.latitude,
+              'longitude': stop.location.longitude,
+            },
+          )
+          .toList(),
     });
     saved.removeWhere((item) {
       try {
@@ -444,6 +670,20 @@ class _MapHomePageState extends State<MapHomePage> {
     saved.insert(0, record);
     if (saved.length > 20) saved.removeRange(20, saved.length);
     await prefs.setStringList('kiwi.saved.routes', saved);
+    if (_account.profile != null) {
+      try {
+        await _account.recordRoute(
+          destinationName: poi.name,
+          latitude: poi.latLng.latitude,
+          longitude: poi.latLng.longitude,
+          mode: selected.mode.apiValue,
+          distanceMeters: selected.distanceMeters,
+          durationSeconds: selected.durationSeconds,
+        );
+      } catch (_) {
+        /* The on-device save remains available while offline. */
+      }
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Route saved on this device')),
@@ -454,15 +694,17 @@ class _MapHomePageState extends State<MapHomePage> {
   void _toggleVoice() {
     setState(() => _voiceEnabled = !_voiceEnabled);
     _driveEngine.voiceEnabled = _voiceEnabled;
-    unawaited(GoogleMapsNavigator.setAudioGuidance(
-      NavigationAudioGuidanceSettings(
-        guidanceType: _voiceEnabled
-            ? NavigationAudioGuidanceType.alertsAndGuidance
-            : NavigationAudioGuidanceType.silent,
-        isBluetoothAudioEnabled: true,
-        isVibrationEnabled: true,
+    unawaited(
+      GoogleMapsNavigator.setAudioGuidance(
+        NavigationAudioGuidanceSettings(
+          guidanceType: _voiceEnabled
+              ? NavigationAudioGuidanceType.alertsAndGuidance
+              : NavigationAudioGuidanceType.silent,
+          isBluetoothAudioEnabled: true,
+          isVibrationEnabled: true,
+        ),
       ),
-    ));
+    );
   }
 
   Future<bool> _ensureNavigationSession() async {
@@ -510,12 +752,30 @@ class _MapHomePageState extends State<MapHomePage> {
       _selectedPoi = null;
       _following = true;
     });
-    await _driveEngine.speakMessage('Transit trip started. Follow the itinerary.');
+    await _driveEngine.speakMessage(
+      'Transit trip started. Follow the itinerary.',
+    );
     _queueMapRefresh();
   }
 
   Future<void> _stopTransitTrip() async {
     if (!_transitTripRunning) return;
+    final route = _activeTransitRoute;
+    if (_account.profile != null && route != null && route.points.isNotEmpty) {
+      final destination = route.points.last;
+      unawaited(
+        _account
+            .recordRoute(
+              destinationName: _destinationTitle,
+              latitude: destination.latitude,
+              longitude: destination.longitude,
+              mode: KiwiTravelMode.transit.apiValue,
+              distanceMeters: route.distanceMeters,
+              durationSeconds: route.durationSeconds,
+            )
+            .catchError((_) {}),
+      );
+    }
     setState(() {
       _transitTripRunning = false;
       _activeTransitRoute = null;
@@ -543,6 +803,10 @@ class _MapHomePageState extends State<MapHomePage> {
 
       final routeToken = selectedRoute.routeToken;
       final travelMode = _nativeTravelMode!;
+      final useRouteToken =
+          _selectedMode == KiwiTravelMode.drive &&
+          routeToken != null &&
+          routeToken.isNotEmpty;
       final status = await GoogleMapsNavigator.setDestinations(
         Destinations(
           waypoints: <NavigationWaypoint>[
@@ -552,7 +816,10 @@ class _MapHomePageState extends State<MapHomePage> {
                 target: stop.location,
               ),
             if (poi.placeID.isNotEmpty)
-              NavigationWaypoint.withPlaceID(title: poi.name, placeID: poi.placeID)
+              NavigationWaypoint.withPlaceID(
+                title: poi.name,
+                placeID: poi.placeID,
+              )
             else
               NavigationWaypoint.withLatLngTarget(
                 title: poi.name,
@@ -564,16 +831,17 @@ class _MapHomePageState extends State<MapHomePage> {
             showStopSigns: true,
             showTrafficLights: true,
           ),
-          routeTokenOptions: routeToken != null && routeToken.isNotEmpty
+          routeTokenOptions: useRouteToken
               ? RouteTokenOptions(
                   routeToken: routeToken,
                   travelMode: travelMode,
                 )
               : null,
-          routingOptions: routeToken == null || routeToken.isEmpty
+          routingOptions: !useRouteToken
               ? RoutingOptions(
                   travelMode: travelMode,
-                  alternateRoutesStrategy: NavigationAlternateRoutesStrategy.one,
+                  alternateRoutesStrategy:
+                      NavigationAlternateRoutesStrategy.one,
                 )
               : null,
         ),
@@ -596,8 +864,8 @@ class _MapHomePageState extends State<MapHomePage> {
         _selectedMode == KiwiTravelMode.walk
             ? 'Walking navigation started.'
             : _selectedMode == KiwiTravelMode.bicycle
-                ? 'Cycling navigation started.'
-                : 'Navigation started. Drive safely.',
+            ? 'Cycling navigation started.'
+            : 'Navigation started. Drive safely.',
       );
       if (!mounted) return;
       setState(() {
@@ -620,6 +888,22 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _stopNavigation() async {
     if (!_guidanceRunning) return;
+    final route = _activeNavigationRoute;
+    if (_account.profile != null && route != null && route.points.isNotEmpty) {
+      final destination = route.points.last;
+      unawaited(
+        _account
+            .recordRoute(
+              destinationName: _destinationTitle,
+              latitude: destination.latitude,
+              longitude: destination.longitude,
+              mode: _selectedMode.apiValue,
+              distanceMeters: route.distanceMeters,
+              durationSeconds: route.durationSeconds,
+            )
+            .catchError((_) {}),
+      );
+    }
     await GoogleMapsNavigator.stopGuidance();
     await GoogleMapsNavigator.clearDestinations();
     if (!mounted) return;
@@ -674,14 +958,18 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   void _onSearchSelected(DestinationSuggestion suggestion) {
-    _onPoiClicked(PointOfInterest(
-      placeID: '',
-      name: suggestion.label,
-      latLng: suggestion.location,
-    ));
+    _onPoiClicked(
+      PointOfInterest(
+        placeID: '',
+        name: suggestion.label,
+        latLng: suggestion.location,
+      ),
+    );
     final controller = _browseController;
     if (controller != null) {
-      unawaited(controller.animateCamera(CameraUpdate.newLatLng(suggestion.location)));
+      unawaited(
+        controller.animateCamera(CameraUpdate.newLatLng(suggestion.location)),
+      );
     }
   }
 
@@ -727,7 +1015,7 @@ class _MapHomePageState extends State<MapHomePage> {
               TrafficInterval(
                 startPolylinePointIndex: 0,
                 endPolylinePointIndex: activeRoute.points.length - 1,
-                speed: 'normal',
+                speed: 'unknown',
               ),
             ]
           : activeRoute.trafficIntervals;
@@ -767,7 +1055,9 @@ class _MapHomePageState extends State<MapHomePage> {
                     key: const ValueKey('navigation-view'),
                     onViewCreated: _onNavigationViewCreated,
                     mapId: _mapId.isEmpty ? null : _mapId,
-                    onCameraMoveStarted: (_, isGesture) { if (isGesture) _following = false; },
+                    onCameraMoveStarted: (_, isGesture) {
+                      if (isGesture) _following = false;
+                    },
                     initialNavigationUIEnabledPreference:
                         NavigationUIEnabledPreference.automatic,
                     initialRotateGesturesEnabled: true,
@@ -780,7 +1070,9 @@ class _MapHomePageState extends State<MapHomePage> {
                     key: const ValueKey('browse-map-view'),
                     onViewCreated: _onMapViewCreated,
                     mapId: _mapId.isEmpty ? null : _mapId,
-                    onCameraMoveStarted: (_, isGesture) { if (isGesture) _following = false; },
+                    onCameraMoveStarted: (_, isGesture) {
+                      if (isGesture) _following = false;
+                    },
                     initialCameraPosition: const CameraPosition(
                       target: _auckland,
                       zoom: 14,
@@ -798,68 +1090,119 @@ class _MapHomePageState extends State<MapHomePage> {
                   ),
           ),
           if (!_guidanceRunning && !_transitTripRunning)
-            SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 188,
+              right: 16,
               child: PointerInterceptor(
-                child: Row(
+                child: Column(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xEE0B1717),
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: const [
-                          BoxShadow(
-                            blurRadius: 20,
-                            color: Color(0x26000000),
-                            offset: Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _BrandMark(),
-                          SizedBox(width: 9),
-                          Text(
-                            'KIWI',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                          Text(
-                            'LENS',
-                            style: TextStyle(
-                              color: Color(0xFFC8F169),
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                        ],
+                    Material(
+                      color: Colors.white,
+                      elevation: 5,
+                      borderRadius: BorderRadius.circular(14),
+                      child: IconButton(
+                        tooltip: 'Rotate map left',
+                        icon: const Icon(Icons.rotate_left_rounded),
+                        onPressed: () => unawaited(_rotateMap(-45)),
                       ),
                     ),
-                    const Spacer(),
-                    if (_guidanceRunning)
-                      FilledButton.icon(
-                        onPressed: _stopNavigation,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xEE0B1717),
-                          foregroundColor: Colors.white,
-                        ),
-                        icon: const Icon(Icons.stop_rounded),
-                        label: const Text('End'),
+                    const SizedBox(height: 8),
+                    Material(
+                      color: Colors.white,
+                      elevation: 5,
+                      borderRadius: BorderRadius.circular(14),
+                      child: IconButton(
+                        tooltip: 'Rotate map right',
+                        icon: const Icon(Icons.rotate_right_rounded),
+                        onPressed: () => unawaited(_rotateMap(45)),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    Material(
+                      color: Colors.white,
+                      elevation: 5,
+                      borderRadius: BorderRadius.circular(14),
+                      child: IconButton(
+                        tooltip: 'Follow my location',
+                        icon: const Icon(Icons.navigation_rounded),
+                        onPressed: _recenter,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-          ),
+          if (!_guidanceRunning && !_transitTripRunning)
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: PointerInterceptor(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xEE0B1717),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: const [
+                            BoxShadow(
+                              blurRadius: 20,
+                              color: Color(0x26000000),
+                              offset: Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _BrandMark(),
+                            SizedBox(width: 9),
+                            Text(
+                              'KIWI',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                            Text(
+                              'LENS',
+                              style: TextStyle(
+                                color: Color(0xFFC8F169),
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: _showProfile,
+                        tooltip: 'My profile',
+                        icon: const Icon(
+                          Icons.person_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (_guidanceRunning)
+                        FilledButton.icon(
+                          onPressed: _stopNavigation,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xEE0B1717),
+                            foregroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.stop_rounded),
+                          label: const Text('End'),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (!_guidanceRunning && !_transitTripRunning)
             Positioned(
               top: MediaQuery.paddingOf(context).top + 75,
@@ -872,7 +1215,9 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (_driveEngine.active && _selectedPoi == null && !_transitTripRunning)
+          if (_driveEngine.active &&
+              _selectedPoi == null &&
+              !_transitTripRunning)
             Positioned.fill(
               child: AnimatedBuilder(
                 animation: _driveEngine,
@@ -886,8 +1231,11 @@ class _MapHomePageState extends State<MapHomePage> {
                         onEnd: () => unawaited(_stopNavigation()),
                         onRecenter: _recenter,
                         onOverview: _showRouteOverview,
+                        onRotateLeft: () => unawaited(_rotateMap(-45)),
+                        onRotateRight: () => unawaited(_rotateMap(45)),
                         onVoiceToggle: _toggleVoice,
-                        onLanesToggle: () => setState(() => _lanesEnabled = !_lanesEnabled),
+                        onLanesToggle: () =>
+                            setState(() => _lanesEnabled = !_lanesEnabled),
                       )
                     : DriveHud(
                         engine: _driveEngine,
@@ -920,7 +1268,10 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (!_driveEngine.active && _selectedPoi == null && !_guidanceRunning && !_transitTripRunning)
+          if (!_driveEngine.active &&
+              _selectedPoi == null &&
+              !_guidanceRunning &&
+              !_transitTripRunning)
             Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(
@@ -942,7 +1293,10 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (_selectedPoi != null && !_guidanceRunning && !_transitTripRunning && _routePlan == null)
+          if (_selectedPoi != null &&
+              !_guidanceRunning &&
+              !_transitTripRunning &&
+              _routePlan == null)
             Align(
               alignment: Alignment.bottomCenter,
               child: SafeArea(
@@ -952,7 +1306,11 @@ class _MapHomePageState extends State<MapHomePage> {
                     poi: _selectedPoi!,
                     busy: _routePreviewLoading,
                     onClose: () => unawaited(_clearRoutePreview()),
-                    onNavigate: () => unawaited(_loadRoutePreview(_selectedPoi!)),
+                    onNavigate: () =>
+                        unawaited(_loadRoutePreview(_selectedPoi!)),
+                    isFavorite: _isFavorite(_selectedPoi!),
+                    onFavorite: () => unawaited(_toggleFavorite(_selectedPoi!)),
+                    onReview: () => unawaited(_reviewPlace(_selectedPoi!)),
                   ),
                 ),
               ),
@@ -967,7 +1325,10 @@ class _MapHomePageState extends State<MapHomePage> {
                 onRecenter: _recenter,
               ),
             ),
-          if (_selectedPoi != null && _routePlan != null && !_guidanceRunning && !_transitTripRunning)
+          if (_selectedPoi != null &&
+              _routePlan != null &&
+              !_guidanceRunning &&
+              !_transitTripRunning)
             Align(
               alignment: Alignment.bottomCenter,
               child: RoutePreviewSheet(
@@ -982,6 +1343,9 @@ class _MapHomePageState extends State<MapHomePage> {
                 onStart: () => unawaited(_navigateToSelectedPoi()),
                 onAddStop: () => unawaited(_addStop()),
                 onSave: () => unawaited(_saveCurrentRoute()),
+                isFavorite: _isFavorite(_selectedPoi!),
+                onFavorite: () => unawaited(_toggleFavorite(_selectedPoi!)),
+                onReview: () => unawaited(_reviewPlace(_selectedPoi!)),
                 onClose: () => unawaited(_clearRoutePreview()),
               ),
             ),
@@ -1019,12 +1383,18 @@ class _PlaceCard extends StatelessWidget {
     required this.busy,
     required this.onClose,
     required this.onNavigate,
+    required this.isFavorite,
+    required this.onFavorite,
+    required this.onReview,
   });
 
   final PointOfInterest poi;
   final bool busy;
   final VoidCallback onClose;
   final VoidCallback onNavigate;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+  final VoidCallback onReview;
 
   @override
   Widget build(BuildContext context) {
@@ -1035,65 +1405,100 @@ class _PlaceCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 14, 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0F5E8),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(Icons.place_rounded, color: Color(0xFF3D6C55)),
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F5E8),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.place_rounded,
+                    color: Color(0xFF3D6C55),
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        poi.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        formatCoordinate(
+                          poi.latLng.latitude,
+                          poi.latLng.longitude,
+                        ),
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close_rounded),
+                  tooltip: 'Close',
+                ),
+              ],
             ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    poi.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: onFavorite,
+                  tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
+                  icon: Icon(
+                    isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: isFavorite
+                        ? Colors.redAccent
+                        : const Color(0xFF315945),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onReview,
+                  tooltip: 'My review',
+                  icon: const Icon(Icons.rate_review_outlined),
+                ),
+                const Spacer(),
+                FilledButton.icon(
+                  onPressed: busy ? null : onNavigate,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF18372D),
+                    foregroundColor: const Color(0xFFC8F169),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 13,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    formatCoordinate(poi.latLng.latitude, poi.latLng.longitude),
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            FilledButton.icon(
-              onPressed: busy ? null : onNavigate,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF18372D),
-                foregroundColor: const Color(0xFFC8F169),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 13,
+                  icon: busy
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.navigation_rounded, size: 19),
+                  label: Text(busy ? 'Routing' : 'Navigate'),
                 ),
-              ),
-              icon: busy
-                  ? const SizedBox(
-                      width: 17,
-                      height: 17,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.navigation_rounded, size: 19),
-              label: Text(busy ? 'Routing' : 'Navigate'),
-            ),
-            IconButton(
-              onPressed: onClose,
-              icon: const Icon(Icons.close_rounded),
-              tooltip: 'Close',
+              ],
             ),
           ],
         ),

@@ -9,3 +9,15 @@
 .account-button:disabled { opacity: .6; }
 .account-link { margin-top: 11px; padding: 0; border: 0; background: none; color: #356742; font-size: 12px; font-weight: 800; }
 .account-error { color: #a83d27; font-size: 12px; }
+.profile-modal { width: min(600px, 100%); max-height: min(86dvh, 780px); }
+.profile-email { margin: 0 0 14px; color: #546b5a; font-size: 13px; }
+.profile-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.profile-stat { display: grid; gap: 3px; padding: 13px; border-radius: 13px; background: #f0f6e6; }
+.profile-stat strong { color: #193d26; font-size: 22px; }
+.profile-stat span { color: #67806d; font-size: 11px; }
+.profile-section { margin-top: 21px; }
+.profile-section h3 { margin: 0 0 8px; color: #1d3a2b; font-size: 15px; }
+.profile-item { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid #e8eee9; }
+.profile-item strong { font-size: 13px; }
+.profile-item small, .profile-empty { color: #68796e; font-size: 12px; line-height: 1.5; }
+.profile-item p { margin: 0; white-space: pre-wrap; font-size: 12px; line-height: 1.5; }

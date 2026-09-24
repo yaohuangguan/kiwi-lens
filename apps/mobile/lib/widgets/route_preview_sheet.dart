@@ -42,6 +42,9 @@ class RoutePreviewSheet extends StatelessWidget {
     required this.onStart,
     required this.onAddStop,
     required this.onSave,
+    required this.isFavorite,
+    required this.onFavorite,
+    required this.onReview,
     required this.onClose,
   });
 
@@ -56,6 +59,9 @@ class RoutePreviewSheet extends StatelessWidget {
   final VoidCallback onStart;
   final VoidCallback onAddStop;
   final VoidCallback onSave;
+  final bool isFavorite;
+  final VoidCallback onFavorite;
+  final VoidCallback onReview;
   final VoidCallback onClose;
 
   @override
@@ -108,6 +114,23 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                       ),
                       IconButton(
+                        tooltip: isFavorite
+                            ? 'Remove favorite'
+                            : 'Save favorite',
+                        onPressed: onFavorite,
+                        icon: Icon(
+                          isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: isFavorite ? Colors.redAccent : _ink,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'My review',
+                        onPressed: onReview,
+                        icon: const Icon(Icons.rate_review_outlined),
+                      ),
+                      IconButton(
                         onPressed: onClose,
                         icon: const Icon(Icons.close_rounded),
                       ),
@@ -125,7 +148,9 @@ class RoutePreviewSheet extends StatelessWidget {
                             child: Opacity(
                               opacity: plan.forMode(mode).isEmpty ? .35 : 1,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
                                 decoration: BoxDecoration(
                                   color: selectedMode == mode
                                       ? const Color(0xFFEAF4EA)
@@ -146,7 +171,10 @@ class RoutePreviewSheet extends StatelessWidget {
                                       plan.forMode(mode).isEmpty
                                           ? '—'
                                           : _duration(
-                                              plan.forMode(mode).first.durationSeconds,
+                                              plan
+                                                  .forMode(mode)
+                                                  .first
+                                                  .durationSeconds,
                                             ),
                                       style: const TextStyle(
                                         fontSize: 11,
@@ -237,11 +265,11 @@ class RoutePreviewSheet extends StatelessWidget {
                             plan.trafficAvailable &&
                                     selectedMode == KiwiTravelMode.drive
                                 ? (selected.trafficDelaySeconds ?? 0) > 60
-                                    ? 'Traffic-aware route · live conditions included'
-                                    : 'Fastest route based on current traffic'
+                                      ? 'Traffic-aware route · live conditions included'
+                                      : 'Fastest route based on current traffic'
                                 : selected.description.isNotEmpty
-                                    ? selected.description
-                                    : 'Route preview',
+                                ? selected.description
+                                : 'Route preview',
                             style: const TextStyle(
                               color: Color(0xFF5D6C64),
                               fontSize: 12,
@@ -283,15 +311,17 @@ class RoutePreviewSheet extends StatelessWidget {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.navigation_rounded),
                           label: Text(
                             busy
                                 ? 'Starting…'
                                 : selectedMode == KiwiTravelMode.transit
-                                    ? 'Start trip'
-                                    : 'Start',
+                                ? 'Start trip'
+                                : 'Start',
                           ),
                         ),
                       ],

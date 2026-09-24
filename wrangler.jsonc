@@ -20,7 +20,8 @@
 	"d1_databases": [
 		{
 			"binding": "USER_DB",
-			"database_name": "kiwi-lens-users"
+			"database_name": "kiwi-lens-users",
+			"database_id": "a073f375-f896-437e-8a2b-2d1e3fedd6d8"
 		}
 	],
 	"triggers": {

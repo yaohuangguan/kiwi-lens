@@ -25,6 +25,8 @@ void main() {
           onEnd: () {},
           onRecenter: () {},
           onOverview: () {},
+          onRotateLeft: () {},
+          onRotateRight: () {},
           onVoiceToggle: () {},
           onLanesToggle: () {},
         )),

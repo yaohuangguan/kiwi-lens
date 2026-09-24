@@ -106,7 +106,7 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
     regionCode: 'NZ',
     units: 'METRIC',
     polylineQuality: 'HIGH_QUALITY',
-    ...(driving ? { routingPreference: 'TRAFFIC_AWARE_OPTIMAL' } : {})
+    ...(driving ? { routingPreference: 'TRAFFIC_AWARE_OPTIMAL', extraComputations: ['TRAFFIC_ON_POLYLINE'] } : {})
   };
 
   const response = await fetch(GOOGLE_ROUTES_URL, {
@@ -217,7 +217,7 @@ export async function routeOptions(from, to, env, stops = []) {
     if (driving.length) {
       return {
         provider: 'google',
-        trafficAvailable: true,
+        trafficAvailable: driving.some((option) => option.trafficIntervals.length > 0),
         stopsApplied: stops.length,
         options
       };

@@ -50,6 +50,8 @@ export class GoogleMapAdapter {
   private routeOutline?: google.maps.Polyline;
   private routeLine?: google.maps.Polyline;
   private alternativeLines: google.maps.Polyline[] = [];
+  private trafficLayer?: google.maps.TrafficLayer;
+  private trafficEnabled = true;
   private radar?: google.maps.Polygon;
   private radarHeading: number | null = null;
   private pendingPosition?: { coordinate: Coordinate; heading: number | null };
@@ -93,6 +95,7 @@ export class GoogleMapAdapter {
       headingInteractionEnabled: true,
       tiltInteractionEnabled: true
     });
+    this.trafficLayer = new google.maps.TrafficLayer({ map: this.trafficEnabled ? this.map : null });
 
     this.map.addListener('dragstart', options.onDragStart);
     this.map.addListener('click', async (event: google.maps.MapMouseEvent) => {
@@ -258,6 +261,18 @@ export class GoogleMapAdapter {
     }
   }
 
+  setTrafficEnabled(enabled: boolean) {
+    this.trafficEnabled = enabled;
+    this.trafficLayer?.setMap(enabled ? this.map || null : null);
+  }
+
+  rotateBy(degrees: number) {
+    if (!this.map || this.map.getRenderingType() !== google.maps.RenderingType.VECTOR) return false;
+    this.map.setHeading(((this.map.getHeading() || 0) + degrees + 360) % 360);
+    if (this.pendingPosition) this.setPosition(this.pendingPosition.coordinate, this.pendingPosition.heading);
+    return true;
+  }
+
   private updateRadar() {
     if (!this.map || !this.pendingPosition) return;
     if (this.radarHeading === null) {
@@ -284,11 +299,11 @@ export class GoogleMapAdapter {
 
   renderTrafficRoutes(
     routes: { route: Route; trafficIntervals: TrafficInterval[] }[],
-    selectedIndex = 0
+    selectedIndex = 0,
+    onSelect?: (index: number) => void
   ) {
     if (!this.map) return;
-    for (const line of this.alternativeLines) line.setMap(null);
-    this.alternativeLines = [];
+    this.clearTrafficRoutes();
 
     const color = (speed: TrafficInterval['speed']) =>
       speed === 'trafficJam' ? '#EA4335' : speed === 'slow' ? '#F9AB00' : '#34A853';
@@ -305,14 +320,15 @@ export class GoogleMapAdapter {
         strokeColor: '#60716A',
         strokeWeight: weight,
         strokeOpacity: selected ? .9 : .22,
-        clickable: false,
+        clickable: Boolean(onSelect),
         zIndex: zIndex - 1
       });
+      if (onSelect) base.addListener('click', () => onSelect(index));
       this.alternativeLines.push(base);
 
       const intervals = trafficIntervals.length
         ? trafficIntervals
-        : [{ startPolylinePointIndex: 0, endPolylinePointIndex: route.coordinates.length - 1, speed: 'normal' as const }];
+        : [{ startPolylinePointIndex: 0, endPolylinePointIndex: route.coordinates.length - 1, speed: 'unknown' as const }];
 
       for (const interval of intervals) {
         const start = Math.max(0, interval.startPolylinePointIndex);
@@ -322,15 +338,21 @@ export class GoogleMapAdapter {
         const segment = new google.maps.Polyline({
           map: this.map,
           path: points.map(([lng, lat]) => ({ lat, lng })),
-          strokeColor: color(interval.speed),
+          strokeColor: interval.speed === 'unknown' ? '#087D58' : color(interval.speed),
           strokeWeight: weight,
           strokeOpacity: opacity,
-          clickable: false,
+          clickable: Boolean(onSelect),
           zIndex
         });
+        if (onSelect) segment.addListener('click', () => onSelect(index));
         this.alternativeLines.push(segment);
       }
     });
+  }
+
+  clearTrafficRoutes() {
+    for (const line of this.alternativeLines) line.setMap(null);
+    this.alternativeLines = [];
   }
 
   renderRoute(route: Route, destination: Coordinate, navigating: boolean) {
