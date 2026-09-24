@@ -198,7 +198,20 @@ async function main() {
   }
 
   console.log('Running Kiwi Lens on ' + device.name + ' (' + device.id + ')');
-  const child = spawn('flutter', ['run', '-d', device.id], {
+
+  const targetPlatform = device.targetPlatform?.toLowerCase() ?? '';
+  const runArgs = ['run', '-d', device.id];
+
+  // Flutter 3.47 can intermittently fail to connect its local Dart Development
+  // Service proxy after an otherwise successful iOS build. Going directly to
+  // the VM service avoids the localhost DDS WebSocket failure while preserving
+  // the normal flutter run development loop and hot reload.
+  if (process.platform === 'darwin' && targetPlatform.includes('ios')) {
+    runArgs.push('--no-dds');
+    console.log('iOS development: DDS disabled to use the VM service directly.');
+  }
+
+  const child = spawn('flutter', runArgs, {
     cwd: mobile,
     stdio: 'inherit',
     shell: process.platform === 'win32',
