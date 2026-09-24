@@ -270,10 +270,7 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                         const Spacer(),
                         FilledButton.icon(
-                          onPressed:
-                              busy || selectedMode != KiwiTravelMode.drive
-                                  ? null
-                                  : onStart,
+                          onPressed: busy ? null : onStart,
                           style: FilledButton.styleFrom(
                             backgroundColor: _ink,
                             foregroundColor: _lime,
@@ -289,7 +286,13 @@ class RoutePreviewSheet extends StatelessWidget {
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.navigation_rounded),
-                          label: Text(busy ? 'Starting…' : 'Start'),
+                          label: Text(
+                            busy
+                                ? 'Starting…'
+                                : selectedMode == KiwiTravelMode.transit
+                                    ? 'Start trip'
+                                    : 'Start',
+                          ),
                         ),
                       ],
                     ),
