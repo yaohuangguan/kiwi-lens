@@ -15,6 +15,7 @@ jobs:
         with:
           node-version: '24'
       - run: pnpm install --no-frozen-lockfile
+      - run: node --check scripts/flutter-dev.mjs
       - run: pnpm test
       - run: pnpm build
 
