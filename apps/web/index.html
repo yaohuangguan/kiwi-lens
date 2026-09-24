@@ -23,6 +23,13 @@
           <div class="search-field"><input id="originInput" type="search" autocomplete="off" placeholder="当前位置 · 点击可改起点" aria-label="起点" /><button id="useGpsButton" title="使用实时位置" aria-label="使用实时位置">◎</button></div>
           <div class="search-field destination"><input id="destinationInput" type="search" autocomplete="off" placeholder="搜索目的地 / Search destination" aria-label="目的地" /><button id="searchButton" aria-label="搜索目的地">⌕</button></div>
         </div>
+        <div id="stopEditor" class="stop-editor" hidden>
+          <div id="stopList" class="stop-list"></div>
+          <div class="search-field stop-field">
+            <input id="stopInput" type="search" autocomplete="off" placeholder="Add a stop" aria-label="Intermediate stop" />
+            <button id="stopSearchButton" aria-label="Search stop">⌕</button>
+          </div>
+        </div>
         <div id="searchResults" class="search-results" hidden></div>
       </section>
 
@@ -90,6 +97,18 @@
             <button id="driveButton" class="drive-button" disabled><span id="driveIcon">➤</span><span id="driveLabel">开始导航</span></button>
           </div>
         </div>
+        <div id="travelModes" class="travel-modes" hidden>
+          <button type="button" data-mode="drive" class="selected"><span>🚗</span><strong>Drive</strong><small id="modeDriveTime">—</small></button>
+          <button type="button" data-mode="transit"><span>🚆</span><strong>Transit</strong><small id="modeTransitTime">—</small></button>
+          <button type="button" data-mode="walk"><span>🚶</span><strong>Walk</strong><small id="modeWalkTime">—</small></button>
+          <button type="button" data-mode="bicycle"><span>🚲</span><strong>Bike</strong><small id="modeBicycleTime">—</small></button>
+        </div>
+        <div id="routeAlternatives" class="route-alternatives" hidden></div>
+        <div id="routeInfoCards" class="route-info-cards" hidden></div>
+        <div id="planningActions" class="planning-actions" hidden>
+          <button id="addStopButton" type="button">＋ Add stop</button>
+          <button id="saveRouteButton" type="button">♡ Save</button>
+        </div>
         <div class="route-stats">
           <div><span>沿途摄像头</span><strong id="cameraRouteCount">—</strong></div>
           <div><span>路程</span><strong id="tripDistance">—</strong></div>
@@ -124,7 +143,9 @@
           <button id="navVoiceChip" type="button" aria-pressed="true">Voice ✓</button>
           <button id="navLanesChip" type="button" aria-pressed="true">Lanes ✓</button>
           <button id="navGpsChip" type="button">GPS —</button>
+          <button id="navOverviewChip" type="button">Route overview</button>
         </div>
+        <div id="navTrafficCard" class="nav-traffic-card" hidden></div>
         <div id="navSecondary" class="nav-secondary" hidden>
           <div><span id="navSpeedLimitLabel">Speed limit</span><strong id="navSpeedLimit">—</strong></div>
           <div><span id="navNextCameraLabel">Next camera</span><strong id="navNextCamera">—</strong></div>
