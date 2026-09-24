@@ -458,6 +458,7 @@ function renderRoutePlanner() {
   const actions = $('planningActions');
   modes.hidden = !routePlan && drivingAlternatives.length === 0;
   actions.hidden = modes.hidden;
+  $('trafficLegend').hidden = modes.hidden || selectedTravelMode !== 'drive';
   if (modes.hidden) {
     alternatives.hidden = true;
     $('routeInfoCards').hidden = true;
@@ -663,6 +664,7 @@ function clearDestination() {
   $('travelModes').hidden = true;
   $('routeAlternatives').hidden = true;
   $('routeInfoCards').hidden = true;
+  $('trafficLegend').hidden = true;
   $('planningActions').hidden = true;
   $('navTrafficCard').hidden = true;
   renderStops();
