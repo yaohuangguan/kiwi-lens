@@ -1,5 +1,6 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { cameraLabel, type Camera, type Coordinate, type Route } from '@kiwi-lens/core';
+import type { TrafficInterval } from './route-planner';
 
 export type PoiReview = {
   author: string;
@@ -281,22 +282,54 @@ export class GoogleMapAdapter {
     this.radar.setPaths(points);
   }
 
-  renderRouteAlternatives(routes: Route[], selectedIndex = 0) {
+  renderTrafficRoutes(
+    routes: { route: Route; trafficIntervals: TrafficInterval[] }[],
+    selectedIndex = 0
+  ) {
     if (!this.map) return;
     for (const line of this.alternativeLines) line.setMap(null);
     this.alternativeLines = [];
-    routes.forEach((route, index) => {
-      const path = route.coordinates.map(([lng, lat]) => ({ lat, lng }));
-      const line = new google.maps.Polyline({
+
+    const color = (speed: TrafficInterval['speed']) =>
+      speed === 'trafficJam' ? '#EA4335' : speed === 'slow' ? '#F9AB00' : '#34A853';
+
+    routes.forEach(({ route, trafficIntervals }, index) => {
+      const selected = index === selectedIndex;
+      const opacity = selected ? 1 : 0.34;
+      const weight = selected ? 7 : 6;
+      const zIndex = selected ? 42 : 30;
+
+      const base = new google.maps.Polyline({
         map: this.map,
-        path,
-        strokeColor: index === selectedIndex ? '#4b42df' : '#87939b',
-        strokeWeight: index === selectedIndex ? 7 : 5,
-        strokeOpacity: index === selectedIndex ? .9 : .65,
+        path: route.coordinates.map(([lng, lat]) => ({ lat, lng })),
+        strokeColor: '#60716A',
+        strokeWeight: weight,
+        strokeOpacity: selected ? .9 : .22,
         clickable: false,
-        zIndex: index === selectedIndex ? 18 : 12
+        zIndex: zIndex - 1
       });
-      this.alternativeLines.push(line);
+      this.alternativeLines.push(base);
+
+      const intervals = trafficIntervals.length
+        ? trafficIntervals
+        : [{ startPolylinePointIndex: 0, endPolylinePointIndex: route.coordinates.length - 1, speed: 'normal' as const }];
+
+      for (const interval of intervals) {
+        const start = Math.max(0, interval.startPolylinePointIndex);
+        const end = Math.min(route.coordinates.length - 1, interval.endPolylinePointIndex);
+        const points = route.coordinates.slice(start, end + 1);
+        if (points.length < 2) continue;
+        const segment = new google.maps.Polyline({
+          map: this.map,
+          path: points.map(([lng, lat]) => ({ lat, lng })),
+          strokeColor: color(interval.speed),
+          strokeWeight: weight,
+          strokeOpacity: opacity,
+          clickable: false,
+          zIndex
+        });
+        this.alternativeLines.push(segment);
+      }
     });
   }
 
