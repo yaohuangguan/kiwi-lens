@@ -138,7 +138,13 @@ async function handleApi(request, env, ctx) {
     const from = validateCoordinatePair(url.searchParams.get('from'));
     const to = validateCoordinatePair(url.searchParams.get('to'));
     if (!from || !to) return json({ error: 'Valid NZ coordinates required' }, 400);
-    return json(await routeOptions(from, to, env));
+    const stops = (url.searchParams.get('stops') || '')
+      .split(';')
+      .filter(Boolean)
+      .map((value) => validateCoordinatePair(value))
+      .filter(Boolean);
+    if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
+    return json(await routeOptions(from, to, env, stops));
   }
   if (url.pathname === '/api/search') {
     const query = (url.searchParams.get('q') || '').trim();
