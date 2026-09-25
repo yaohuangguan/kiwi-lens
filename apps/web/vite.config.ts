@@ -8,7 +8,7 @@ export default defineConfig({
     includeAssets: ['favicon.svg'],
     manifest: {
       name: 'Kiwi Lens · NZ Navigation', short_name: 'Kiwi Lens', description: 'Route planning and road-safety awareness for New Zealand.',
-      theme_color: '#071c35', background_color: '#071c35', display: 'standalone', start_url: '/app', scope: '/', orientation: 'portrait',
+      theme_color: '#0b1717', background_color: '#0b1717', display: 'standalone', start_url: '/app', scope: '/', orientation: 'portrait',
       icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }]
     },
     workbox: {
