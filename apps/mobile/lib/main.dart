@@ -2180,12 +2180,12 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _openSearch({String query = '', String? saveAs}) async {
     setState(() => _journeyPhase = JourneyPhase.searching);
-    final SearchProvider provider = _mapProvider == MapProvider.mapbox
-        ? _mapboxSearch
-        : _workerSearch;
+    final SearchProvider provider = _workerSearch;
     final place = await Navigator.of(context).push<PlaceSummary>(
-      MaterialPageRoute(
-        builder: (_) => FullScreenSearch(
+      PageRouteBuilder<PlaceSummary>(
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 240),
+        pageBuilder: (_, animation, secondaryAnimation) => FullScreenSearch(
           provider: provider,
           resolve: (candidate) async {
             if (candidate.location != null) {
@@ -2216,6 +2216,23 @@ class _MapHomePageState extends State<MapHomePage> {
           initialQuery: query,
           onDriveMode: () => unawaited(_startDriveMode()),
         ),
+        transitionsBuilder: (_, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.08),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
       ),
     );
     if (!mounted) return;
@@ -2484,12 +2501,15 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _showExplore({GeoPoint? center}) async {
-    final current =
-        _gpsLocation ??
-        LatLng(
-          latitude: (center ?? _viewport.center).latitude,
-          longitude: (center ?? _viewport.center).longitude,
-        );
+    final searchCenter =
+        center ??
+        (_gpsLocation == null
+            ? _viewport.center
+            : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude));
+    final current = LatLng(
+      latitude: searchCenter.latitude,
+      longitude: searchCenter.longitude,
+    );
     final place = await Navigator.of(context).push<ExplorePlace>(
       MaterialPageRoute(
         builder: (_) =>
@@ -2899,36 +2919,33 @@ class _MapHomePageState extends State<MapHomePage> {
                   children: [
                     _buildQuickActions(),
                     const SizedBox(height: 9),
-                    Hero(
-                      tag: 'kiwi-search-bar',
-                      child: Material(
-                        color: Colors.white,
-                        elevation: 8,
-                        borderRadius: BorderRadius.circular(22),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: _showGoSearch,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 17,
-                              vertical: 16,
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.search_rounded,
-                                  color: Color(0xFF1479FF),
+                    Material(
+                      color: Colors.white,
+                      elevation: 8,
+                      borderRadius: BorderRadius.circular(22),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: _showGoSearch,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 17,
+                            vertical: 16,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.search_rounded,
+                                color: Color(0xFF1479FF),
+                              ),
+                              const SizedBox(width: 11),
+                              Text(
+                                _text('Where to?', '去哪儿？'),
+                                style: const TextStyle(
+                                  color: Color(0xFF61758A),
+                                  fontWeight: FontWeight.w700,
                                 ),
-                                const SizedBox(width: 11),
-                                Text(
-                                  _text('Where to?', '去哪儿？'),
-                                  style: const TextStyle(
-                                    color: Color(0xFF61758A),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
