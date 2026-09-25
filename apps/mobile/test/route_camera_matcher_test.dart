@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_navigation_flutter/google_navigation_flutter.dart';
+import 'package:kiwi_lens_mobile/domain/map_provider.dart';
 import 'package:kiwi_lens_mobile/domain/route_option.dart';
 import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
 import 'package:kiwi_lens_mobile/drive/route_camera_matcher.dart';
@@ -11,10 +11,7 @@ void main() {
     mode: KiwiTravelMode.drive,
     durationSeconds: 200,
     distanceMeters: 1100,
-    points: [
-      LatLng(latitude: -36.85, longitude: 174.76),
-      LatLng(latitude: -36.84, longitude: 174.76),
-    ],
+    points: [GeoPoint(-36.85, 174.76), GeoPoint(-36.84, 174.76)],
     provider: 'test',
     traffic: TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
     trafficIntervals: [],
@@ -22,7 +19,7 @@ void main() {
       RouteStepInfo(
         instruction: 'Continue on Queen Street',
         distanceMeters: 1100,
-        location: LatLng(latitude: -36.849, longitude: 174.76),
+        location: GeoPoint(-36.849, 174.76),
       ),
     ],
   );
@@ -70,21 +67,13 @@ void main() {
     final matches = matcher.match(route, [onRoute]);
     expect(
       matcher
-          .upcoming(
-            const LatLng(latitude: -36.848, longitude: 174.76),
-            route.points,
-            matches,
-          )
+          .upcoming(const GeoPoint(-36.848, 174.76), route.points, matches)
           ?.camera
           .id,
       'on-route',
     );
     expect(
-      matcher.upcoming(
-        const LatLng(latitude: -36.843, longitude: 174.76),
-        route.points,
-        matches,
-      ),
+      matcher.upcoming(const GeoPoint(-36.843, 174.76), route.points, matches),
       isNull,
     );
   });

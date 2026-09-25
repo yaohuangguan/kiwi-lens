@@ -14,12 +14,23 @@ import 'data/place_details_repository.dart';
 import 'data/route_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
+import 'domain/map_provider.dart';
+import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
 import 'drive/device_heading.dart';
 import 'drive/drive_engine.dart';
+import 'providers/google_map_renderer.dart';
+import 'providers/mapbox_map_renderer.dart';
+import 'providers/mapbox_navigation_engine.dart';
+import 'providers/mapbox_routing_provider.dart';
+import 'providers/place_search_providers.dart';
+import 'providers/provider_contracts.dart';
 import 'widgets/map_symbols.dart';
+import 'widgets/mapbox_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
+import 'widgets/explore_sheet.dart';
+import 'widgets/full_screen_search.dart';
 import 'widgets/navigation_overlay.dart';
 import 'widgets/place_details_content.dart';
 import 'widgets/profile_page.dart';
@@ -71,13 +82,47 @@ class MapHomePage extends StatefulWidget {
 
 class _MapHomePageState extends State<MapHomePage> {
   static const _mapId = String.fromEnvironment('MAP_ID');
+  static const _mapboxToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
 
   final DriveEngine _driveEngine = DriveEngine();
+  late final MapboxNavigationEngine _mapboxNavigation;
   final AccountRepository _account = AccountRepository();
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
   final RouteRepository _routeRepository = RouteRepository();
+  final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
+  late final MapboxSearchProvider _mapboxSearch = MapboxSearchProvider(
+    _mapboxToken,
+  );
+  late final MapboxRoutingProvider _mapboxRoutes = MapboxRoutingProvider(
+    _mapboxToken,
+  );
+  MapProvider _mapProvider = MapProvider.google;
+  MapProvider? _requestedMapProvider;
+  Future<void> _providerSwitchQueue = Future<void>.value();
+  LocationMarkerStyle _locationMarker = LocationMarkerStyle.kiwi;
+  MapRenderer? _browseRenderer;
+  MapViewportState _viewport = const MapViewportState(
+    center: GeoPoint(-36.8485, 174.7633),
+  );
+  GeoPoint _areaSearchAnchor = const GeoPoint(-36.8485, 174.7633);
+  bool _showSearchArea = false;
+  List<PlaceSummary> _exploreResults = const [];
+  List<Marker> _exploreMarkers = [];
+  final Map<String, PlaceSummary> _exploreMarkerPlaces = {};
+  final ValueNotifier<PlaceSummary?> _exploreMarkerFocus =
+      ValueNotifier<PlaceSummary?>(null);
+  List<String> _quickActions = [
+    'Home',
+    'Work',
+    'Frequent',
+    'Restaurants',
+    'Shopping',
+    'Gas',
+  ];
+  final Map<String, PlaceSummary> _quickLocations = {};
+  final Map<String, MapProvider> _quickLocationProviders = {};
   GoogleMapViewController? _browseController;
   GoogleNavigationViewController? _navigationController;
   StreamSubscription<Position>? _positionSubscription;
@@ -89,6 +134,7 @@ class _MapHomePageState extends State<MapHomePage> {
   CameraPosition? _lastBrowseCamera;
   List<Marker> _cameraMarkers = [];
   Marker? _carMarker;
+  Circle? _accuracyCircle;
   String _markerSignature = '';
   bool _markerSyncing = false;
   bool _useCarMarker = false;
@@ -100,6 +146,7 @@ class _MapHomePageState extends State<MapHomePage> {
   double? _gpsAccuracy;
   double? _deviceHeading;
   double? _travelHeading;
+  double? _smoothedLocationHeading;
   Polygon? _radarPolygon;
   bool _mapRefreshing = false;
   bool _refreshAgain = false;
@@ -111,12 +158,27 @@ class _MapHomePageState extends State<MapHomePage> {
   KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
+  int _routeRequest = 0;
   bool _transitTripRunning = false;
   RouteOption? _activeTransitRoute;
   RouteOption? _activeNavigationRoute;
   final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
 
-  PointOfInterest? _selectedPoi;
+  SelectedPlace? _selectedPlace;
+  JourneyPhase _journeyPhase = JourneyPhase.idle;
+  PointOfInterest? get _selectedPoi {
+    final place = _selectedPlace?.place;
+    if (place == null) return null;
+    return PointOfInterest(
+      placeID: place.reference?.provider == 'google' ? place.reference!.id : '',
+      name: place.name,
+      latLng: LatLng(
+        latitude: place.location.latitude,
+        longitude: place.location.longitude,
+      ),
+    );
+  }
+
   PlaceDetails? _placeDetails;
   bool _placeDetailsLoading = false;
   String? _placeDetailsError;
@@ -129,6 +191,8 @@ class _MapHomePageState extends State<MapHomePage> {
   @override
   void initState() {
     super.initState();
+    _mapboxNavigation = MapboxNavigationEngine(_driveEngine);
+    initializeMapboxMaps(_mapboxToken);
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
     unawaited(_account.restore());
@@ -166,7 +230,7 @@ class _MapHomePageState extends State<MapHomePage> {
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:${_layers.markerSignature}';
     if (signature != _markerSignature) {
       unawaited(_syncCameraMarkers());
-      if (_routePlan != null) {
+      if (_routePlan != null || _mapProvider == MapProvider.mapbox) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() {});
         });
@@ -177,6 +241,38 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _restoreMapSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _useCarMarker = prefs.getBool('kiwi.map.car_marker') ?? false;
+    _mapProvider = MapProvider.values.firstWhere(
+      (value) => value.name == prefs.getString('kiwi.map.provider'),
+      orElse: () => MapProvider.google,
+    );
+    if (_mapProvider == MapProvider.mapbox && _mapboxToken.isEmpty) {
+      _mapProvider = MapProvider.google;
+    }
+    _locationMarker = LocationMarkerStyle.values.firstWhere(
+      (value) => value.name == prefs.getString('kiwi.map.location_marker'),
+      orElse: () => LocationMarkerStyle.kiwi,
+    );
+    _useCarMarker = _locationMarker != LocationMarkerStyle.classic;
+    _quickActions = prefs.getStringList('kiwi.quick_actions') ?? _quickActions;
+    if (_mapProvider == MapProvider.google) _restoreGoogleRecent(prefs);
+    for (final action in ['Home', 'Work']) {
+      final record = prefs.getString('kiwi.quick_location.$action');
+      if (record == null) continue;
+      try {
+        final item = jsonDecode(record) as Map<String, dynamic>;
+        _quickLocations[action] = PlaceSummary(
+          name: item['name']?.toString() ?? action,
+          address: item['address']?.toString() ?? '',
+          location: GeoPoint(
+            (item['latitude'] as num).toDouble(),
+            (item['longitude'] as num).toDouble(),
+          ),
+        );
+        _quickLocationProviders[action] = MapProvider.google;
+      } catch (_) {
+        // Ignore an invalid old shortcut rather than blocking map startup.
+      }
+    }
     _appLanguage = prefs.getString('kiwi.app.language') ?? 'en';
     _voiceLanguage = prefs.getString('kiwi.voice.language') ?? 'en-NZ';
     _voiceEnabled = prefs.getBool('kiwi.voice.enabled') ?? true;
@@ -210,7 +306,9 @@ class _MapHomePageState extends State<MapHomePage> {
 
   List<DestinationSuggestion> get _recentDestinations {
     final profile = _account.profile;
-    if (profile == null) return _guestRecent;
+    if (profile == null || _mapProvider == MapProvider.mapbox) {
+      return _guestRecent;
+    }
     return profile.recentDestinations
         .map((item) {
           final latitude = item['latitude'];
@@ -235,6 +333,11 @@ class _MapHomePageState extends State<MapHomePage> {
     _mapRefreshTimer?.cancel();
     _account.removeListener(_onAccountChanged);
     _driveEngine.removeListener(_onEngineChanged);
+    _mapboxNavigation.dispose();
+    _exploreMarkerFocus.dispose();
+    _workerSearch.dispose();
+    _mapboxSearch.dispose();
+    _mapboxRoutes.dispose();
     _account.dispose();
     _placeDetailsRepository.dispose();
     _driveEngine.dispose();
@@ -324,6 +427,18 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _refreshMap() async {
+    if (_mapProvider == MapProvider.mapbox) {
+      final location = _gpsLocation;
+      if (_following && location != null && _browseRenderer != null) {
+        await _browseRenderer!.moveTo(
+          _viewport.copyWith(
+            center: GeoPoint(location.latitude, location.longitude),
+            zoom: _mapboxNavigation.active ? 16 : _viewport.zoom,
+          ),
+        );
+      }
+      return;
+    }
     if (_mapRefreshing) {
       _refreshAgain = true;
       return;
@@ -393,6 +508,10 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _recenter() {
     _following = true;
+    if (_mapProvider == MapProvider.mapbox) {
+      _queueMapRefresh();
+      return;
+    }
     final navigationController = _navigationController;
     if (_driveEngine.active && navigationController != null) {
       unawaited(
@@ -408,6 +527,13 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _rotateMap(double degrees) async {
+    if (_mapProvider == MapProvider.mapbox) {
+      _following = false;
+      await _browseRenderer?.moveTo(
+        _viewport.copyWith(bearing: (_viewport.bearing + degrees + 360) % 360),
+      );
+      return;
+    }
     final controller = _driveEngine.active
         ? _navigationController
         : _browseController;
@@ -444,6 +570,7 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _clearRoutePreview() async {
+    ++_routeRequest;
     _driveEngine.setRoute(null);
     final controller = _browseController;
     if (controller != null) {
@@ -457,7 +584,8 @@ class _MapHomePageState extends State<MapHomePage> {
       _selectedRouteId = null;
       _selectedMode = KiwiTravelMode.drive;
       _routePreviewLoading = false;
-      _selectedPoi = null;
+      _selectedPlace = null;
+      _journeyPhase = JourneyPhase.idle;
       _placeDetails = null;
       _placeDetailsLoading = false;
       _placeDetailsError = null;
@@ -472,6 +600,7 @@ class _MapHomePageState extends State<MapHomePage> {
       setState(() => _message = 'Waiting for GPS before calculating routes.');
       return;
     }
+    final request = ++_routeRequest;
     setState(() {
       _routePreviewLoading = true;
       _routePlan = null;
@@ -480,25 +609,44 @@ class _MapHomePageState extends State<MapHomePage> {
       _message = null;
     });
     try {
-      final plan = await _routeRepository.fetch(
-        origin: origin,
-        destination: poi.latLng,
-        stops: _routeStops.map((stop) => stop.location).toList(growable: false),
-      );
+      final plan = _mapProvider == MapProvider.mapbox
+          ? await _mapboxRoutes.route(
+              origin: GeoPoint(origin.latitude, origin.longitude),
+              destination: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+              stops: _routeStops
+                  .map(
+                    (stop) => GeoPoint(
+                      stop.location.latitude,
+                      stop.location.longitude,
+                    ),
+                  )
+                  .toList(growable: false),
+              language: _appLanguage,
+            )
+          : await _routeRepository.fetch(
+              origin: origin,
+              destination: poi.latLng,
+              stops: _routeStops
+                  .map((stop) => stop.location)
+                  .toList(growable: false),
+            );
       final firstDrive = plan.forMode(KiwiTravelMode.drive).firstOrNull;
-      if (!mounted) return;
+      if (!mounted || request != _routeRequest) return;
       setState(() {
         _routePlan = plan;
         _selectedRouteId = firstDrive?.id;
+        _journeyPhase = JourneyPhase.routePreview;
       });
       _driveEngine.setRoute(firstDrive);
       await _renderRoutePreview();
     } catch (error) {
-      if (mounted) {
+      if (mounted && request == _routeRequest) {
         setState(() => _message = 'Could not preview routes: $error');
       }
     } finally {
-      if (mounted) setState(() => _routePreviewLoading = false);
+      if (mounted && request == _routeRequest) {
+        setState(() => _routePreviewLoading = false);
+      }
     }
   }
 
@@ -541,21 +689,37 @@ class _MapHomePageState extends State<MapHomePage> {
           account: _account,
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
-          useCarMarker: _useCarMarker,
           appLanguage: _appLanguage,
           voiceLanguage: _voiceLanguage,
           onVoiceChanged: _setVoiceEnabled,
           onLanesChanged: _setLanesEnabled,
-          onCarMarkerChanged: (value) => unawaited(_setCarMarker(value)),
           onAppLanguageChanged: (value) => unawaited(_setAppLanguage(value)),
           onLanguageChanged: (value) => unawaited(_setVoiceLanguage(value)),
           onMapLayers: _showMapLayers,
+          mapProvider: _mapProvider,
+          locationMarker: _locationMarker,
+          mapboxAvailable: _mapboxToken.isNotEmpty,
+          onMapProviderChanged: (value) async {
+            await _setMapProvider(value);
+            return _mapProvider;
+          },
+          onLocationMarkerChanged: (value) =>
+              unawaited(_setLocationMarker(value)),
         ),
       ),
     );
   }
 
   Future<void> _toggleFavorite(PointOfInterest poi) async {
+    if (_mapProvider == MapProvider.mapbox &&
+        _selectedPlace?.source != SelectionSource.longPress) {
+      setState(
+        () => _message =
+            'Saving Mapbox search/map content needs a storage licence. '
+            'You can still use saved personal coordinates.',
+      );
+      return;
+    }
     if (_account.profile == null) {
       _showProfile();
       return;
@@ -574,6 +738,15 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _reviewPlace(PointOfInterest poi) async {
+    if (_mapProvider == MapProvider.mapbox &&
+        _selectedPlace?.source != SelectionSource.longPress) {
+      setState(
+        () => _message =
+            'Reviews for Mapbox-sourced places are unavailable until '
+            'persistent storage is licensed.',
+      );
+      return;
+    }
     if (_account.profile == null) {
       _showProfile();
       return;
@@ -668,7 +841,14 @@ class _MapHomePageState extends State<MapHomePage> {
       final active = route.id == selected?.id;
       options.add(
         PolylineOptions(
-          points: route.points,
+          points: route.points
+              .map(
+                (point) => LatLng(
+                  latitude: point.latitude,
+                  longitude: point.longitude,
+                ),
+              )
+              .toList(growable: false),
           strokeColor: _selectedMode == KiwiTravelMode.drive
               ? (active ? const Color(0xCC60716A) : const Color(0x3560716A))
               : (active ? const Color(0xFF4285F4) : const Color(0x554285F4)),
@@ -700,7 +880,14 @@ class _MapHomePageState extends State<MapHomePage> {
           if (segment.length < 2) continue;
           options.add(
             PolylineOptions(
-              points: segment,
+              points: segment
+                  .map(
+                    (point) => LatLng(
+                      latitude: point.latitude,
+                      longitude: point.longitude,
+                    ),
+                  )
+                  .toList(growable: false),
               strokeColor: _trafficColor(interval.speed, active),
               strokeWidth: active ? 8 : 6,
               zIndex: active ? 25 : 12,
@@ -713,7 +900,14 @@ class _MapHomePageState extends State<MapHomePage> {
 
     if (options.isNotEmpty) await controller.addPolylines(options);
     if (selected != null && selected.points.length >= 2) {
-      final bounds = LatLngBounds.createBoundsFromPoints(selected.points);
+      final bounds = LatLngBounds.createBoundsFromPoints(
+        selected.points
+            .map(
+              (point) =>
+                  LatLng(latitude: point.latitude, longitude: point.longitude),
+            )
+            .toList(growable: false),
+      );
       await controller.animateCamera(
         CameraUpdate.newLatLngBounds(bounds, padding: 72),
         duration: const Duration(milliseconds: 420),
@@ -765,6 +959,13 @@ class _MapHomePageState extends State<MapHomePage> {
     final poi = _selectedPoi;
     final selected = _selectedRoute;
     if (poi == null || selected == null) return;
+    if (_mapProvider == MapProvider.mapbox) {
+      setState(
+        () => _message =
+            'Saving Mapbox route content requires a storage licence.',
+      );
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList('kiwi.saved.routes') ?? <String>[];
     final record = jsonEncode({
@@ -775,6 +976,7 @@ class _MapHomePageState extends State<MapHomePage> {
         'longitude': poi.latLng.longitude,
       },
       'mode': selected.mode.apiValue,
+      'provider': selected.provider,
       'durationSeconds': selected.durationSeconds,
       'distanceMeters': selected.distanceMeters,
       'stops': _routeStops
@@ -799,7 +1001,7 @@ class _MapHomePageState extends State<MapHomePage> {
     saved.insert(0, record);
     if (saved.length > 20) saved.removeRange(20, saved.length);
     await prefs.setStringList('kiwi.saved.routes', saved);
-    if (_account.profile != null) {
+    if (_account.profile != null && _mapProvider == MapProvider.google) {
       try {
         await _account.recordRoute(
           destinationName: poi.name,
@@ -909,7 +1111,8 @@ class _MapHomePageState extends State<MapHomePage> {
       _transitTripRunning = true;
       _activeTransitRoute = route;
       _destinationTitle = poi.name;
-      _selectedPoi = null;
+      _selectedPlace = null;
+      _journeyPhase = JourneyPhase.idle;
       _following = true;
     });
     await _driveEngine.speakMessage(
@@ -954,6 +1157,24 @@ class _MapHomePageState extends State<MapHomePage> {
     });
 
     try {
+      if (_mapProvider == MapProvider.mapbox) {
+        if (!await _ensureLocationPermission()) return;
+        await _mapboxNavigation.start(selectedRoute);
+        if (!mounted) return;
+        setState(() {
+          _guidanceRunning = true;
+          _destinationTitle = poi.name;
+          _activeNavigationRoute = selectedRoute;
+          _routePlan = null;
+          _selectedRouteId = null;
+          _selectedPlace = null;
+          _journeyPhase = JourneyPhase.navigating;
+          _routeStops.clear();
+          _following = true;
+        });
+        _queueMapRefresh();
+        return;
+      }
       if (_selectedMode == KiwiTravelMode.transit) {
         await _startTransitTrip(poi, selectedRoute);
         return;
@@ -1052,7 +1273,8 @@ class _MapHomePageState extends State<MapHomePage> {
         _activeNavigationRoute = selectedRoute;
         _routePlan = null;
         _selectedRouteId = null;
-        _selectedPoi = null;
+        _selectedPlace = null;
+        _journeyPhase = JourneyPhase.navigating;
         _routeStops.clear();
         _following = true;
       });
@@ -1066,6 +1288,19 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _stopNavigation() async {
     if (!_guidanceRunning) return;
+    if (_mapboxNavigation.active) {
+      // Search Box and Directions content stays session-scoped. Persisting
+      // Mapbox-derived route data needs a separate storage entitlement.
+      await _mapboxNavigation.stop();
+      if (!mounted) return;
+      setState(() {
+        _guidanceRunning = false;
+        _activeNavigationRoute = null;
+        _destinationTitle = 'Destination';
+        _journeyPhase = JourneyPhase.idle;
+      });
+      return;
+    }
     final route = _activeNavigationRoute;
     if (_account.profile != null && route != null && route.points.isNotEmpty) {
       final destination = route.points.last;
@@ -1116,6 +1351,11 @@ class _MapHomePageState extends State<MapHomePage> {
                 'Waiting for current GPS position before opening Drive Mode.',
           );
         }
+        return;
+      }
+      if (_mapProvider == MapProvider.mapbox) {
+        await _driveEngine.startLocal();
+        if (mounted) setState(() {});
         return;
       }
       _lastBrowseCamera =
@@ -1175,7 +1415,10 @@ class _MapHomePageState extends State<MapHomePage> {
       _placeDetailsError = null;
     });
     try {
-      final details = await _placeDetailsRepository.fetch(poi.placeID);
+      final details = await _placeDetailsRepository.fetch(
+        poi.placeID,
+        language: _appLanguage,
+      );
       if (!mounted || request != _placeDetailsRequest) return;
       setState(() {
         _placeDetails = details;
@@ -1192,20 +1435,112 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _onPoiClicked(PointOfInterest poi) {
     if (_driveEngine.active || _transitTripRunning) return;
+    _selectPlace(
+      PlaceSummary(
+        name: poi.name,
+        location: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+        reference: poi.placeID.isEmpty
+            ? null
+            : ProviderReference('google', poi.placeID),
+      ),
+      SelectionSource.map,
+    );
+  }
+
+  void _selectPlace(PlaceSummary place, SelectionSource source) {
+    if (_driveEngine.active || _transitTripRunning) return;
+    if (!const ProviderPolicy(MapProvider.google).canDisplay(place.reference) &&
+        _mapProvider == MapProvider.google) {
+      setState(() => _message = 'This place cannot be shown on Google Maps.');
+      return;
+    }
+    if (_mapProvider == MapProvider.mapbox &&
+        !const ProviderPolicy(MapProvider.mapbox).canDisplay(place.reference)) {
+      setState(() => _message = 'This place belongs to another map provider.');
+      return;
+    }
     setState(() {
-      _selectedPoi = poi;
+      _selectedPlace = SelectedPlace(place, source, originMap: _mapProvider);
+      _journeyPhase = JourneyPhase.placeSelected;
       _routePlan = null;
       _selectedRouteId = null;
       _message = null;
     });
-    unawaited(_loadPlaceDetails(poi));
+    if (place.reference?.provider == 'google') {
+      unawaited(_loadPlaceDetails(_selectedPoi!));
+    } else {
+      _placeDetailsRequest++;
+      _placeDetails = null;
+      _placeDetailsLoading = false;
+      _placeDetailsError = null;
+    }
+    if (_mapProvider == MapProvider.mapbox &&
+        (source == SelectionSource.map ||
+            source == SelectionSource.longPress) &&
+        place.address.isEmpty) {
+      unawaited(_enrichMapboxSelection(place, source));
+    }
   }
 
-  void _onSearchSelected(DestinationSuggestion suggestion) {
+  Future<void> _enrichMapboxSelection(
+    PlaceSummary original,
+    SelectionSource source,
+  ) async {
+    try {
+      final resolved = await _mapboxSearch.reverseNear(
+        original.location,
+        language: _appLanguage,
+        preferredName:
+            original.kind == PlaceKind.coordinate &&
+                source != SelectionSource.longPress
+            ? ''
+            : original.name,
+      );
+      if (!mounted ||
+          resolved == null ||
+          _mapProvider != MapProvider.mapbox ||
+          !identical(_selectedPlace?.place, original)) {
+        return;
+      }
+      setState(
+        () => _selectedPlace = SelectedPlace(
+          PlaceSummary(
+            name:
+                original.kind == PlaceKind.coordinate &&
+                    source != SelectionSource.longPress
+                ? resolved.name
+                : original.name,
+            location: original.location,
+            address: resolved.address,
+            category: original.category.isEmpty
+                ? resolved.category
+                : original.category,
+            kind:
+                original.kind == PlaceKind.coordinate &&
+                    source != SelectionSource.longPress
+                ? resolved.kind
+                : original.kind,
+            reference: source == SelectionSource.longPress
+                ? null
+                : resolved.reference,
+          ),
+          source,
+          originMap: _mapProvider,
+        ),
+      );
+    } catch (_) {
+      // A map feature remains selectable if reverse lookup is unavailable.
+    }
+  }
+
+  void _rememberDestination(DestinationSuggestion suggestion) {
     _guestRecent.removeWhere((item) => item.label == suggestion.label);
     _guestRecent.insert(0, suggestion);
     if (_guestRecent.length > 12) _guestRecent.removeLast();
-    if (_account.profile != null) {
+    if (_mapProvider == MapProvider.google) {
+      unawaited(_persistGoogleRecent());
+    }
+    if (_account.profile != null && _mapProvider == MapProvider.google) {
       unawaited(
         _account
             .recordDestination(
@@ -1216,19 +1551,44 @@ class _MapHomePageState extends State<MapHomePage> {
             .catchError((_) {}),
       );
     }
-    _onPoiClicked(
-      PointOfInterest(
-        placeID: '',
-        name: suggestion.name ?? suggestion.label,
-        latLng: suggestion.location,
-      ),
-    );
-    final controller = _browseController;
-    if (controller != null) {
-      unawaited(
-        controller.animateCamera(CameraUpdate.newLatLng(suggestion.location)),
-      );
+  }
+
+  void _restoreGoogleRecent(SharedPreferences prefs) {
+    _guestRecent.clear();
+    for (final record
+        in prefs.getStringList('kiwi.recent.google') ?? const []) {
+      try {
+        final item = jsonDecode(record) as Map<String, dynamic>;
+        _guestRecent.add(
+          DestinationSuggestion(
+            label: item['label']?.toString() ?? '',
+            name: item['name']?.toString(),
+            address: item['address']?.toString(),
+            location: LatLng(
+              latitude: (item['latitude'] as num).toDouble(),
+              longitude: (item['longitude'] as num).toDouble(),
+            ),
+          ),
+        );
+      } catch (_) {
+        // A malformed historic record should not prevent search.
+      }
     }
+  }
+
+  Future<void> _persistGoogleRecent() async {
+    final records = [
+      for (final item in _guestRecent)
+        jsonEncode({
+          'label': item.label,
+          'name': item.name,
+          'address': item.address,
+          'latitude': item.location.latitude,
+          'longitude': item.location.longitude,
+        }),
+    ];
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('kiwi.recent.google', records);
   }
 
   Future<void> _syncCameraMarkers() async {
@@ -1300,12 +1660,23 @@ class _MapHomePageState extends State<MapHomePage> {
     try {
       await MapSymbols.ensureRegistered();
       if (_guidanceRunning) return;
+      final heading = _travelHeading ?? _deviceHeading ?? 0;
+      final previous = _smoothedLocationHeading;
+      final delta = previous == null
+          ? 0.0
+          : (heading - previous + 540) % 360 - 180;
+      _smoothedLocationHeading = previous == null
+          ? heading
+          : (previous + delta * 0.35 + 360) % 360;
       final options = MarkerOptions(
         position: location,
-        icon: MapSymbols.car ?? ImageDescriptor.defaultImage,
+        icon:
+            MapSymbols.location(_locationMarker) ??
+            MapSymbols.car ??
+            ImageDescriptor.defaultImage,
         zIndex: 80,
         flat: true,
-        rotation: _deviceHeading ?? _travelHeading ?? 0,
+        rotation: _smoothedLocationHeading!,
         anchor: const MarkerAnchor(u: 0.5, v: 0.5),
       );
       if (_carMarker == null) {
@@ -1314,6 +1685,24 @@ class _MapHomePageState extends State<MapHomePage> {
         _carMarker = (await controller.updateMarkers([
           _carMarker!.copyWith(options: options),
         ])).first;
+      }
+      final accuracy = _gpsAccuracy;
+      if (accuracy != null && accuracy > 0) {
+        final halo = CircleOptions(
+          position: location,
+          radius: accuracy.clamp(5, 150).toDouble(),
+          strokeWidth: 1,
+          strokeColor: const Color(0x882E86C9),
+          fillColor: const Color(0x222E86C9),
+          zIndex: 1,
+        );
+        if (_accuracyCircle == null) {
+          _accuracyCircle = (await controller.addCircles([halo])).first;
+        } else {
+          _accuracyCircle = (await controller.updateCircles([
+            _accuracyCircle!.copyWith(options: halo),
+          ])).first;
+        }
       }
     } catch (_) {
       /* The native location indicator remains the fallback. */
@@ -1336,10 +1725,133 @@ class _MapHomePageState extends State<MapHomePage> {
       } else if (value && _gpsLocation != null) {
         await _syncCarMarker(controller, _gpsLocation!);
       }
+      if ((!value || _guidanceRunning) && _accuracyCircle != null) {
+        try {
+          await controller.removeCircles([_accuracyCircle!]);
+        } catch (_) {}
+        _accuracyCircle = null;
+      }
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('kiwi.map.car_marker', value);
     _queueMapRefresh();
+  }
+
+  Future<void> _setLocationMarker(LocationMarkerStyle style) async {
+    setState(() => _locationMarker = style);
+    await _setCarMarker(style != LocationMarkerStyle.classic);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('kiwi.map.location_marker', style.name);
+    if (_carMarker != null) {
+      final controller = _driveEngine.active
+          ? _navigationController
+          : _browseController;
+      if (controller != null) {
+        try {
+          await controller.removeMarkers([_carMarker!]);
+        } catch (_) {}
+        _carMarker = null;
+      }
+    }
+    _queueMapRefresh();
+  }
+
+  Future<void> _setMapProvider(MapProvider provider) {
+    _requestedMapProvider = provider;
+    _providerSwitchQueue = _providerSwitchQueue
+        .then((_) {
+          if (_requestedMapProvider != provider) return Future<void>.value();
+          return _applyMapProvider(provider);
+        })
+        .catchError((Object error) {
+          if (mounted) {
+            setState(() => _message = 'Could not switch maps: $error');
+          }
+        });
+    return _providerSwitchQueue;
+  }
+
+  Future<void> _applyMapProvider(MapProvider provider) async {
+    if (provider == _mapProvider) return;
+    if (provider == MapProvider.mapbox && _mapboxToken.isEmpty) return;
+    if (_guidanceRunning || _driveEngine.active || _transitTripRunning) {
+      setState(
+        () =>
+            _message = 'End the current trip before changing the map provider.',
+      );
+      return;
+    }
+    final googleCamera = await _browseController?.getCameraPosition();
+    if (!mounted) return;
+    if (googleCamera != null) {
+      _viewport = MapViewportState(
+        center: GeoPoint(
+          googleCamera.target.latitude,
+          googleCamera.target.longitude,
+        ),
+        zoom: googleCamera.zoom,
+        bearing: googleCamera.bearing,
+        pitch: googleCamera.tilt,
+      );
+    } else if (_browseRenderer != null) {
+      _viewport = _browseRenderer!.viewport;
+    }
+    _browseController = null;
+    _browseRenderer = null;
+    _lastBrowseCamera = null;
+    _cameraMarkers = [];
+    _carMarker = null;
+    _accuracyCircle = null;
+    _exploreMarkers = [];
+    _exploreMarkerPlaces.clear();
+    _exploreResults = const [];
+    _guestRecent.clear();
+    _showSearchArea = false;
+    _areaSearchAnchor = _viewport.center;
+    _radarPolygon = null;
+    _markerSignature = '';
+    final wasPreviewing = _journeyPhase == JourneyPhase.routePreview;
+    final selected = _selectedPlace;
+    _routePlan = null;
+    _selectedRouteId = null;
+    _driveEngine.setRoute(null);
+    ++_routeRequest;
+    final needsNewPlaceContent =
+        selected != null &&
+        (selected.originMap != provider &&
+                selected.place.kind != PlaceKind.coordinate ||
+            !ProviderPolicy(provider).canDisplay(selected.place.reference));
+    if (needsNewPlaceContent) {
+      _selectedPlace = SelectedPlace(
+        PlaceSummary(
+          name:
+              '${selected.place.location.latitude.toStringAsFixed(5)}, '
+              '${selected.place.location.longitude.toStringAsFixed(5)}',
+          location: selected.place.location,
+          kind: PlaceKind.coordinate,
+        ),
+        selected.source,
+        originMap: provider,
+      );
+      _placeDetails = null;
+      _placeDetailsLoading = false;
+      _placeDetailsError = null;
+    }
+    setState(() {
+      _mapProvider = provider;
+      _journeyPhase = selected == null
+          ? JourneyPhase.idle
+          : JourneyPhase.placeSelected;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('kiwi.map.provider', provider.name);
+    if (provider == MapProvider.google) _restoreGoogleRecent(prefs);
+    if (wasPreviewing && _selectedPoi != null) {
+      unawaited(_loadRoutePreview(_selectedPoi!));
+    }
+    if (provider == MapProvider.mapbox && needsNewPlaceContent) {
+      unawaited(_enrichMapboxSelection(_selectedPlace!.place, selected.source));
+    }
   }
 
   Future<void> _applyMapLayers(GoogleMapViewController controller) async {
@@ -1385,6 +1897,8 @@ class _MapHomePageState extends State<MapHomePage> {
       isScrollControlled: true,
       builder: (_) => MapLayerSheet(
         settings: _layers,
+        mapProvider: _mapProvider,
+        language: _appLanguage,
         onChanged: (value) => unawaited(_setMapLayers(value)),
       ),
     );
@@ -1497,7 +2011,10 @@ class _MapHomePageState extends State<MapHomePage> {
     try {
       final plan = await _routeRepository.fetch(
         origin: origin,
-        destination: destination,
+        destination: LatLng(
+          latitude: destination.latitude,
+          longitude: destination.longitude,
+        ),
         stops: [stop.location],
       );
       final next = plan.forMode(_selectedMode).firstOrNull;
@@ -1511,7 +2028,10 @@ class _MapHomePageState extends State<MapHomePage> {
             ),
             NavigationWaypoint.withLatLngTarget(
               title: _destinationTitle,
-              target: destination,
+              target: LatLng(
+                latitude: destination.latitude,
+                longitude: destination.longitude,
+              ),
             ),
           ],
           displayOptions: NavigationDisplayOptions(
@@ -1560,15 +2080,30 @@ class _MapHomePageState extends State<MapHomePage> {
                   final latitude = place['latitude'],
                       longitude = place['longitude'];
                   if (latitude is! num || longitude is! num) return;
+                  final id = place['placeId']?.toString() ?? '';
+                  if (_mapProvider == MapProvider.mapbox &&
+                      id.isNotEmpty &&
+                      !id.startsWith('coords:')) {
+                    Navigator.of(sheetContext).pop();
+                    setState(
+                      () => _message = 'This saved Google place is available on Google Maps.',
+                    );
+                    return;
+                  }
                   Navigator.of(sheetContext).pop();
-                  _onSearchSelected(
-                    DestinationSuggestion(
-                      label: place['name']?.toString() ?? 'Saved place',
-                      location: LatLng(
-                        latitude: latitude.toDouble(),
-                        longitude: longitude.toDouble(),
+                  _selectPlace(
+                    PlaceSummary(
+                      name: place['name']?.toString() ?? 'Saved place',
+                      address: place['address']?.toString() ?? '',
+                      location: GeoPoint(
+                        latitude.toDouble(),
+                        longitude.toDouble(),
                       ),
+                      reference: id.isNotEmpty && !id.startsWith('coords:')
+                          ? ProviderReference('google', id)
+                          : null,
                     ),
+                    SelectionSource.saved,
                   );
                 },
               ),
@@ -1582,15 +2117,25 @@ class _MapHomePageState extends State<MapHomePage> {
                       leading: const Icon(Icons.route_rounded),
                       title: Text(place['name']?.toString() ?? 'Saved route'),
                       onTap: () {
+                        if (_mapProvider == MapProvider.mapbox &&
+                            data['provider'] != 'mapbox') {
+                          Navigator.of(sheetContext).pop();
+                          setState(
+                            () => _message =
+                                'This saved route belongs to Google Maps.',
+                          );
+                          return;
+                        }
                         Navigator.of(sheetContext).pop();
-                        _onSearchSelected(
-                          DestinationSuggestion(
-                            label: place['name']?.toString() ?? 'Saved route',
-                            location: LatLng(
-                              latitude: (place['latitude'] as num).toDouble(),
-                              longitude: (place['longitude'] as num).toDouble(),
+                        _selectPlace(
+                          PlaceSummary(
+                            name: place['name']?.toString() ?? 'Saved route',
+                            location: GeoPoint(
+                              (place['latitude'] as num).toDouble(),
+                              (place['longitude'] as num).toDouble(),
                             ),
                           ),
+                          SelectionSource.saved,
                         );
                       },
                     );
@@ -1611,64 +2156,391 @@ class _MapHomePageState extends State<MapHomePage> {
     );
   }
 
-  void _showGoSearch() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          18,
-          16,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 18,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Start a trip',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ExploreSearch(
-              currentLocation: _gpsLocation,
-              origin: _manualOrigin,
-              recent: _recentDestinations,
-              language: _appLanguage,
-              onOriginSelected: (value) =>
-                  setState(() => _manualOrigin = value),
-              onSelected: (selection) {
-                Navigator.of(sheetContext).pop();
-                _onSearchSelected(selection);
-                final poi = _selectedPoi;
-                if (poi != null) unawaited(_loadRoutePreview(poi));
-              },
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              tileColor: const Color(0xFFF0F6E8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              leading: const Icon(Icons.directions_car_filled_rounded),
-              title: const Text('Drive mode'),
-              subtitle: const Text('Camera alerts without a destination'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: _busy
-                  ? null
-                  : () {
-                      Navigator.of(sheetContext).pop();
-                      unawaited(_startDriveMode());
-                    },
-            ),
-          ],
+  void _showGoSearch() => unawaited(_openSearch());
+
+  Future<void> _openSearch({String query = '', String? saveAs}) async {
+    setState(() => _journeyPhase = JourneyPhase.searching);
+    final SearchProvider provider = _mapProvider == MapProvider.mapbox
+        ? _mapboxSearch
+        : _workerSearch;
+    final place = await Navigator.of(context).push<PlaceSummary>(
+      MaterialPageRoute(
+        builder: (_) => FullScreenSearch(
+          provider: provider,
+          resolve: (candidate) async {
+            if (candidate.location != null) {
+              return candidate.toPlace(candidate.location!);
+            }
+            final reference = candidate.reference;
+            if (reference == null) {
+              throw StateError('Place has no location');
+            }
+            return _mapboxSearch.resolve(reference, language: _appLanguage);
+          },
+          language: _appLanguage,
+          currentLocation: _gpsLocation == null
+              ? null
+              : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude),
+          recent: _recentDestinations
+              .map(
+                (item) => PlaceSummary(
+                  name: item.name ?? item.label,
+                  address: item.address ?? '',
+                  location: GeoPoint(
+                    item.location.latitude,
+                    item.location.longitude,
+                  ),
+                ),
+              )
+              .toList(growable: false),
+          initialQuery: query,
+          onDriveMode: () => unawaited(_startDriveMode()),
         ),
       ),
     );
+    if (!mounted) return;
+    if (place == null) {
+      setState(
+        () => _journeyPhase = _selectedPlace == null
+            ? JourneyPhase.idle
+            : JourneyPhase.placeSelected,
+      );
+      return;
+    }
+    if (saveAs != null) {
+      _quickLocations[saveAs] = place;
+      _quickLocationProviders[saveAs] = _mapProvider;
+      if (_mapProvider == MapProvider.google) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'kiwi.quick_location.$saveAs',
+          jsonEncode({
+            'name': place.name,
+            'address': place.address,
+            'latitude': place.location.latitude,
+            'longitude': place.location.longitude,
+          }),
+        );
+      }
+    }
+    _rememberDestination(
+      DestinationSuggestion(
+        label: place.name,
+        name: place.name,
+        address: place.address,
+        location: LatLng(
+          latitude: place.location.latitude,
+          longitude: place.location.longitude,
+        ),
+      ),
+    );
+    _selectPlace(place, SelectionSource.search);
+    final controller = _browseController;
+    if (controller != null) {
+      unawaited(
+        controller.animateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(
+              latitude: place.location.latitude,
+              longitude: place.location.longitude,
+            ),
+          ),
+        ),
+      );
+    }
+    await _browseRenderer?.moveTo(_viewport.copyWith(center: place.location));
+  }
+
+  Widget _buildQuickActions() => SizedBox(
+    height: 43,
+    child: ListView(
+      scrollDirection: Axis.horizontal,
+      children: [
+        for (final action in _quickActions)
+          Padding(
+            padding: const EdgeInsets.only(right: 7),
+            child: ActionChip(
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFFD9E6F1)),
+              label: Text(action),
+              onPressed: () => _onQuickAction(action),
+            ),
+          ),
+        IconButton.filledTonal(
+          tooltip: _text('Edit shortcuts', '编辑快捷入口'),
+          onPressed: _editQuickActions,
+          icon: const Icon(Icons.tune_rounded, size: 19),
+        ),
+      ],
+    ),
+  );
+
+  void _onQuickAction(String action) {
+    if (action == 'Home' || action == 'Work') {
+      final place = _quickLocations[action];
+      if (place != null && _quickLocationProviders[action] == _mapProvider) {
+        _selectPlace(
+          place,
+          action == 'Home' ? SelectionSource.home : SelectionSource.work,
+        );
+        return;
+      }
+      unawaited(_openSearch(saveAs: action));
+      return;
+    }
+    if (action == 'Frequent') {
+      final recent = _recentDestinations;
+      if (recent.isNotEmpty) {
+        final item = recent.first;
+        _selectPlace(
+          PlaceSummary(
+            name: item.name ?? item.label,
+            address: item.address ?? '',
+            location: GeoPoint(item.location.latitude, item.location.longitude),
+          ),
+          SelectionSource.frequent,
+        );
+        return;
+      }
+    }
+    unawaited(_openSearch(query: action == 'Frequent' ? '' : action));
+  }
+
+  void _maybeShowSearchArea() {
+    final center = _viewport.center;
+    final moved = distanceMeters(
+      center.latitude,
+      center.longitude,
+      _areaSearchAnchor.latitude,
+      _areaSearchAnchor.longitude,
+    );
+    if (moved > 350 && !_showSearchArea && mounted) {
+      setState(() => _showSearchArea = true);
+    }
+  }
+
+  void _editQuickActions() {
+    final actions = [..._quickActions];
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, updateSheet) => SafeArea(
+          child: SizedBox(
+            height: 430,
+            child: Column(
+              children: [
+                ListTile(
+                  title: Text(_text('Edit shortcuts', '编辑快捷入口')),
+                  subtitle: Text(
+                    _text(
+                      'Drag to reorder. Remove or add shortcuts any time.',
+                      '拖动排序，可随时移除或添加。',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ReorderableListView(
+                    onReorderItem: (oldIndex, newIndex) {
+                      updateSheet(() {
+                        final item = actions.removeAt(oldIndex);
+                        actions.insert(newIndex, item);
+                      });
+                    },
+                    children: [
+                      for (final action in actions)
+                        ListTile(
+                          key: ValueKey(action),
+                          title: Text(action),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (action == 'Home' || action == 'Work')
+                                IconButton(
+                                  tooltip: _text('Set location', '设置地点'),
+                                  icon: const Icon(
+                                    Icons.edit_location_alt_outlined,
+                                  ),
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                    unawaited(_openSearch(saveAs: action));
+                                  },
+                                ),
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline),
+                                onPressed: () =>
+                                    updateSheet(() => actions.remove(action)),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Wrap(
+                  spacing: 4,
+                  children: [
+                    for (final action in [
+                      'Home',
+                      'Work',
+                      'Frequent',
+                      'Restaurants',
+                      'Shopping',
+                      'Gas',
+                    ])
+                      if (!actions.contains(action))
+                        ActionChip(
+                          label: Text('+ $action'),
+                          onPressed: () =>
+                              updateSheet(() => actions.add(action)),
+                        ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: FilledButton(
+                    onPressed: () async {
+                      setState(() => _quickActions = actions);
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setStringList('kiwi.quick_actions', actions);
+                      if (context.mounted) Navigator.of(context).pop();
+                    },
+                    child: Text(_text('Done', '完成')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _searchThisArea() {
+    setState(() {
+      _showSearchArea = false;
+      _areaSearchAnchor = _viewport.center;
+    });
+    _showExplore(center: _viewport.center);
+  }
+
+  Future<void> _syncExploreMarkers() async {
+    final controller = _browseController;
+    if (controller == null || _mapProvider != MapProvider.google) return;
+    try {
+      if (_exploreMarkers.isNotEmpty) {
+        await controller.removeMarkers(_exploreMarkers);
+      }
+      _exploreMarkers = [];
+      _exploreMarkerPlaces.clear();
+      if (_exploreResults.isEmpty) return;
+      final markers = await controller.addMarkers([
+        for (final place in _exploreResults)
+          MarkerOptions(
+            position: LatLng(
+              latitude: place.location.latitude,
+              longitude: place.location.longitude,
+            ),
+            zIndex: 30,
+            consumeTapEvents: true,
+            infoWindow: InfoWindow(title: place.name, snippet: place.address),
+          ),
+      ]);
+      _exploreMarkers = markers.whereType<Marker>().toList(growable: false);
+      for (
+        var index = 0;
+        index < _exploreMarkers.length && index < _exploreResults.length;
+        index++
+      ) {
+        _exploreMarkerPlaces[_exploreMarkers[index].markerId] =
+            _exploreResults[index];
+      }
+    } catch (_) {
+      // The map may be recreated while changing providers.
+    }
+  }
+
+  Future<void> _showExplore({GeoPoint? center}) async {
+    final origin =
+        center ??
+        (_gpsLocation == null
+            ? _viewport.center
+            : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude));
+    final saved = (_account.profile?.places ?? <Map<String, dynamic>>[])
+        .map((item) {
+          final id = item['placeId']?.toString() ?? '';
+          if (_mapProvider == MapProvider.mapbox &&
+              id.isNotEmpty &&
+              !id.startsWith('coords:')) {
+            return null;
+          }
+          final latitude = item['latitude'];
+          final longitude = item['longitude'];
+          if (latitude is! num || longitude is! num) return null;
+          return PlaceSummary(
+            name: item['name']?.toString() ?? 'Saved place',
+            address: item['address']?.toString() ?? '',
+            location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
+          );
+        })
+        .whereType<PlaceSummary>()
+        .toList(growable: false);
+    final ExploreProvider provider = _mapProvider == MapProvider.mapbox
+        ? _mapboxSearch
+        : _workerSearch;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFFF5F9FC),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * 0.58,
+        child: ExploreSheet(
+          provider: provider,
+          center: origin,
+          language: _appLanguage,
+          route:
+              _selectedRoute?.points
+                  .map((point) => GeoPoint(point.latitude, point.longitude))
+                  .toList(growable: false) ??
+              const [],
+          saved: saved,
+          markerFocus: _exploreMarkerFocus,
+          onResultsChanged: (places) {
+            if (!mounted) return;
+            setState(() => _exploreResults = places);
+            unawaited(_syncExploreMarkers());
+          },
+          onFocused: (place) {
+            final viewport = _viewport.copyWith(center: place.location);
+            unawaited(_browseRenderer?.moveTo(viewport));
+            final google = _browseController;
+            if (google != null) {
+              unawaited(
+                google.animateCamera(
+                  CameraUpdate.newLatLng(
+                    LatLng(
+                      latitude: place.location.latitude,
+                      longitude: place.location.longitude,
+                    ),
+                  ),
+                ),
+              );
+            }
+          },
+          onSelected: (place) {
+            Navigator.of(sheetContext).pop();
+            _selectPlace(place, SelectionSource.explore);
+          },
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _exploreResults = const []);
+    unawaited(_syncExploreMarkers());
   }
 
   Widget _buildBottomBar() {
@@ -1749,7 +2621,11 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-            item(Icons.layers_rounded, _text('Layers', '图层'), _showMapLayers),
+            item(
+              Icons.explore_rounded,
+              _text('Explore', '探索'),
+              () => unawaited(_showExplore()),
+            ),
             item(Icons.person_rounded, _text('Me', '我的'), _showProfile),
           ],
         ),
@@ -1761,6 +2637,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _browseController = controller;
     _cameraMarkers = [];
     _carMarker = null;
+    _accuracyCircle = null;
     _markerSignature = '';
     _navigationController = null;
     _radarPolygon = null;
@@ -1774,6 +2651,7 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     await controller.setRecenterButtonEnabled(false);
     await _syncCameraMarkers();
+    await _syncExploreMarkers();
     _queueMapRefresh();
   }
 
@@ -1790,6 +2668,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _browseController = null;
     _cameraMarkers = [];
     _carMarker = null;
+    _accuracyCircle = null;
     _markerSignature = '';
     _radarPolygon = null;
     await controller.setNavigationHeaderEnabled(false);
@@ -1833,7 +2712,15 @@ class _MapHomePageState extends State<MapHomePage> {
             .toInt();
         trafficOptions.add(
           PolylineOptions(
-            points: activeRoute.points.sublist(start, end + 1),
+            points: activeRoute.points
+                .sublist(start, end + 1)
+                .map(
+                  (point) => LatLng(
+                    latitude: point.latitude,
+                    longitude: point.longitude,
+                  ),
+                )
+                .toList(growable: false),
             strokeColor: _trafficColor(interval.speed, true),
             strokeWidth: 8,
             zIndex: 40,
@@ -1855,7 +2742,7 @@ class _MapHomePageState extends State<MapHomePage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: _driveEngine.active
+            child: _driveEngine.active && _mapProvider == MapProvider.google
                 ? GoogleMapsNavigationView(
                     key: const ValueKey('navigation-view'),
                     onViewCreated: _onNavigationViewCreated,
@@ -1879,27 +2766,100 @@ class _MapHomePageState extends State<MapHomePage> {
                     initialForceNightMode: NavigationForceNightMode.auto,
                     onPoiClicked: _onPoiClicked,
                   )
-                : GoogleMapsMapView(
-                    key: const ValueKey('browse-map-view'),
-                    onViewCreated: _onMapViewCreated,
-                    mapId: _mapId.isEmpty ? null : _mapId,
-                    onCameraMoveStarted: (_, isGesture) {
-                      if (isGesture) _following = false;
+                : _mapProvider == MapProvider.mapbox
+                ? MapboxMapRenderer(
+                    key: const ValueKey('mapbox-browse-view'),
+                    initialViewport: _viewport,
+                    layers: _layers,
+                    locationMarker: _locationMarker,
+                    locationEnabled: _gpsLocation != null,
+                    moving: _travelHeading != null,
+                    language: _appLanguage,
+                    cameras: _driveEngine.cameras,
+                    route:
+                        (_mapboxNavigation.route ?? _selectedRoute)?.points
+                            .map(
+                              (point) =>
+                                  GeoPoint(point.latitude, point.longitude),
+                            )
+                            .toList(growable: false) ??
+                        const [],
+                    selectedPlace: _selectedPlace?.place,
+                    explorePlaces: _exploreResults,
+                    onExplorePlace: (place) =>
+                        _exploreMarkerFocus.value = place,
+                    onReady: (renderer) => _browseRenderer = renderer,
+                    onViewportChanged: (viewport) => _viewport = viewport,
+                    onUserPan: () {
+                      _following = false;
+                      _maybeShowSearchArea();
                     },
-                    onCameraMove: (position) => _lastBrowseCamera = position,
-                    initialCameraPosition:
-                        _lastBrowseCamera ??
-                        CameraPosition(
-                          target: _gpsLocation ?? _auckland,
-                          zoom: 14,
+                    onMapPlace: (place) {
+                      _selectPlace(
+                        place,
+                        place.kind == PlaceKind.coordinate
+                            ? SelectionSource.longPress
+                            : SelectionSource.map,
+                      );
+                    },
+                    onBlankTap: () {
+                      if (_selectedPlace != null || _routePlan != null) {
+                        unawaited(_clearRoutePreview());
+                      }
+                    },
+                  )
+                : GoogleMapRenderer(
+                    key: const ValueKey('browse-map-view'),
+                    onControllerCreated: _onMapViewCreated,
+                    onReady: (renderer) => _browseRenderer = renderer,
+                    mapId: _mapId.isEmpty ? null : _mapId,
+                    initialViewport: _lastBrowseCamera == null
+                        ? _viewport.copyWith(
+                            center: _gpsLocation == null
+                                ? _viewport.center
+                                : GeoPoint(
+                                    _gpsLocation!.latitude,
+                                    _gpsLocation!.longitude,
+                                  ),
+                          )
+                        : MapViewportState(
+                            center: GeoPoint(
+                              _lastBrowseCamera!.target.latitude,
+                              _lastBrowseCamera!.target.longitude,
+                            ),
+                            zoom: _lastBrowseCamera!.zoom,
+                            bearing: _lastBrowseCamera!.bearing,
+                            pitch: _lastBrowseCamera!.tilt,
+                          ),
+                    onViewportChanged: (viewport) {
+                      _viewport = viewport;
+                      _lastBrowseCamera = CameraPosition(
+                        target: LatLng(
+                          latitude: viewport.center.latitude,
+                          longitude: viewport.center.longitude,
                         ),
-                    initialCompassEnabled: true,
-                    initialRotateGesturesEnabled: true,
-                    initialTiltGesturesEnabled: true,
-                    initialScrollGesturesEnabledDuringRotateOrZoom: true,
-                    initialMapColorScheme: MapColorScheme.followSystem,
-                    onPoiClicked: _onPoiClicked,
-                    onMapClicked: (_) {
+                        zoom: viewport.zoom,
+                        bearing: viewport.bearing,
+                        tilt: viewport.pitch,
+                      );
+                    },
+                    onUserPan: () {
+                      _following = false;
+                      _maybeShowSearchArea();
+                    },
+                    onMapPlace: (place) => _selectPlace(
+                      place,
+                      place.kind == PlaceKind.coordinate
+                          ? SelectionSource.longPress
+                          : SelectionSource.map,
+                    ),
+                    onExploreMarker: (markerId) {
+                      final place = _exploreMarkerPlaces[markerId];
+                      if (place != null) {
+                        _exploreMarkerFocus.value = place;
+                      }
+                    },
+                    onBlankTap: () {
                       if (_selectedPoi != null || _routePlan != null) {
                         unawaited(_clearRoutePreview());
                       }
@@ -1968,22 +2928,57 @@ class _MapHomePageState extends State<MapHomePage> {
               left: 16,
               right: 16,
               child: PointerInterceptor(
-                child: ExploreSearch(
-                  currentLocation: _gpsLocation,
-                  origin: _manualOrigin,
-                  recent: _recentDestinations,
-                  language: _appLanguage,
-                  onOriginSelected: (origin) {
-                    setState(() => _manualOrigin = origin);
-                    if (_selectedPoi != null) {
-                      unawaited(_loadRoutePreview(_selectedPoi!));
-                    }
-                  },
-                  onSelected: _onSearchSelected,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      color: Colors.white,
+                      elevation: 8,
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: _showGoSearch,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 17,
+                            vertical: 16,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.search_rounded,
+                                color: Color(0xFF1479FF),
+                              ),
+                              const SizedBox(width: 11),
+                              Text(
+                                _text('Where to?', '去哪儿？'),
+                                style: const TextStyle(
+                                  color: Color(0xFF61758A),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    _buildQuickActions(),
+                    if (_showSearchArea)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: FilledButton.icon(
+                          onPressed: _searchThisArea,
+                          icon: const Icon(Icons.refresh_rounded, size: 17),
+                          label: Text(_text('Search this area', '搜索此区域')),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
           if (_driveEngine.active &&
+              _mapProvider == MapProvider.google &&
               _selectedPoi == null &&
               !_transitTripRunning)
             Positioned.fill(
@@ -2020,6 +3015,26 @@ class _MapHomePageState extends State<MapHomePage> {
                         engine: _driveEngine,
                         onStop: () => unawaited(_stopDriveMode()),
                       ),
+              ),
+            ),
+          if (_mapboxNavigation.active)
+            Positioned.fill(
+              child: MapboxNavigationOverlay(
+                engine: _mapboxNavigation,
+                drive: _driveEngine,
+                destination: _destinationTitle,
+                language: _appLanguage,
+                onEnd: () => unawaited(_stopNavigation()),
+                onRecenter: _recenter,
+              ),
+            ),
+          if (_mapProvider == MapProvider.mapbox &&
+              _driveEngine.active &&
+              !_guidanceRunning)
+            Positioned.fill(
+              child: DriveHud(
+                engine: _driveEngine,
+                onStop: () => unawaited(_stopDriveMode()),
               ),
             ),
           if (_message != null)
@@ -2065,7 +3080,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 minimum: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                 child: PointerInterceptor(
                   child: _PlaceCard(
-                    poi: _selectedPoi!,
+                    selectedPlace: _selectedPlace!.place,
                     details: _placeDetails,
                     detailsLoading: _placeDetailsLoading,
                     detailsError: _placeDetailsError,
@@ -2099,6 +3114,8 @@ class _MapHomePageState extends State<MapHomePage> {
               alignment: Alignment.bottomCenter,
               child: RoutePreviewSheet(
                 destinationTitle: _selectedPoi!.name,
+                originTitle:
+                    _manualOrigin?.label ?? _text('Current location', '当前位置'),
                 plan: _routePlan!,
                 selectedMode: _selectedMode,
                 selectedRouteId: _selectedRouteId,
@@ -2125,7 +3142,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
 class _PlaceCard extends StatelessWidget {
   const _PlaceCard({
-    required this.poi,
+    required this.selectedPlace,
     required this.details,
     required this.detailsLoading,
     required this.detailsError,
@@ -2137,7 +3154,7 @@ class _PlaceCard extends StatelessWidget {
     required this.onReview,
   });
 
-  final PointOfInterest poi;
+  final PlaceSummary selectedPlace;
   final PlaceDetails? details;
   final bool detailsLoading;
   final String? detailsError;
@@ -2151,7 +3168,7 @@ class _PlaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PlaceDetailsContent(
-      poi: poi,
+      selectedPlace: selectedPlace,
       details: details,
       detailsLoading: detailsLoading,
       detailsError: detailsError,

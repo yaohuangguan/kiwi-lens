@@ -1,4 +1,4 @@
-import 'package:google_navigation_flutter/google_navigation_flutter.dart';
+import 'map_provider.dart';
 
 enum KiwiTravelMode { drive, transit, walk, bicycle }
 
@@ -68,16 +68,16 @@ class RouteStepInfo {
 
   final String instruction;
   final int distanceMeters;
-  final LatLng location;
+  final GeoPoint location;
 
   factory RouteStepInfo.fromJson(Map<String, dynamic> json) {
     final pair = json['location'] as List<dynamic>? ?? const [];
     return RouteStepInfo(
       instruction: json['instruction'] as String? ?? '',
       distanceMeters: (json['distance'] as num?)?.round() ?? 0,
-      location: LatLng(
-        latitude: pair.length > 1 ? (pair[1] as num).toDouble() : 0,
-        longitude: pair.isNotEmpty ? (pair[0] as num).toDouble() : 0,
+      location: GeoPoint(
+        pair.length > 1 ? (pair[1] as num).toDouble() : 0,
+        pair.isNotEmpty ? (pair[0] as num).toDouble() : 0,
       ),
     );
   }
@@ -150,7 +150,7 @@ class RouteOption {
   final int? staticDurationSeconds;
   final int? trafficDelaySeconds;
   final int distanceMeters;
-  final List<LatLng> points;
+  final List<GeoPoint> points;
   final String? routeToken;
   final String description;
   final List<String> labels;
@@ -170,9 +170,9 @@ class RouteOption {
         .whereType<List<dynamic>>()
         .where((pair) => pair.length >= 2)
         .map(
-          (pair) => LatLng(
-            latitude: (pair[1] as num).toDouble(),
-            longitude: (pair[0] as num).toDouble(),
+          (pair) => GeoPoint(
+            (pair[1] as num).toDouble(),
+            (pair[0] as num).toDouble(),
           ),
         )
         .toList(growable: false);
@@ -232,9 +232,9 @@ class RoutePlan {
       options.where((option) => option.mode == mode);
 }
 
-List<LatLng> decodePolyline(String encoded) {
+List<GeoPoint> decodePolyline(String encoded) {
   if (encoded.isEmpty) return const [];
-  final points = <LatLng>[];
+  final points = <GeoPoint>[];
   var index = 0;
   var lat = 0;
   var lng = 0;
@@ -257,7 +257,7 @@ List<LatLng> decodePolyline(String encoded) {
       shift += 5;
     } while (byte >= 0x20 && index < encoded.length);
     lng += (result & 1) != 0 ? ~(result >> 1) : result >> 1;
-    points.add(LatLng(latitude: lat / 1e5, longitude: lng / 1e5));
+    points.add(GeoPoint(lat / 1e5, lng / 1e5));
   }
   return points;
 }

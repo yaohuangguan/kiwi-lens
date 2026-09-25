@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:google_navigation_flutter/google_navigation_flutter.dart';
+import 'package:flutter/services.dart';
 
 import '../data/place_details_repository.dart';
 import '../domain/coordinate_formatter.dart';
+import '../domain/map_provider.dart';
 
 class PlaceDetailsContent extends StatelessWidget {
   const PlaceDetailsContent({
     super.key,
-    required this.poi,
+    required this.selectedPlace,
     required this.details,
     required this.detailsLoading,
     required this.detailsError,
@@ -19,7 +20,7 @@ class PlaceDetailsContent extends StatelessWidget {
     required this.onReview,
   });
 
-  final PointOfInterest poi;
+  final PlaceSummary selectedPlace;
   final PlaceDetails? details;
   final bool detailsLoading;
   final String? detailsError;
@@ -35,7 +36,12 @@ class PlaceDetailsContent extends StatelessWidget {
     final place = details;
     final address = place?.address.isNotEmpty == true
         ? place!.address
-        : formatCoordinate(poi.latLng.latitude, poi.latLng.longitude);
+        : selectedPlace.address.isNotEmpty
+            ? selectedPlace.address
+            : formatCoordinate(
+                selectedPlace.location.latitude,
+                selectedPlace.location.longitude,
+              );
     return Material(
       color: Colors.white,
       elevation: 18,
@@ -65,7 +71,7 @@ class PlaceDetailsContent extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  place?.name ?? poi.name,
+                                  place?.name ?? selectedPlace.name,
                                   style: const TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w900,
@@ -138,38 +144,56 @@ class PlaceDetailsContent extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               child: Row(
                 children: [
-                  IconButton(
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: routeBusy ? null : onNavigate,
+                      icon: routeBusy
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.directions_rounded, size: 19),
+                      label: Text(routeBusy ? 'Routing' : 'Directions'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
                     onPressed: onFavorite,
-                    tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
-                    icon: Icon(
-                      isFavorite
-                          ? Icons.favorite_rounded
-                          : Icons.favorite_border_rounded,
-                      color: isFavorite
-                          ? Colors.redAccent
-                          : const Color(0xFF315945),
-                    ),
+                    icon: Icon(isFavorite
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_outline_rounded),
+                    label: const Text('Save'),
                   ),
-                  IconButton(
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              child: Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(
+                        text: '${selectedPlace.name}\n$address\n'
+                            '${selectedPlace.location.latitude},'
+                            '${selectedPlace.location.longitude}',
+                      ));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Place copied to clipboard'),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text('Share'),
+                  ),
+                  TextButton.icon(
                     onPressed: onReview,
-                    tooltip: 'My private review',
-                    icon: const Icon(Icons.rate_review_outlined),
-                  ),
-                  const Spacer(),
-                  FilledButton.icon(
-                    onPressed: routeBusy ? null : onNavigate,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF18372D),
-                      foregroundColor: const Color(0xFFC8F169),
-                    ),
-                    icon: routeBusy
-                        ? const SizedBox(
-                            width: 17,
-                            height: 17,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.navigation_rounded, size: 19),
-                    label: Text(routeBusy ? 'Routing' : 'Navigate'),
+                    icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                    label: const Text('More'),
                   ),
                 ],
               ),

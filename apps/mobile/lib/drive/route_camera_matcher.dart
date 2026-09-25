@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:google_navigation_flutter/google_navigation_flutter.dart';
-
 import '../domain/geo_math.dart';
+import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../domain/safety_camera.dart';
 
@@ -35,7 +34,7 @@ class RouteCameraMatch {
 class RouteCameraMatcher {
   const RouteCameraMatcher();
 
-  RouteProjection? project(LatLng point, List<LatLng> route) {
+  RouteProjection? project(GeoPoint point, List<GeoPoint> route) {
     if (route.length < 2) return null;
     RouteProjection? best;
     var travelled = 0.0;
@@ -91,7 +90,7 @@ class RouteCameraMatcher {
     final matches = <RouteCameraMatch>[];
     for (final camera in cameras) {
       final projection = project(
-        LatLng(latitude: camera.latitude, longitude: camera.longitude),
+        GeoPoint(camera.latitude, camera.longitude),
         route.points,
       );
       if (projection == null ||
@@ -128,8 +127,8 @@ class RouteCameraMatcher {
   }
 
   RouteCameraMatch? upcoming(
-    LatLng position,
-    List<LatLng> route,
+    GeoPoint position,
+    List<GeoPoint> route,
     List<RouteCameraMatch> matches,
   ) {
     final progress = project(position, route);
