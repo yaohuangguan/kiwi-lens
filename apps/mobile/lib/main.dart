@@ -2853,8 +2853,12 @@ class _MapHomePageState extends State<MapHomePage> {
                   ),
           ),
           if (!_driveEngine.active && !_transitTripRunning)
-            Positioned(
-              top: MediaQuery.paddingOf(context).top + 18,
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              top:
+                  MediaQuery.paddingOf(context).top +
+                  (_showSearchArea ? 190 : 130),
               right: 16,
               child: PointerInterceptor(
                 child: Column(
