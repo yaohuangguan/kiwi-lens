@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
+import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/route_repository.dart';
 import 'domain/radar_geometry.dart';
@@ -29,7 +30,7 @@ import 'widgets/map_symbols.dart';
 import 'widgets/mapbox_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
-import 'widgets/explore_sheet.dart';
+import 'widgets/explore_page.dart';
 import 'widgets/full_screen_search.dart';
 import 'widgets/navigation_overlay.dart';
 import 'widgets/place_details_content.dart';
@@ -1055,10 +1056,12 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<bool> _ensureNavigationSession() async {
-    if (_navigationSessionInitialized) {
+    final nativeInitialized = await GoogleMapsNavigator.isInitialized();
+    if (_navigationSessionInitialized && nativeInitialized) {
       if (!_driveEngine.active) await _driveEngine.start();
       return true;
     }
+    _navigationSessionInitialized = false;
     if (!await _ensureLocationPermission()) return false;
 
     if (!await GoogleMapsNavigator.areTermsAccepted()) {
@@ -1094,8 +1097,25 @@ class _MapHomePageState extends State<MapHomePage> {
         isVibrationEnabled: true,
       ),
     );
-    _navigationSessionInitialized = true;
-    await _driveEngine.start();
+    _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+    if (!_navigationSessionInitialized) {
+      if (mounted) {
+        setState(
+          () => _message = 'Navigation session did not finish initializing. Please try again.',
+        );
+      }
+      return false;
+    }
+    try {
+      await _driveEngine.start();
+    } on SessionNotInitializedException {
+      await GoogleMapsNavigator.initializeNavigationSession(
+        taskRemovedBehavior: TaskRemovedBehavior.continueService,
+      );
+      _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+      if (!_navigationSessionInitialized) return false;
+      await _driveEngine.start();
+    }
     return true;
   }
 
@@ -2260,8 +2280,11 @@ class _MapHomePageState extends State<MapHomePage> {
           Padding(
             padding: const EdgeInsets.only(right: 7),
             child: ActionChip(
-              backgroundColor: Colors.white,
-              side: const BorderSide(color: Color(0xFFD9E6F1)),
+              backgroundColor: const Color(0xFFF1F8DF),
+              side: const BorderSide(color: Color(0xFFC8F169), width: 1.3),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
               label: Text(action),
               onPressed: () => _onQuickAction(action),
             ),
@@ -2461,86 +2484,29 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _showExplore({GeoPoint? center}) async {
-    final origin =
-        center ??
-        (_gpsLocation == null
-            ? _viewport.center
-            : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude));
-    final saved = (_account.profile?.places ?? <Map<String, dynamic>>[])
-        .map((item) {
-          final id = item['placeId']?.toString() ?? '';
-          if (_mapProvider == MapProvider.mapbox &&
-              id.isNotEmpty &&
-              !id.startsWith('coords:')) {
-            return null;
-          }
-          final latitude = item['latitude'];
-          final longitude = item['longitude'];
-          if (latitude is! num || longitude is! num) return null;
-          return PlaceSummary(
-            name: item['name']?.toString() ?? 'Saved place',
-            address: item['address']?.toString() ?? '',
-            location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
-          );
-        })
-        .whereType<PlaceSummary>()
-        .toList(growable: false);
-    final ExploreProvider provider = _mapProvider == MapProvider.mapbox
-        ? _mapboxSearch
-        : _workerSearch;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: const Color(0xFFF5F9FC),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => SizedBox(
-        height: MediaQuery.sizeOf(sheetContext).height * 0.58,
-        child: ExploreSheet(
-          provider: provider,
-          center: origin,
-          language: _appLanguage,
-          route:
-              _selectedRoute?.points
-                  .map((point) => GeoPoint(point.latitude, point.longitude))
-                  .toList(growable: false) ??
-              const [],
-          saved: saved,
-          markerFocus: _exploreMarkerFocus,
-          onResultsChanged: (places) {
-            if (!mounted) return;
-            setState(() => _exploreResults = places);
-            unawaited(_syncExploreMarkers());
-          },
-          onFocused: (place) {
-            final viewport = _viewport.copyWith(center: place.location);
-            unawaited(_browseRenderer?.moveTo(viewport));
-            final google = _browseController;
-            if (google != null) {
-              unawaited(
-                google.animateCamera(
-                  CameraUpdate.newLatLng(
-                    LatLng(
-                      latitude: place.location.latitude,
-                      longitude: place.location.longitude,
-                    ),
-                  ),
-                ),
-              );
-            }
-          },
-          onSelected: (place) {
-            Navigator.of(sheetContext).pop();
-            _selectPlace(place, SelectionSource.explore);
-          },
-        ),
+    final current =
+        _gpsLocation ??
+        LatLng(
+          latitude: (center ?? _viewport.center).latitude,
+          longitude: (center ?? _viewport.center).longitude,
+        );
+    final place = await Navigator.of(context).push<ExplorePlace>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ExplorePage(currentLocation: current, language: _appLanguage),
       ),
     );
-    if (!mounted) return;
-    setState(() => _exploreResults = const []);
-    unawaited(_syncExploreMarkers());
+    if (!mounted || place == null) return;
+    _selectPlace(
+      PlaceSummary(
+        name: place.name,
+        address: place.address,
+        category: place.primaryType,
+        location: GeoPoint(place.latitude, place.longitude),
+        reference: ProviderReference('google', place.placeId),
+      ),
+      SelectionSource.explore,
+    );
   }
 
   Widget _buildBottomBar() {
@@ -2574,9 +2540,9 @@ class _MapHomePageState extends State<MapHomePage> {
           children: [
             item(Icons.map_rounded, _text('Map', '地图'), _recenter),
             item(
-              Icons.bookmark_rounded,
-              _text('Saved', '收藏'),
-              () => unawaited(_showSaved()),
+              Icons.explore_rounded,
+              _text('Explore', '探索'),
+              () => unawaited(_showExplore()),
             ),
             Expanded(
               child: InkWell(
@@ -2622,9 +2588,9 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
             item(
-              Icons.explore_rounded,
-              _text('Explore', '探索'),
-              () => unawaited(_showExplore()),
+              Icons.bookmark_rounded,
+              _text('Saved', '收藏'),
+              () => unawaited(_showSaved()),
             ),
             item(Icons.person_rounded, _text('Me', '我的'), _showProfile),
           ],
@@ -2868,7 +2834,7 @@ class _MapHomePageState extends State<MapHomePage> {
           ),
           if (!_driveEngine.active && !_transitTripRunning)
             Positioned(
-              top: MediaQuery.paddingOf(context).top + 188,
+              top: MediaQuery.paddingOf(context).top + 18,
               right: 16,
               child: PointerInterceptor(
                 child: Column(
@@ -2924,46 +2890,49 @@ class _MapHomePageState extends State<MapHomePage> {
             AnimatedPositioned(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOutCubic,
-              top: MediaQuery.paddingOf(context).top + 8,
+              bottom: MediaQuery.paddingOf(context).bottom + 72,
               left: 16,
               right: 16,
               child: PointerInterceptor(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Material(
-                      color: Colors.white,
-                      elevation: 8,
-                      borderRadius: BorderRadius.circular(18),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: _showGoSearch,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 17,
-                            vertical: 16,
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.search_rounded,
-                                color: Color(0xFF1479FF),
-                              ),
-                              const SizedBox(width: 11),
-                              Text(
-                                _text('Where to?', '去哪儿？'),
-                                style: const TextStyle(
-                                  color: Color(0xFF61758A),
-                                  fontWeight: FontWeight.w700,
+                    _buildQuickActions(),
+                    const SizedBox(height: 9),
+                    Hero(
+                      tag: 'kiwi-search-bar',
+                      child: Material(
+                        color: Colors.white,
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(22),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: _showGoSearch,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 17,
+                              vertical: 16,
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.search_rounded,
+                                  color: Color(0xFF1479FF),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 11),
+                                Text(
+                                  _text('Where to?', '去哪儿？'),
+                                  style: const TextStyle(
+                                    color: Color(0xFF61758A),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 9),
-                    _buildQuickActions(),
                     if (_showSearchArea)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),

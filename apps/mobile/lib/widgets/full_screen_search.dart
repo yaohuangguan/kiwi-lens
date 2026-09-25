@@ -152,15 +152,46 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         titleSpacing: 0,
-        title: TextField(
-          controller: _controller,
-          autofocus: true,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            border: InputBorder.none,
-            hintText: _text('Where to?', '去哪儿？'),
+        title: Hero(
+          tag: 'kiwi-search-bar',
+          child: Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            child: TextField(
+              controller: _controller,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFC8F169),
+                    width: 1.3,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFC8F169),
+                    width: 1.3,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF8FBE2E),
+                    width: 1.8,
+                  ),
+                ),
+                hintText: _text('Where to?', '去哪儿？'),
+              ),
+              onChanged: _search,
+            ),
           ),
-          onChanged: _search,
         ),
         actions: [
           if (_controller.text.isNotEmpty)

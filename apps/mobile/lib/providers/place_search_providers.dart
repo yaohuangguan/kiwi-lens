@@ -38,7 +38,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
       throw StateError('Search unavailable: ${response.statusCode}');
     }
     final data = jsonDecode(response.body) as List<dynamic>;
-    return data
+    final results = data
         .whereType<Map<String, dynamic>>()
         .map((item) {
           final latitude = item['latitude'];
@@ -61,7 +61,24 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
           );
         })
         .whereType<PlaceCandidate>()
-        .toList(growable: false);
+        .toList();
+    if (proximity != null) {
+      results.sort((a, b) {
+        final aPoint = a.location;
+        final bPoint = b.location;
+        if (aPoint == null && bPoint == null) return 0;
+        if (aPoint == null) return 1;
+        if (bPoint == null) return -1;
+        final aDistance =
+            pow(aPoint.latitude - proximity.latitude, 2) +
+            pow(aPoint.longitude - proximity.longitude, 2);
+        final bDistance =
+            pow(bPoint.latitude - proximity.latitude, 2) +
+            pow(bPoint.longitude - proximity.longitude, 2);
+        return aDistance.compareTo(bDistance);
+      });
+    }
+    return List.unmodifiable(results);
   }
 
   void dispose() => _client.close();

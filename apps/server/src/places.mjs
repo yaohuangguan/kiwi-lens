@@ -51,6 +51,44 @@ export async function handlePlaces(request, env) {
     const query = (url.searchParams.get('q') || '').trim();
     if (query.length < 3 || query.length > 120) return json({ error: 'Query must be 3–120 characters' }, 400);
     const point = nzPoint(url.searchParams.get('near'));
+    const googleKey = placesApiKey(env);
+    if (googleKey && point) {
+      const google = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'X-Goog-Api-Key': googleKey,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName'
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          languageCode: url.searchParams.get('lang') === 'zh' ? 'zh-CN' : 'en',
+          regionCode: 'NZ',
+          maxResultCount: 10,
+          locationBias: {
+            circle: {
+              center: { latitude: point[1], longitude: point[0] },
+              radius: 50000
+            }
+          }
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+      if (google.ok) {
+        const data = await google.json();
+        const local = (data.places || []).map((place) => ({
+          id: place.id || place.formattedAddress || '',
+          name: localizedText(place.displayName) || place.formattedAddress || query,
+          address: place.formattedAddress || '',
+          label: place.formattedAddress || localizedText(place.displayName) || query,
+          isPoi: true,
+          resultType: localizedText(place.primaryTypeDisplayName),
+          latitude: Number(place.location?.latitude),
+          longitude: Number(place.location?.longitude)
+        })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+        if (local.length) return json(local);
+      }
+    }
     const provider = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
     provider.searchParams.set('text', query);
     provider.searchParams.set('filter', 'countrycode:nz');
