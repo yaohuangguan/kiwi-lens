@@ -161,9 +161,28 @@ async function handleApi(request, env, ctx) {
     const wait = Math.max(0, 1050 - (Date.now() - lastSearchAt));
     if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
     lastSearchAt = Date.now();
-    const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=nz&q=${encodeURIComponent(query)}`;
+    const language = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
+    const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&accept-language=${language}&limit=6&countrycodes=nz&q=${encodeURIComponent(query)}`;
     const results = await upstreamJson(searchUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', 'referer': 'https://github.com/yaohuangguan/kiwi-lens', accept: 'application/json' });
-    return json(results.map((place) => ({ id: place.place_id, label: place.display_name, latitude: Number(place.lat), longitude: Number(place.lon) })));
+    return json(results.map((place) => {
+      const address = place.address || {};
+      const name = place.name || place.namedetails?.name || place.display_name?.split(',')[0] || 'Selected destination';
+      const street = [address.house_number, address.road || address.pedestrian].filter(Boolean).join(' ');
+      const addressParts = [
+        street,
+        address.suburb || address.neighbourhood,
+        address.city || address.town || address.village,
+        address.postcode
+      ].filter(Boolean).filter((item, index, values) => values.indexOf(item) === index);
+      return {
+        id: place.place_id,
+        name,
+        address: addressParts.join(', ') || place.display_name,
+        label: place.display_name,
+        latitude: Number(place.lat),
+        longitude: Number(place.lon)
+      };
+    }));
   }
   if (url.pathname === '/api/route') {
     const from = validateCoordinatePair(url.searchParams.get('from'));

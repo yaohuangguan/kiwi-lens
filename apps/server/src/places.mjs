@@ -41,8 +41,21 @@ export async function handlePlaces(request, env) {
     const data = await upstream.json();
     return json((data.results || []).filter((place) =>
       Number.isFinite(place.lat) && Number.isFinite(place.lon) && place.country_code?.toLowerCase() === 'nz'
-    ).map((place) => ({ id: place.place_id || place.datasource?.raw?.osm_id || place.formatted,
-      label: place.formatted, latitude: place.lat, longitude: place.lon })));
+    ).map((place) => {
+      const name = place.name || place.address_line1 || place.formatted;
+      const addressParts = [
+        place.address_line1 !== name ? place.address_line1 : null,
+        place.address_line2
+      ].filter(Boolean);
+      return {
+        id: place.place_id || place.datasource?.raw?.osm_id || place.formatted,
+        name,
+        address: addressParts.join(', ') || place.formatted,
+        label: place.formatted,
+        latitude: place.lat,
+        longitude: place.lon
+      };
+    }));
   }
   if (url.pathname === '/api/place-details') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);

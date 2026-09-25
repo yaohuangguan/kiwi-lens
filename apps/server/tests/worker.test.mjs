@@ -30,6 +30,39 @@ test('cross-origin address requests get a readable configuration response', asyn
   assert.equal(response.headers.get('access-control-allow-origin'), '*');
 });
 
+test('address suggestions expose a place name and street address', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    results: [{
+      place_id: 'gallery-1',
+      name: 'Auckland Art Gallery Toi o Tāmaki',
+      address_line1: 'Wellesley Street East',
+      address_line2: 'Auckland Central, Auckland 1010, New Zealand',
+      formatted: 'Auckland Art Gallery Toi o Tāmaki, Wellesley Street East, Auckland',
+      country_code: 'nz',
+      lat: -36.8509,
+      lon: 174.7666
+    }]
+  }), { headers: { 'content-type': 'application/json' } });
+  try {
+    const env = { ...fakeEnv(), GEOAPIFY_API_KEY: 'test-key' };
+    const response = await worker.fetch(
+      new Request('https://example.test/api/suggest?q=gallery&near=174.7633,-36.8485'),
+      env,
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    const [suggestion] = await response.json();
+    assert.equal(suggestion.name, 'Auckland Art Gallery Toi o Tāmaki');
+    assert.equal(
+      suggestion.address,
+      'Wellesley Street East, Auckland Central, Auckland 1010, New Zealand'
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('failed scheduled sync keeps validated cameras in KV', async () => {
   const env = fakeEnv();
   const state = await syncCameras(env, async () => new Response('<html>challenge</html>'));
