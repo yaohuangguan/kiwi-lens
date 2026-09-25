@@ -63,6 +63,40 @@ test('address suggestions expose a place name and street address', async () => {
   }
 });
 
+test('Google place search handles nearby POIs and two-character Chinese queries without Geoapify', async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (_url, options = {}) => {
+    bodies.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({
+      places: [{
+        id: 'ChIJtaiping1',
+        displayName: { text: 'Tai Ping Asian Supermarket Greenlane 太平亚洲食品超市' },
+        formattedAddress: '444 Great South Road, Greenlane, Auckland 1051',
+        primaryTypeDisplayName: { text: 'Asian grocery store' },
+        location: { latitude: -36.89181, longitude: 174.7962865 }
+      }]
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const env = { ...fakeEnv(), GOOGLE_ROUTES_API_KEY: 'test-key' };
+    for (const query of ['taiping', '太平']) {
+      const response = await worker.fetch(
+        new Request(`https://example.test/api/suggest?q=${encodeURIComponent(query)}&lang=en&near=174.7633,-36.8485`),
+        env,
+        { waitUntil() {} }
+      );
+      assert.equal(response.status, 200);
+      const [suggestion] = await response.json();
+      assert.equal(suggestion.name, 'Tai Ping Asian Supermarket Greenlane 太平亚洲食品超市');
+    }
+    assert.ok(Math.abs(bodies[0].locationRestriction.rectangle.low.latitude - (-37.2985)) < 1e-9);
+    assert.equal(bodies[1].languageCode, 'zh-CN');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('explore returns nearby Google places with Yelp-style metadata', async () => {
   const originalFetch = globalThis.fetch;
   let requestBody = null;

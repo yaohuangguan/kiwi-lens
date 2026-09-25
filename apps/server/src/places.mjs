@@ -47,12 +47,29 @@ export async function handlePlaces(request, env) {
   const url = new URL(request.url);
   if (url.pathname === '/api/suggest') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-    if (!env.GEOAPIFY_API_KEY) return json({ error: 'Address autocomplete is not configured' }, 503);
     const query = (url.searchParams.get('q') || '').trim();
-    if (query.length < 3 || query.length > 120) return json({ error: 'Query must be 3–120 characters' }, 400);
+    if (query.length < 2 || query.length > 120) {
+      return json({ error: 'Query must be 2–120 characters' }, 400);
+    }
+
     const point = nzPoint(url.searchParams.get('near'));
+    const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const googleKey = placesApiKey(env);
-    if (googleKey && point) {
+    if (googleKey) {
+      const body = {
+        textQuery: query,
+        languageCode: prefersChinese ? 'zh-CN' : 'en',
+        regionCode: 'NZ',
+        pageSize: 10
+      };
+      if (point) {
+        body.locationRestriction = {
+          rectangle: {
+            low: { latitude: point[1] - 0.45, longitude: point[0] - 0.6 },
+            high: { latitude: point[1] + 0.45, longitude: point[0] + 0.6 }
+          }
+        };
+      }
       const google = await fetch('https://places.googleapis.com/v1/places:searchText', {
         method: 'POST',
         headers: {
@@ -60,18 +77,7 @@ export async function handlePlaces(request, env) {
           'X-Goog-Api-Key': googleKey,
           'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName'
         },
-        body: JSON.stringify({
-          textQuery: query,
-          languageCode: url.searchParams.get('lang') === 'zh' ? 'zh-CN' : 'en',
-          regionCode: 'NZ',
-          maxResultCount: 10,
-          locationBias: {
-            circle: {
-              center: { latitude: point[1], longitude: point[0] },
-              radius: 50000
-            }
-          }
-        }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000)
       });
       if (google.ok) {
@@ -89,10 +95,14 @@ export async function handlePlaces(request, env) {
         if (local.length) return json(local);
       }
     }
+
+    if (!env.GEOAPIFY_API_KEY) {
+      return json({ error: 'Place search is not configured' }, 503);
+    }
     const provider = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
     provider.searchParams.set('text', query);
     provider.searchParams.set('filter', 'countrycode:nz');
-    provider.searchParams.set('lang', url.searchParams.get('lang') === 'zh' ? 'zh' : 'en');
+    provider.searchParams.set('lang', prefersChinese ? 'zh' : 'en');
     provider.searchParams.set('limit', '6');
     provider.searchParams.set('format', 'json');
     provider.searchParams.set('apiKey', env.GEOAPIFY_API_KEY);
