@@ -69,6 +69,100 @@ class MapHomePage extends StatefulWidget {
   State<MapHomePage> createState() => _MapHomePageState();
 }
 
+enum _QuickShortcutKind { saved, recent, query }
+
+class _QuickShortcut {
+  const _QuickShortcut({
+    required this.id,
+    required this.label,
+    required this.kind,
+    this.query,
+    this.destinationLabel,
+    this.latitude,
+    this.longitude,
+  });
+
+  final String id;
+  final String label;
+  final _QuickShortcutKind kind;
+  final String? query;
+  final String? destinationLabel;
+  final double? latitude;
+  final double? longitude;
+
+  bool get hasDestination => latitude != null && longitude != null;
+  bool get isCustom => id.startsWith('custom-');
+
+  _QuickShortcut copyWith({
+    String? label,
+    String? query,
+    String? destinationLabel,
+    double? latitude,
+    double? longitude,
+  }) => _QuickShortcut(
+    id: id,
+    label: label ?? this.label,
+    kind: kind,
+    query: query ?? this.query,
+    destinationLabel: destinationLabel ?? this.destinationLabel,
+    latitude: latitude ?? this.latitude,
+    longitude: longitude ?? this.longitude,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+    'kind': kind.name,
+    if (query != null) 'query': query,
+    if (destinationLabel != null) 'destinationLabel': destinationLabel,
+    if (latitude != null) 'latitude': latitude,
+    if (longitude != null) 'longitude': longitude,
+  };
+
+  factory _QuickShortcut.fromJson(Map<String, dynamic> json) {
+    return _QuickShortcut(
+      id: json['id']?.toString() ?? 'custom-unknown',
+      label: json['label']?.toString() ?? 'Place',
+      kind: _QuickShortcutKind.values.firstWhere(
+        (value) => value.name == json['kind'],
+        orElse: () => _QuickShortcutKind.saved,
+      ),
+      query: json['query']?.toString(),
+      destinationLabel: json['destinationLabel']?.toString(),
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+    );
+  }
+
+  static List<_QuickShortcut> defaults() => const [
+    _QuickShortcut(id: 'home', label: 'Home', kind: _QuickShortcutKind.saved),
+    _QuickShortcut(id: 'work', label: 'Work', kind: _QuickShortcutKind.saved),
+    _QuickShortcut(
+      id: 'frequent',
+      label: 'Frequent places',
+      kind: _QuickShortcutKind.recent,
+    ),
+    _QuickShortcut(
+      id: 'restaurant',
+      label: 'Restaurant',
+      kind: _QuickShortcutKind.query,
+      query: 'restaurant',
+    ),
+    _QuickShortcut(
+      id: 'shopping',
+      label: 'Shopping',
+      kind: _QuickShortcutKind.query,
+      query: 'shopping',
+    ),
+    _QuickShortcut(
+      id: 'gas',
+      label: 'Gas',
+      kind: _QuickShortcutKind.query,
+      query: 'gas station',
+    ),
+  ];
+}
+
 class _MapHomePageState extends State<MapHomePage> {
   static const _mapId = String.fromEnvironment('MAP_ID');
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
@@ -86,6 +180,8 @@ class _MapHomePageState extends State<MapHomePage> {
   LatLng? _gpsLocation;
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
+  List<_QuickShortcut> _quickShortcuts = _QuickShortcut.defaults();
+  String? _quickShortcutOwner;
   CameraPosition? _lastBrowseCamera;
   List<Marker> _cameraMarkers = [];
   Marker? _carMarker;
@@ -140,6 +236,11 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   void _onAccountChanged() {
+    final owner = _account.profile?.email.trim().toLowerCase();
+    if (owner != _quickShortcutOwner) {
+      _quickShortcutOwner = owner;
+      unawaited(_restoreQuickShortcuts(owner));
+    }
     if (mounted) setState(() {});
   }
 
@@ -1611,63 +1712,504 @@ class _MapHomePageState extends State<MapHomePage> {
     );
   }
 
-  void _showGoSearch() {
-    showModalBottomSheet<void>(
+  String _quickShortcutStorageKey(String owner) =>
+      'kiwi.quick_shortcuts.v1.$owner';
+
+  Future<void> _restoreQuickShortcuts(String? owner) async {
+    if (owner == null) {
+      if (mounted) setState(() => _quickShortcuts = _QuickShortcut.defaults());
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_quickShortcutStorageKey(owner));
+    var next = _QuickShortcut.defaults();
+    if (raw != null) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          final parsed = decoded
+              .whereType<Map<String, dynamic>>()
+              .map(_QuickShortcut.fromJson)
+              .toList();
+          if (parsed.isNotEmpty) next = parsed;
+        }
+      } catch (_) {
+        // Keep the defaults if a previous local preference is malformed.
+      }
+    }
+    if (!mounted || _quickShortcutOwner != owner) return;
+    setState(() => _quickShortcuts = next);
+  }
+
+  Future<void> _persistQuickShortcuts(List<_QuickShortcut> shortcuts) async {
+    final owner = _account.profile?.email.trim().toLowerCase();
+    if (owner == null || owner.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _quickShortcutStorageKey(owner),
+      jsonEncode(shortcuts.map((item) => item.toJson()).toList()),
+    );
+    if (mounted) setState(() => _quickShortcuts = List.of(shortcuts));
+  }
+
+  IconData _quickShortcutIcon(_QuickShortcut shortcut) {
+    return switch (shortcut.id) {
+      'home' => Icons.home_rounded,
+      'work' => Icons.work_rounded,
+      'frequent' => Icons.history_rounded,
+      'restaurant' => Icons.restaurant_rounded,
+      'shopping' => Icons.shopping_bag_rounded,
+      'gas' => Icons.local_gas_station_rounded,
+      _ => Icons.place_rounded,
+    };
+  }
+
+  String _quickShortcutLabel(_QuickShortcut shortcut) {
+    if (shortcut.id == 'home' && shortcut.label == 'Home') {
+      return _text('Home', '家');
+    }
+    if (shortcut.id == 'work' && shortcut.label == 'Work') {
+      return _text('Work', '公司');
+    }
+    if (shortcut.id == 'frequent' && shortcut.label == 'Frequent places') {
+      return _text('Frequent places', '常去地点');
+    }
+    if (shortcut.id == 'restaurant' && shortcut.label == 'Restaurant') {
+      return _text('Restaurant', '餐厅');
+    }
+    if (shortcut.id == 'shopping' && shortcut.label == 'Shopping') {
+      return _text('Shopping', '购物');
+    }
+    if (shortcut.id == 'gas' && shortcut.label == 'Gas') {
+      return _text('Gas', '加油');
+    }
+    return shortcut.label;
+  }
+
+  String _quickShortcutSubtitle(_QuickShortcut shortcut) {
+    if (shortcut.kind == _QuickShortcutKind.saved) {
+      return shortcut.destinationLabel ?? _text('No destination set', '尚未设置地点');
+    }
+    if (shortcut.kind == _QuickShortcutKind.recent) {
+      return _text('Recent and frequent destinations', '最近和常去的目的地');
+    }
+    final query = shortcut.query ?? shortcut.label;
+    return _text('Search: $query', '搜索：$query');
+  }
+
+  Future<DestinationSuggestion?> _pickDestination({
+    String? initialQuery,
+    bool includeDriveMode = false,
+  }) {
+    return Navigator.of(context).push<DestinationSuggestion>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => DestinationSearchPage(
+          currentLocation: _gpsLocation,
+          recent: _recentDestinations,
+          language: _appLanguage,
+          initialQuery: initialQuery,
+          onDriveMode: includeDriveMode
+              ? () {
+                  Navigator.of(context).pop();
+                  unawaited(_startDriveMode());
+                }
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showGoSearch({String? initialQuery}) async {
+    final selection = await _pickDestination(
+      initialQuery: initialQuery,
+      includeDriveMode: true,
+    );
+    if (!mounted || selection == null) return;
+    _onSearchSelected(selection);
+    final poi = _selectedPoi;
+    if (poi != null) unawaited(_loadRoutePreview(poi));
+  }
+
+  Future<void> _runQuickShortcut(_QuickShortcut shortcut) async {
+    if (shortcut.hasDestination) {
+      final selection = DestinationSuggestion(
+        label: shortcut.destinationLabel ?? shortcut.label,
+        name: shortcut.destinationLabel ?? shortcut.label,
+        location: LatLng(
+          latitude: shortcut.latitude!,
+          longitude: shortcut.longitude!,
+        ),
+      );
+      _onSearchSelected(selection);
+      final poi = _selectedPoi;
+      if (poi != null) unawaited(_loadRoutePreview(poi));
+      return;
+    }
+    if (shortcut.kind == _QuickShortcutKind.query) {
+      await _showGoSearch(initialQuery: shortcut.query ?? shortcut.label);
+      return;
+    }
+    await _showGoSearch();
+  }
+
+  Future<_QuickShortcut?> _editQuickShortcutText(
+    _QuickShortcut shortcut,
+  ) async {
+    final label = TextEditingController(text: shortcut.label);
+    final query = TextEditingController(text: shortcut.query ?? '');
+    final result = await showDialog<_QuickShortcut>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_text('Edit shortcut', '编辑快捷地点')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: label,
+              autofocus: true,
+              decoration: InputDecoration(labelText: _text('Name', '名称')),
+            ),
+            if (shortcut.kind == _QuickShortcutKind.query)
+              TextField(
+                controller: query,
+                decoration: InputDecoration(
+                  labelText: _text('Search query', '搜索关键词'),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_text('Cancel', '取消')),
+          ),
+          FilledButton(
+            onPressed: () {
+              final nextLabel = label.text.trim();
+              if (nextLabel.isEmpty) return;
+              Navigator.of(dialogContext).pop(
+                shortcut.copyWith(
+                  label: nextLabel,
+                  query: shortcut.kind == _QuickShortcutKind.query
+                      ? query.text.trim()
+                      : shortcut.query,
+                ),
+              );
+            },
+            child: Text(_text('Save', '保存')),
+          ),
+        ],
+      ),
+    );
+    label.dispose();
+    query.dispose();
+    return result;
+  }
+
+  Future<void> _showQuickShortcutEditor() async {
+    if (_account.profile == null) return;
+    final working = List<_QuickShortcut>.of(_quickShortcuts);
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          18,
-          16,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 18,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Start a trip',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+      backgroundColor: const Color(0xFFF6F8F4),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          Future<void> setDestination(int index) async {
+            final selection = await Navigator.of(sheetContext)
+                .push<DestinationSuggestion>(
+                  MaterialPageRoute(
+                    fullscreenDialog: true,
+                    builder: (_) => DestinationSearchPage(
+                      currentLocation: _gpsLocation,
+                      recent: _recentDestinations,
+                      language: _appLanguage,
+                    ),
+                  ),
+                );
+            if (selection == null || !sheetContext.mounted) return;
+            setSheetState(() {
+              working[index] = working[index].copyWith(
+                destinationLabel: selection.name ?? selection.label,
+                latitude: selection.location.latitude,
+                longitude: selection.location.longitude,
+              );
+            });
+          }
+
+          Future<void> addCustomPlace() async {
+            final selection = await Navigator.of(sheetContext)
+                .push<DestinationSuggestion>(
+                  MaterialPageRoute(
+                    fullscreenDialog: true,
+                    builder: (_) => DestinationSearchPage(
+                      currentLocation: _gpsLocation,
+                      recent: _recentDestinations,
+                      language: _appLanguage,
+                    ),
+                  ),
+                );
+            if (selection == null || !sheetContext.mounted) return;
+            final controller = TextEditingController(
+              text: selection.name ?? selection.label,
+            );
+            final name = await showDialog<String>(
+              context: sheetContext,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(_text('Shortcut name', '快捷地点名称')),
+                content: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: InputDecoration(labelText: _text('Name', '名称')),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: Text(_text('Cancel', '取消')),
+                  ),
+                  FilledButton(
+                    onPressed: () =>
+                        Navigator.of(dialogContext).pop(controller.text.trim()),
+                    child: Text(_text('Add', '添加')),
+                  ),
+                ],
+              ),
+            );
+            controller.dispose();
+            if (name == null || name.isEmpty || !sheetContext.mounted) return;
+            final customId = DateTime.now().microsecondsSinceEpoch;
+            setSheetState(() {
+              working.add(
+                _QuickShortcut(
+                  id: 'custom-$customId',
+                  label: name,
+                  kind: _QuickShortcutKind.saved,
+                  destinationLabel: selection.name ?? selection.label,
+                  latitude: selection.location.latitude,
+                  longitude: selection.location.longitude,
+                ),
+              );
+            });
+          }
+
+          final maxHeight = MediaQuery.sizeOf(sheetContext).height * 0.78;
+          return SizedBox(
+            height: maxHeight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _text('Quick places', '快捷地点'),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => setSheetState(() {
+                          working
+                            ..clear()
+                            ..addAll(_QuickShortcut.defaults());
+                        }),
+                        child: Text(_text('Reset', '恢复默认')),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    _text(
+                      'Drag to reorder. Set Home/Work or add your own place.',
+                      '拖动排序，可设置家/公司，也可以添加自己的地点。',
+                    ),
+                    style: const TextStyle(color: Color(0xFF647269)),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ReorderableListView.builder(
+                      buildDefaultDragHandles: false,
+                      itemCount: working.length,
+                      onReorderItem: (oldIndex, newIndex) {
+                        setSheetState(() {
+                          final item = working.removeAt(oldIndex);
+                          working.insert(newIndex, item);
+                        });
+                      },
+                      itemBuilder: (context, index) {
+                        final shortcut = working[index];
+                        return Card(
+                          key: ValueKey(shortcut.id),
+                          margin: const EdgeInsets.only(bottom: 7),
+                          child: ListTile(
+                            leading: Icon(_quickShortcutIcon(shortcut)),
+                            title: Text(
+                              _quickShortcutLabel(shortcut),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(
+                              _quickShortcutSubtitle(shortcut),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onTap: shortcut.kind == _QuickShortcutKind.saved
+                                ? () => setDestination(index)
+                                : null,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (shortcut.kind == _QuickShortcutKind.saved)
+                                  IconButton(
+                                    tooltip: _text('Set destination', '设置地点'),
+                                    onPressed: () => setDestination(index),
+                                    icon: const Icon(
+                                      Icons.add_location_alt_rounded,
+                                    ),
+                                  ),
+                                IconButton(
+                                  tooltip: _text('Edit', '编辑'),
+                                  onPressed: () async {
+                                    final edited = await _editQuickShortcutText(
+                                      shortcut,
+                                    );
+                                    if (edited != null &&
+                                        sheetContext.mounted) {
+                                      setSheetState(
+                                        () => working[index] = edited,
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.edit_rounded),
+                                ),
+                                IconButton(
+                                  tooltip: _text('Remove', '移除'),
+                                  onPressed: () => setSheetState(
+                                    () => working.removeAt(index),
+                                  ),
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: Icon(Icons.drag_handle_rounded),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: addCustomPlace,
+                          icon: const Icon(Icons.add_location_alt_rounded),
+                          label: Text(_text('Add place', '添加地点')),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: working.isEmpty
+                              ? null
+                              : () async {
+                                  await _persistQuickShortcuts(working);
+                                  if (sheetContext.mounted) {
+                                    Navigator.of(sheetContext).pop();
+                                  }
+                                },
+                          child: Text(_text('Save', '保存')),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            ExploreSearch(
-              currentLocation: _gpsLocation,
-              origin: _manualOrigin,
-              recent: _recentDestinations,
-              language: _appLanguage,
-              onOriginSelected: (value) =>
-                  setState(() => _manualOrigin = value),
-              onSelected: (selection) {
-                Navigator.of(sheetContext).pop();
-                _onSearchSelected(selection);
-                final poi = _selectedPoi;
-                if (poi != null) unawaited(_loadRoutePreview(poi));
-              },
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              tileColor: const Color(0xFFF0F6E8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              leading: const Icon(Icons.directions_car_filled_rounded),
-              title: const Text('Drive mode'),
-              subtitle: const Text('Camera alerts without a destination'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: _busy
-                  ? null
-                  : () {
-                      Navigator.of(sheetContext).pop();
-                      unawaited(_startDriveMode());
-                    },
-            ),
-          ],
-        ),
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildSearchLauncher() {
+    final canEdit = _account.profile != null;
+    final count = _quickShortcuts.length + (canEdit ? 1 : 0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 38,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: count,
+            separatorBuilder: (_, _) => const SizedBox(width: 7),
+            itemBuilder: (context, index) {
+              if (index == _quickShortcuts.length) {
+                return ActionChip(
+                  avatar: const Icon(Icons.tune_rounded, size: 17),
+                  label: Text(_text('Edit', '编辑')),
+                  onPressed: () => unawaited(_showQuickShortcutEditor()),
+                );
+              }
+              final shortcut = _quickShortcuts[index];
+              return ActionChip(
+                avatar: Icon(_quickShortcutIcon(shortcut), size: 17),
+                label: Text(_quickShortcutLabel(shortcut)),
+                onPressed: () => unawaited(_runQuickShortcut(shortcut)),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Material(
+          color: Colors.white,
+          elevation: 10,
+          borderRadius: BorderRadius.circular(19),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => unawaited(_showGoSearch()),
+            child: SizedBox(
+              height: 56,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 17),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search_rounded, color: Color(0xFF285747)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _text('Where to?', '想去哪？'),
+                        style: const TextStyle(
+                          color: Color(0xFF6F7D75),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Color(0xFF285747),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1708,7 +2250,7 @@ class _MapHomePageState extends State<MapHomePage> {
             ),
             Expanded(
               child: InkWell(
-                onTap: _showGoSearch,
+                onTap: () => unawaited(_showGoSearch()),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Column(
@@ -1908,7 +2450,7 @@ class _MapHomePageState extends State<MapHomePage> {
           ),
           if (!_driveEngine.active && !_transitTripRunning)
             Positioned(
-              top: MediaQuery.paddingOf(context).top + 188,
+              top: MediaQuery.paddingOf(context).top + 128,
               right: 16,
               child: PointerInterceptor(
                 child: Column(
@@ -1967,21 +2509,7 @@ class _MapHomePageState extends State<MapHomePage> {
               top: MediaQuery.paddingOf(context).top + 8,
               left: 16,
               right: 16,
-              child: PointerInterceptor(
-                child: ExploreSearch(
-                  currentLocation: _gpsLocation,
-                  origin: _manualOrigin,
-                  recent: _recentDestinations,
-                  language: _appLanguage,
-                  onOriginSelected: (origin) {
-                    setState(() => _manualOrigin = origin);
-                    if (_selectedPoi != null) {
-                      unawaited(_loadRoutePreview(_selectedPoi!));
-                    }
-                  },
-                  onSelected: _onSearchSelected,
-                ),
-              ),
+              child: PointerInterceptor(child: _buildSearchLauncher()),
             ),
           if (_driveEngine.active &&
               _selectedPoi == null &&

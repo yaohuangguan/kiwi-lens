@@ -14,11 +14,13 @@ class DestinationSuggestion {
     required this.location,
     this.name,
     this.address,
+    this.isPoi,
   });
   final String label;
   final LatLng location;
   final String? name;
   final String? address;
+  final bool? isPoi;
 }
 
 class ExploreSearch extends StatefulWidget {
@@ -31,6 +33,10 @@ class ExploreSearch extends StatefulWidget {
     this.onFocusChanged,
     this.recent = const [],
     this.language = 'en',
+    this.destinationOnly = false,
+    this.autofocus = false,
+    this.initialQuery,
+    this.resultsMaxHeight = 260,
   });
 
   final LatLng? currentLocation;
@@ -40,6 +46,10 @@ class ExploreSearch extends StatefulWidget {
   final ValueChanged<bool>? onFocusChanged;
   final List<DestinationSuggestion> recent;
   final String language;
+  final bool destinationOnly;
+  final bool autofocus;
+  final String? initialQuery;
+  final double resultsMaxHeight;
 
   @override
   State<ExploreSearch> createState() => _ExploreSearchState();
@@ -86,6 +96,13 @@ class _ExploreSearchState extends State<ExploreSearch> {
     super.initState();
     _destinationFocus.addListener(_focusChanged);
     _originFocus.addListener(_focusChanged);
+    final initial = widget.initialQuery?.trim() ?? '';
+    if (initial.isNotEmpty) {
+      _controller.text = initial;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _search(initial, origin: false);
+      });
+    }
     unawaited(_refreshCurrentLocationLabel(widget.currentLocation));
   }
 
@@ -212,6 +229,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                     ? item['name'].toString().trim()
                     : label,
                 address: item['address']?.toString().trim(),
+                isPoi: item['isPoi'] is bool ? item['isPoi'] as bool : null,
                 location: LatLng(
                   latitude: latitude.toDouble(),
                   longitude: longitude.toDouble(),
@@ -235,6 +253,44 @@ class _ExploreSearchState extends State<ExploreSearch> {
     });
   }
 
+  void _clearDestination() {
+    _debounce?.cancel();
+    _request++;
+    _controller.clear();
+    setState(() {
+      _results = const [];
+      _error = null;
+    });
+    _destinationFocus.requestFocus();
+  }
+
+  void _clearOrigin() {
+    _debounce?.cancel();
+    _request++;
+    _originController.clear();
+    setState(() {
+      _results = const [];
+      _error = null;
+    });
+    widget.onOriginSelected?.call(null);
+    _originFocus.requestFocus();
+  }
+
+  String _resultTitle(DestinationSuggestion result) {
+    final address = result.address?.trim() ?? '';
+    final name = result.name?.trim() ?? '';
+    if (result.isPoi == false && address.isNotEmpty) return address;
+    if (name.isNotEmpty) return name;
+    return result.label;
+  }
+
+  String _resultAddress(DestinationSuggestion result) {
+    final address = result.address?.trim() ?? '';
+    final title = _resultTitle(result);
+    if (address == title) return '';
+    return address;
+  }
+
   @override
   Widget build(BuildContext context) {
     final location = widget.currentLocation;
@@ -253,51 +309,61 @@ class _ExploreSearchState extends State<ExploreSearch> {
             padding: const EdgeInsets.fromLTRB(14, 11, 14, 9),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.my_location_rounded,
-                      size: 19,
-                      color: Color(0xFF295747),
-                    ),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          TextField(
-                            controller: _originController,
-                            focusNode: _originFocus,
-                            onChanged: (value) => _search(value, origin: true),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              hintText: widget.origin?.label ?? locationText,
-                              hintStyle: const TextStyle(
-                                color: Color(0xFF788780),
-                                fontSize: 12,
+                if (!widget.destinationOnly)
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.my_location_rounded,
+                        size: 19,
+                        color: Color(0xFF295747),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TextField(
+                              controller: _originController,
+                              focusNode: _originFocus,
+                              onChanged: (value) {
+                                setState(() {});
+                                _search(value, origin: true);
+                              },
+                              decoration: InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: widget.origin?.label ?? locationText,
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFF788780),
+                                  fontSize: 12,
+                                ),
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 34,
+                                  minHeight: 34,
+                                ),
+                                suffixIcon: _originController.text.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        tooltip: _text('Clear', '清空'),
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(
+                                          Icons.close_rounded,
+                                          size: 18,
+                                        ),
+                                        onPressed: _clearOrigin,
+                                      ),
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
                               ),
                             ),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    if (widget.origin != null)
-                      IconButton(
-                        tooltip: 'Use current location',
-                        icon: const Icon(Icons.close_rounded, size: 19),
-                        onPressed: () {
-                          _originController.clear();
-                          widget.onOriginSelected?.call(null);
-                        },
-                      ),
-                  ],
-                ),
-                const Divider(height: 19),
+                    ],
+                  ),
+                if (!widget.destinationOnly) const Divider(height: 19),
                 Row(
                   children: [
                     Semantics(
@@ -331,16 +397,38 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       child: TextField(
                         controller: _controller,
                         focusNode: _destinationFocus,
-                        onChanged: (value) => _search(value, origin: false),
+                        autofocus: widget.autofocus,
+                        onChanged: (value) {
+                          setState(() {});
+                          _search(value, origin: false);
+                        },
                         decoration: InputDecoration(
                           isDense: true,
                           border: InputBorder.none,
-                          hintText: _text('Search destination', '搜索目的地'),
+                          hintText: _text('Where to?', '想去哪？'),
                           hintStyle: const TextStyle(color: Color(0xFF8A968E)),
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          suffixIcon: _controller.text.isEmpty
+                              ? const Icon(
+                                  Icons.search_rounded,
+                                  color: Color(0xFF285747),
+                                )
+                              : IconButton(
+                                  key: const Key('destinationClearButton'),
+                                  tooltip: _text('Clear', '清空'),
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 20,
+                                  ),
+                                  onPressed: _clearDestination,
+                                ),
                         ),
                       ),
                     ),
-                    const Icon(Icons.search_rounded, color: Color(0xFF285747)),
                   ],
                 ),
               ],
@@ -355,11 +443,11 @@ class _ExploreSearchState extends State<ExploreSearch> {
               ),
             ),
           if (_results.isNotEmpty ||
-              (_destinationFocus.hasFocus &&
+              ((_destinationFocus.hasFocus || widget.destinationOnly) &&
                   _controller.text.isEmpty &&
                   widget.recent.isNotEmpty))
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 260),
+              constraints: BoxConstraints(maxHeight: widget.resultsMaxHeight),
               child: ListView.separated(
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
@@ -371,8 +459,9 @@ class _ExploreSearchState extends State<ExploreSearch> {
                   final result = _results.isNotEmpty
                       ? _results[index]
                       : widget.recent[index];
-                  final address = result.address?.trim() ?? '';
+                  final address = _resultAddress(result);
                   final distance = _distanceLabel(result);
+                  final title = _resultTitle(result);
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -383,7 +472,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       color: Color(0xFF527C60),
                     ),
                     title: Text(
-                      result.name ?? result.label,
+                      title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -419,9 +508,9 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       _debounce?.cancel();
                       _request++;
                       if (_editingOrigin) {
-                        _originController.text = result.label;
+                        _originController.text = title;
                       } else {
-                        _controller.text = result.label;
+                        _controller.text = title;
                       }
                       FocusScope.of(context).unfocus();
                       setState(() => _results = const []);
@@ -436,6 +525,93 @@ class _ExploreSearchState extends State<ExploreSearch> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class DestinationSearchPage extends StatelessWidget {
+  const DestinationSearchPage({
+    super.key,
+    required this.currentLocation,
+    required this.recent,
+    required this.language,
+    this.initialQuery,
+    this.onDriveMode,
+  });
+
+  final LatLng? currentLocation;
+  final List<DestinationSuggestion> recent;
+  final String language;
+  final String? initialQuery;
+  final VoidCallback? onDriveMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F8F4),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: Column(
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5, right: 8),
+                      child: Material(
+                        color: Colors.white,
+                        elevation: 4,
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: MaterialLocalizations.of(context)
+                              .backButtonTooltip,
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: ExploreSearch(
+                        currentLocation: currentLocation,
+                        recent: recent,
+                        language: language,
+                        destinationOnly: true,
+                        autofocus: true,
+                        initialQuery: initialQuery,
+                        resultsMaxHeight:
+                            height - (onDriveMode == null ? 150 : 230),
+                        onSelected: (selection) =>
+                            Navigator.of(context).pop(selection),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onDriveMode != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: ListTile(
+                    tileColor: const Color(0xFFF0F6E8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    leading: const Icon(Icons.directions_car_filled_rounded),
+                    title: const Text(
+                      'Drive mode',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: const Text('Camera alerts without a destination'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: onDriveMode,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

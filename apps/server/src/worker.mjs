@@ -166,19 +166,28 @@ async function handleApi(request, env, ctx) {
     const results = await upstreamJson(searchUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', 'referer': 'https://github.com/yaohuangguan/kiwi-lens', accept: 'application/json' });
     return json(results.map((place) => {
       const address = place.address || {};
-      const name = place.name || place.namedetails?.name || place.display_name?.split(',')[0] || 'Selected destination';
-      const street = [address.house_number, address.road || address.pedestrian].filter(Boolean).join(' ');
-      const addressParts = [
-        street,
+      const poiClasses = new Set([
+        'amenity', 'tourism', 'shop', 'office', 'leisure', 'healthcare',
+        'craft', 'historic', 'railway', 'aeroway', 'club', 'sport'
+      ]);
+      const isPoi = poiClasses.has(place.class);
+      const streetAddress = [
+        [address.house_number, address.road || address.pedestrian].filter(Boolean).join(' '),
         address.suburb || address.neighbourhood,
         address.city || address.town || address.village,
-        address.postcode
-      ].filter(Boolean).filter((item, index, values) => values.indexOf(item) === index);
+        address.postcode,
+        'New Zealand'
+      ].filter(Boolean).filter((item, index, values) => values.indexOf(item) === index).join(', ');
+      const fullAddress = place.display_name || streetAddress;
+      const name = isPoi
+        ? (place.name || place.namedetails?.name || fullAddress)
+        : fullAddress;
       return {
         id: place.place_id,
         name,
-        address: addressParts.join(', ') || place.display_name,
-        label: place.display_name,
+        address: isPoi ? (streetAddress || fullAddress) : fullAddress,
+        label: fullAddress,
+        isPoi,
         latitude: Number(place.lat),
         longitude: Number(place.lon)
       };

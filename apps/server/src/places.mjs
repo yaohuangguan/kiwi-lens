@@ -20,6 +20,29 @@ function localizedText(value) {
   return typeof value.text === 'string' ? value.text : '';
 }
 
+function isGeoapifyPoi(place) {
+  if (!place?.name) return false;
+  const categories = Array.isArray(place.categories) ? place.categories : [];
+  const poiPrefixes = [
+    'accommodation', 'activity', 'amenity', 'catering', 'commercial',
+    'education', 'entertainment', 'healthcare', 'leisure', 'office',
+    'parking', 'pet', 'public_transport', 'religion', 'service', 'sport',
+    'tourism'
+  ];
+  const categoryPoi = categories.some((category) =>
+    poiPrefixes.some((prefix) => category === prefix || category.startsWith(prefix + '.'))
+  );
+  const addressTypes = new Set([
+    'street', 'postcode', 'district', 'suburb', 'city', 'county', 'state', 'country'
+  ]);
+  const namedPlace = Boolean(
+    place.address_line1 &&
+    place.name !== place.address_line1 &&
+    String(place.formatted || '').startsWith(place.name)
+  );
+  return categoryPoi || (namedPlace && !addressTypes.has(place.result_type));
+}
+
 export async function handlePlaces(request, env) {
   const url = new URL(request.url);
   if (url.pathname === '/api/suggest') {
@@ -42,16 +65,19 @@ export async function handlePlaces(request, env) {
     return json((data.results || []).filter((place) =>
       Number.isFinite(place.lat) && Number.isFinite(place.lon) && place.country_code?.toLowerCase() === 'nz'
     ).map((place) => {
-      const name = place.name || place.address_line1 || place.formatted;
-      const addressParts = [
-        place.address_line1 !== name ? place.address_line1 : null,
-        place.address_line2
-      ].filter(Boolean);
+      const isPoi = isGeoapifyPoi(place);
+      const fullAddress = place.formatted || [place.address_line1, place.address_line2].filter(Boolean).join(', ');
+      const streetAddress = [place.address_line1, place.address_line2].filter(Boolean).join(', ');
+      const name = isPoi
+        ? (place.name || place.address_line1 || fullAddress)
+        : fullAddress;
       return {
-        id: place.place_id || place.datasource?.raw?.osm_id || place.formatted,
+        id: place.place_id || place.datasource?.raw?.osm_id || fullAddress,
         name,
-        address: addressParts.join(', ') || place.formatted,
-        label: place.formatted,
+        address: isPoi ? (streetAddress || fullAddress) : fullAddress,
+        label: fullAddress,
+        isPoi,
+        resultType: place.result_type || '',
         latitude: place.lat,
         longitude: place.lon
       };

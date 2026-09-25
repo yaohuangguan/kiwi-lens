@@ -60,4 +60,60 @@ void main() {
       );
     },
   );
+
+  testWidgets('destination field can be cleared with one tap', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExploreSearch(
+            currentLocation: null,
+            destinationOnly: true,
+            onSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    final field = find.byType(TextField).last;
+    await tester.enterText(field, 'ab');
+    await tester.pump();
+
+    expect(find.byKey(const Key('destinationClearButton')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('destinationClearButton')));
+    await tester.pump();
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+  });
+
+  testWidgets('street address results use the complete address as title', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExploreSearch(
+            currentLocation: null,
+            destinationOnly: true,
+            recent: const [
+              DestinationSuggestion(
+                label: '123 Queen Street, Auckland Central, Auckland 1010, New Zealand',
+                name: '123 Queen Street',
+                address: '123 Queen Street, Auckland Central, Auckland 1010, New Zealand',
+                isPoi: false,
+                location: LatLng(latitude: -36.8485, longitude: 174.7633),
+              ),
+            ],
+            onSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(
+      find.text(
+        '123 Queen Street, Auckland Central, Auckland 1010, New Zealand',
+      ),
+      findsOneWidget,
+    );
+  });
 }
