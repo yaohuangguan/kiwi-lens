@@ -2910,15 +2910,13 @@ class _MapHomePageState extends State<MapHomePage> {
             AnimatedPositioned(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOutCubic,
-              bottom: MediaQuery.paddingOf(context).bottom + 72,
+              top: MediaQuery.paddingOf(context).top + 8,
               left: 16,
               right: 16,
               child: PointerInterceptor(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildQuickActions(),
-                    const SizedBox(height: 9),
                     Material(
                       color: Colors.white,
                       elevation: 8,
@@ -2950,6 +2948,8 @@ class _MapHomePageState extends State<MapHomePage> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 9),
+                    _buildQuickActions(),
                     if (_showSearchArea)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
