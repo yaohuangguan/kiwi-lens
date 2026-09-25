@@ -4,15 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../domain/map_layer_settings.dart';
+import '../domain/map_provider.dart';
+import '../providers/location_marker_art.dart';
 
 class MapSymbols {
   static final Map<CameraKind, ImageDescriptor> _normal = {};
   static final Map<CameraKind, ImageDescriptor> _route = {};
   static ImageDescriptor? car;
+  static final Map<LocationMarkerStyle, ImageDescriptor> _location = {};
   static Future<void>? _registration;
 
   static ImageDescriptor? camera(CameraKind kind, {required bool onRoute}) =>
       (onRoute ? _route : _normal)[kind];
+
+  static ImageDescriptor? location(LocationMarkerStyle style) =>
+      _location[style];
 
   static Future<void> ensureRegistered() =>
       _registration ??= _registerAll().catchError((Object error) {
@@ -26,6 +32,14 @@ class MapSymbols {
       _route[kind] = await _registerCamera(kind, onRoute: true);
     }
     car = await _registerCar();
+    for (final style in LocationMarkerStyle.values) {
+      if (style == LocationMarkerStyle.classic) continue;
+      final bytes = await LocationMarkerArt.png(style);
+      _location[style] = await registerBitmapImage(
+        bitmap: bytes.buffer.asByteData(),
+        imagePixelRatio: 2,
+      );
+    }
   }
 
   static Future<ImageDescriptor> _registerCamera(

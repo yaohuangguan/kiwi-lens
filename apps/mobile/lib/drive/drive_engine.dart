@@ -7,6 +7,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import '../data/camera_repository.dart';
 import '../data/speed_limit_repository.dart';
 import '../domain/geo_math.dart';
+import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../domain/safety_camera.dart';
 import 'camera_matcher.dart';
@@ -113,6 +114,36 @@ class DriveEngine extends ChangeNotifier {
     );
   }
 
+  /// Local location feed for a non-Google map renderer. Camera alerts keep
+  /// using the same matching and voice logic, without starting Google SDK.
+  Future<void> startLocal() async {
+    if (active) return;
+    _roadSnappedFixCompleter = Completer<void>();
+    active = true;
+    guidanceRunning = true;
+    error = null;
+    notifyListeners();
+    await _voiceEngine.initialize();
+    await loadCameras(force: true);
+    _subscriptions.add(
+      Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          distanceFilter: 2,
+        ),
+      ).listen((position) {
+        speedKph =
+            (position.speed.isFinite && position.speed > 0
+                ? position.speed
+                : 0) *
+            3.6;
+        _onLocation(
+          LatLng(latitude: position.latitude, longitude: position.longitude),
+        );
+      }),
+    );
+  }
+
   Future<void> loadCameras({bool force = false}) async {
     if (loadingCameras || (!force && _cameras.isNotEmpty)) return;
     loadingCameras = true;
@@ -145,7 +176,10 @@ class DriveEngine extends ChangeNotifier {
   }
 
   void _onRoadSnappedLocation(RoadSnappedLocationUpdatedEvent event) {
-    final current = event.location;
+    _onLocation(event.location);
+  }
+
+  void _onLocation(LatLng current) {
     final fix = _roadSnappedFixCompleter;
     if (fix != null && !fix.isCompleted) fix.complete();
     final previous = _lastSnappedLocation;
@@ -174,11 +208,14 @@ class DriveEngine extends ChangeNotifier {
     final route = _route;
     if (route != null) {
       final upcoming = _routeMatcher.upcoming(
-        current,
+        GeoPoint(current.latitude, current.longitude),
         route.points,
         routeCameras,
       );
-      final progress = _routeMatcher.project(current, route.points);
+      final progress = _routeMatcher.project(
+        GeoPoint(current.latitude, current.longitude),
+        route.points,
+      );
       if (upcoming != null && progress != null) {
         match = CameraMatch(
           camera: upcoming.camera,

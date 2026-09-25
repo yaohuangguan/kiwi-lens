@@ -121,9 +121,9 @@ class PlaceDetailsRepository {
 
   final http.Client _client;
 
-  Future<PlaceDetails> fetch(String placeId) async {
+  Future<PlaceDetails> fetch(String placeId, {String language = 'en'}) async {
     final uri = Uri.parse('$workerBaseUrl/api/place-details')
-        .replace(queryParameters: {'placeId': placeId, 'lang': 'en'});
+        .replace(queryParameters: {'placeId': placeId, 'lang': language});
     final response = await _client.get(uri);
     final decoded = jsonDecode(response.body);
     if (response.statusCode != 200 || decoded is! Map<String, dynamic>) {

@@ -32,6 +32,7 @@ class RoutePreviewSheet extends StatelessWidget {
   const RoutePreviewSheet({
     super.key,
     required this.destinationTitle,
+    required this.originTitle,
     required this.plan,
     required this.selectedMode,
     required this.selectedRouteId,
@@ -51,6 +52,7 @@ class RoutePreviewSheet extends StatelessWidget {
   });
 
   final String destinationTitle;
+  final String originTitle;
   final RoutePlan plan;
   final KiwiTravelMode selectedMode;
   final String? selectedRouteId;
@@ -139,6 +141,37 @@ class RoutePreviewSheet extends StatelessWidget {
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(3, 4, 3, 8),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.my_location_rounded,
+                          size: 15,
+                          color: Color(0xFF1479FF),
+                        ),
+                        const SizedBox(width: 7),
+                        Flexible(
+                          child: Text(
+                            originTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 7),
+                          child: Icon(Icons.arrow_forward_rounded, size: 15),
+                        ),
+                        Flexible(
+                          child: Text(
+                            destinationTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Row(
                     children: [

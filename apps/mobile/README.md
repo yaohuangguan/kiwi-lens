@@ -1,8 +1,9 @@
 # Kiwi Lens Mobile
 
-Kiwi Lens 的原生移动端使用 Flutter，当前主地图与导航栈为 Google Maps Platform：
+Kiwi Lens 的原生移动端使用 Flutter，支持在设置中切换 Google Maps 与 Mapbox 地图。Google 原生导航流程保留，Mapbox 浏览与路线使用独立适配器；详细边界和剩余验证见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 - `google_navigation_flutter`：地图浏览、POI 点击、路线与 turn-by-turn 导航
+- `mapbox_maps_flutter`：第二地图渲染器、地点选择与 Kiwi Lens 覆盖物
 - Cloudflare Worker `https://kiwi-lens.nzs.workers.dev`：地址自动补全、摄像头及限速 API
 - iOS Core Location：手机顶部罗盘朝向；地图与 500 米雷达扇区跟随该方向，GPS course 仅为无罗盘时的行驶中回退
 - 自定义 Flutter 导航顶栏、速度/摄像头浮层和紧凑行程卡；Google Navigation SDK 保留真实路线与转弯数据
@@ -11,14 +12,13 @@ Kiwi Lens 的原生移动端使用 Flutter，当前主地图与导航栈为 Goog
 
 第一版先把地图最核心的交互做实：
 
-1. 浏览 Google 地图
-2. 点击地图上的真实 POI
-3. 从 Google POI 获取 Place ID、名称和坐标
-4. 显示 Kiwi Lens 地点卡片
-5. 点击 Navigate 后以 Place ID 或搜索结果坐标设置目的地
-6. 进入 Google Navigation SDK 的 turn-by-turn 导航，地图使用 heading-up 视角
+1. 浏览 Google 或 Mapbox 地图
+2. 通过搜索、Explore、收藏、最近地点、快捷地点、地图 POI 或长按坐标选择目的地
+3. 显示统一 Kiwi Lens 地点预览；点击 Directions 才进入路线预览
+4. 在路线预览中选择模式/备选路线；点击 Start 才开始导航
+5. Google 路线继续使用 Google Navigation SDK；Mapbox 路线使用 GPS 与路线步骤提供基础引导
 
-探索页可搜索 NZ 地址并自动补全。Google POI 的照片、评分、营业时间尚未接入原生地点卡；路线摄像头总数也尚未从原生导航路线中取得，因此显示 `—`。iOS 真机的罗盘与地图叠加层需要用 Xcode 实测；iOS Simulator 没有磁力计。
+搜索页支持自动补全、地址完整展示与最近搜索；Explore 以新西兰道路出行相关地点为主。Google POI 的照片、评分、营业时间尚未接入原生地点卡；路线摄像头总数也尚未从原生导航路线中取得，因此显示 `—`。Mapbox 的原生重算路线、车道引导与沿途绕行时间尚未接入，界面不会编造这些数值。iOS 真机的罗盘与地图叠加层仍需用 Xcode 实测；iOS Simulator 没有磁力计。
 
 ## 本地 Flutter
 
