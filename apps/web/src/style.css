@@ -15,7 +15,7 @@
   }
 }
 
-:root { font-family: 'DM Sans','Noto Sans SC',system-ui,sans-serif; color: #14201e; background: #dce6df; font-synthesis: none; }
+:root { font-family: 'DM Sans','Noto Sans SC',system-ui,sans-serif; color: #123044; background: #dce6df; font-synthesis: none; }
 * { box-sizing: border-box; }
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 button, input { font: inherit; }

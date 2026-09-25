@@ -5,7 +5,7 @@
 .account-form { display: grid; gap: 8px; }
 .account-form input { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #d4dfd5; border-radius: 10px; background: #fff; color: #173a2b; outline-color: var(--brand-sky); }
 .account-button { min-height: 41px; padding: 8px 14px; border: 0; border-radius: 10px; background: var(--brand-sky); color: var(--deep-ocean); font-weight: 800; }
-.account-button.secondary { background: #eef6e7; color: #0e7490; }
+.account-button.secondary { background: #e8f6fa; color: #0e7490; }
 .account-button:disabled { opacity: .6; }
 .account-link { margin-top: 11px; padding: 0; border: 0; background: none; color: #0e7490; font-size: 12px; font-weight: 800; }
 .account-error { color: #a83d27; font-size: 12px; }

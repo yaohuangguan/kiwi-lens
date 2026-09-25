@@ -33,7 +33,7 @@ async function boot() {
     console.error('Tasman route failed to load', error);
     document.body.innerHTML = `
       <main style="min-height:100vh;display:grid;place-items:center;padding:32px;background:#f5f9ff;font-family:system-ui,sans-serif;color:#071c35">
-        <div style="max-width:520px;text-align:center"><h1>Tasman could not load this page.</h1><p style="color:#61758b">Refresh the page or return to the website.</p><a href="/" style="color:#456a24;font-weight:700">Return home</a></div>
+        <div style="max-width:520px;text-align:center"><h1>Tasman could not load this page.</h1><p style="color:#61758b">Refresh the page or return to the website.</p><a href="/" style="color:#0284c7;font-weight:700">Return home</a></div>
       </main>`;
   }
 }
