@@ -83,6 +83,100 @@ export async function handlePlaces(request, env) {
       };
     }));
   }
+  if (url.pathname === '/api/explore') {
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+    const apiKey = placesApiKey(env);
+    if (!apiKey) return json({ error: 'Google Places server key is not configured' }, 503);
+    const point = nzPoint(url.searchParams.get('at'));
+    if (!point) return json({ error: 'Valid NZ coordinates required' }, 400);
+    const query = (url.searchParams.get('q') || '').trim();
+    const category = (url.searchParams.get('category') || 'for-you').trim();
+    const languageCode = url.searchParams.get('lang') === 'zh' ? 'zh-CN' : 'en';
+    const categoryTypes = {
+      'for-you': ['tourist_attraction', 'museum', 'art_gallery', 'park', 'cafe', 'restaurant', 'shopping_mall'],
+      food: ['restaurant', 'cafe', 'bakery', 'bar'],
+      coffee: ['cafe', 'bakery'],
+      activities: ['tourist_attraction', 'museum', 'art_gallery', 'amusement_center', 'bowling_alley', 'movie_theater'],
+      shopping: ['shopping_mall', 'department_store', 'clothing_store', 'book_store'],
+      parks: ['park']
+    };
+    const fieldMask = [
+      'places.id', 'places.displayName', 'places.formattedAddress',
+      'places.primaryTypeDisplayName', 'places.rating', 'places.userRatingCount',
+      'places.priceLevel', 'places.currentOpeningHours.openNow',
+      'places.photos', 'places.location', 'places.types'
+    ].join(',');
+    let provider;
+    let body;
+    if (query.length >= 2) {
+      provider = 'https://places.googleapis.com/v1/places:searchText';
+      body = {
+        textQuery: query,
+        languageCode,
+        regionCode: 'NZ',
+        maxResultCount: 18,
+        locationBias: {
+          circle: {
+            center: { latitude: point[1], longitude: point[0] },
+            radius: 12000
+          }
+        }
+      };
+    } else {
+      provider = 'https://places.googleapis.com/v1/places:searchNearby';
+      body = {
+        languageCode,
+        regionCode: 'NZ',
+        maxResultCount: 18,
+        includedTypes: categoryTypes[category] || categoryTypes['for-you'],
+        rankPreference: 'POPULARITY',
+        locationRestriction: {
+          circle: {
+            center: { latitude: point[1], longitude: point[0] },
+            radius: 10000
+          }
+        }
+      };
+    }
+    const upstream = await fetch(provider, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': fieldMask
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!upstream.ok) {
+      return json({ error: 'Google Places explore HTTP ' + upstream.status }, 502);
+    }
+    const data = await upstream.json();
+    return json((data.places || []).map((place) => ({
+      placeId: place.id || '',
+      name: localizedText(place.displayName) || 'Nearby place',
+      address: place.formattedAddress || '',
+      primaryType: localizedText(place.primaryTypeDisplayName),
+      rating: Number.isFinite(place.rating) ? place.rating : null,
+      userRatingCount: Number.isFinite(place.userRatingCount) ? place.userRatingCount : null,
+      priceLevel: place.priceLevel || null,
+      openNow: typeof place.currentOpeningHours?.openNow === 'boolean'
+        ? place.currentOpeningHours.openNow
+        : null,
+      latitude: Number(place.location?.latitude),
+      longitude: Number(place.location?.longitude),
+      photoName: place.photos?.find((photo) => photo?.name)?.name || '',
+      photoAttribution: (place.photos?.[0]?.authorAttributions || [])
+        .map((author) => author.displayName)
+        .filter(Boolean)
+        .join(', ')
+    })).filter((place) =>
+      place.placeId &&
+      Number.isFinite(place.latitude) &&
+      Number.isFinite(place.longitude)
+    ));
+  }
+
   if (url.pathname === '/api/place-details') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
     const apiKey = placesApiKey(env);

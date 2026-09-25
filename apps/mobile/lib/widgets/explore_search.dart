@@ -185,7 +185,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
       });
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 420), () async {
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
       try {
         final near = widget.currentLocation;
         final uri = Uri.parse('$workerBaseUrl/api/suggest').replace(

@@ -63,6 +63,46 @@ test('address suggestions expose a place name and street address', async () => {
   }
 });
 
+test('explore returns nearby Google places with Yelp-style metadata', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody = null;
+  globalThis.fetch = async (_url, options = {}) => {
+    requestBody = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      places: [{
+        id: 'ChIJexplore1',
+        displayName: { text: 'Auckland Art Gallery' },
+        formattedAddress: 'Wellesley Street East, Auckland 1010, New Zealand',
+        primaryTypeDisplayName: { text: 'Art gallery' },
+        rating: 4.7,
+        userRatingCount: 4200,
+        priceLevel: 'PRICE_LEVEL_FREE',
+        currentOpeningHours: { openNow: true },
+        location: { latitude: -36.8509, longitude: 174.7666 },
+        photos: [{ name: 'places/example/photos/photo-1' }]
+      }]
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const env = { ...fakeEnv(), GOOGLE_ROUTES_API_KEY: 'test-key' };
+    const response = await worker.fetch(
+      new Request('https://example.test/api/explore?at=174.7633,-36.8485&category=activities'),
+      env,
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    assert.equal(requestBody.rankPreference, 'POPULARITY');
+    assert.ok(requestBody.includedTypes.includes('museum'));
+    const [place] = await response.json();
+    assert.equal(place.name, 'Auckland Art Gallery');
+    assert.equal(place.rating, 4.7);
+    assert.equal(place.openNow, true);
+    assert.equal(place.photoName, 'places/example/photos/photo-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('failed scheduled sync keeps validated cameras in KV', async () => {
   const env = fakeEnv();
   const state = await syncCameras(env, async () => new Response('<html>challenge</html>'));

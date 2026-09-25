@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
+import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/route_repository.dart';
 import 'domain/radar_geometry.dart';
@@ -20,6 +21,7 @@ import 'drive/drive_engine.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
+import 'widgets/explore_page.dart';
 import 'widgets/navigation_overlay.dart';
 import 'widgets/place_details_content.dart';
 import 'widgets/profile_page.dart';
@@ -2213,6 +2215,28 @@ class _MapHomePageState extends State<MapHomePage> {
     );
   }
 
+  Future<void> _showExplore() async {
+    final place = await Navigator.of(context).push<ExplorePlace>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ExplorePage(currentLocation: _gpsLocation, language: _appLanguage),
+      ),
+    );
+    if (!mounted || place == null) return;
+    final poi = PointOfInterest(
+      placeID: place.placeId,
+      name: place.name,
+      latLng: LatLng(latitude: place.latitude, longitude: place.longitude),
+    );
+    _onPoiClicked(poi);
+    final controller = _browseController;
+    if (controller != null) {
+      unawaited(
+        controller.animateCamera(CameraUpdate.newLatLngZoom(poi.latLng, 16)),
+      );
+    }
+  }
+
   Widget _buildBottomBar() {
     Widget item(IconData icon, String label, VoidCallback action) => Expanded(
       child: InkWell(
@@ -2244,9 +2268,9 @@ class _MapHomePageState extends State<MapHomePage> {
           children: [
             item(Icons.map_rounded, _text('Map', '地图'), _recenter),
             item(
-              Icons.bookmark_rounded,
-              _text('Saved', '收藏'),
-              () => unawaited(_showSaved()),
+              Icons.explore_rounded,
+              _text('Explore', '探索'),
+              () => unawaited(_showExplore()),
             ),
             Expanded(
               child: InkWell(
@@ -2291,7 +2315,11 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-            item(Icons.layers_rounded, _text('Layers', '图层'), _showMapLayers),
+            item(
+              Icons.bookmark_rounded,
+              _text('Saved', '收藏'),
+              () => unawaited(_showSaved()),
+            ),
             item(Icons.person_rounded, _text('Me', '我的'), _showProfile),
           ],
         ),
