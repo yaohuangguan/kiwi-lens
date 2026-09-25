@@ -1,10 +1,12 @@
+import '../theme/tasman_theme.dart';
+
 import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
 
 const _ink = Color(0xFF0B1717);
-const _lime = Color(0xFFC8F169);
+const _accent = TasmanColors.sky;
 
 String _duration(int seconds) {
   final duration = Duration(seconds: seconds);
@@ -20,6 +22,33 @@ String _duration(int seconds) {
 String _distance(int metres) => metres >= 1000
     ? '${(metres / 1000).toStringAsFixed(metres < 10000 ? 1 : 0)} km'
     : '$metres m';
+
+String routeExplanation(RouteOption selected, List<RouteOption> routes) {
+  if (routes.isEmpty) return selected.description;
+  final fastest = routes.reduce(
+    (a, b) => a.durationSeconds <= b.durationSeconds ? a : b,
+  );
+  final facts = <String>[];
+  final extra = selected.durationSeconds - fastest.durationSeconds;
+  if (extra > 60) {
+    facts.add('+${_duration(extra)} vs fastest');
+  } else if (selected.mode == KiwiTravelMode.drive) {
+    facts.add('Fastest available route');
+  }
+  final distanceDifference = selected.distanceMeters - fastest.distanceMeters;
+  if (selected.id != fastest.id && distanceDifference.abs() >= 500) {
+    facts.add(
+      distanceDifference < 0
+          ? '${_distance(-distanceDifference)} shorter'
+          : '${_distance(distanceDifference)} longer',
+    );
+  }
+  if ((selected.trafficDelaySeconds ?? 0) > 60) {
+    facts.add('${_duration(selected.trafficDelaySeconds!)} traffic delay');
+  }
+  if (selected.description.isNotEmpty) facts.add(selected.description);
+  return facts.join(' · ');
+}
 
 IconData _icon(KiwiTravelMode mode) => switch (mode) {
   KiwiTravelMode.drive => Icons.directions_car_filled_rounded,
@@ -81,6 +110,11 @@ class RoutePreviewSheet extends StatelessWidget {
       }
     }
     selected ??= routes.isEmpty ? null : routes.first;
+    final fastestDuration = routes.isEmpty
+        ? 0
+        : routes
+              .map((route) => route.durationSeconds)
+              .reduce((a, b) => a < b ? a : b);
 
     return PointerInterceptor(
       child: Material(
@@ -229,7 +263,7 @@ class RoutePreviewSheet extends StatelessWidget {
                   if (routes.isNotEmpty) ...[
                     const Divider(height: 20),
                     SizedBox(
-                      height: 76,
+                      height: 94,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: routes.length,
@@ -242,7 +276,7 @@ class RoutePreviewSheet extends StatelessWidget {
                             onTap: () => onRouteSelected(route),
                             borderRadius: BorderRadius.circular(15),
                             child: Container(
-                              width: 170,
+                              width: 182,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                                 vertical: 9,
@@ -262,6 +296,16 @@ class RoutePreviewSheet extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
+                                    route.durationSeconds == fastestDuration
+                                        ? 'Fastest'
+                                        : 'Alternative',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: TasmanColors.deepTeal,
+                                    ),
+                                  ),
+                                  Text(
                                     _duration(route.durationSeconds),
                                     style: const TextStyle(
                                       fontSize: 18,
@@ -270,7 +314,8 @@ class RoutePreviewSheet extends StatelessWidget {
                                   ),
                                   Text(
                                     '${_distance(route.distanceMeters)}'
-                                    '${delay != null && delay > 60 ? ' · +${_duration(delay)} traffic' : ''}',
+                                    '${route.durationSeconds > fastestDuration + 60 ? ' · +${_duration(route.durationSeconds - fastestDuration)}' : ''}'
+                                    '${delay != null && delay > 60 ? ' · ${_duration(delay)} traffic' : ''}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
@@ -299,13 +344,8 @@ class RoutePreviewSheet extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            plan.trafficAvailable &&
-                                    selectedMode == KiwiTravelMode.drive
-                                ? (selected.trafficDelaySeconds ?? 0) > 60
-                                      ? 'Traffic-aware route · live conditions included'
-                                      : 'Fastest route based on current traffic'
-                                : selected.description.isNotEmpty
-                                ? selected.description
+                            routeExplanation(selected, routes).isNotEmpty
+                                ? routeExplanation(selected, routes)
                                 : 'Route preview',
                             style: const TextStyle(
                               color: Color(0xFF5D6C64),
@@ -358,7 +398,7 @@ class RoutePreviewSheet extends StatelessWidget {
                           onPressed: busy ? null : onStart,
                           style: FilledButton.styleFrom(
                             backgroundColor: _ink,
-                            foregroundColor: _lime,
+                            foregroundColor: _accent,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 18,
                               vertical: 13,

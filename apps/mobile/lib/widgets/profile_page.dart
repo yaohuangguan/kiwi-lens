@@ -1,3 +1,5 @@
+import '../theme/tasman_theme.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -167,7 +169,7 @@ class _ProfilePageState extends State<ProfilePage> {
           backgroundColor: const Color(0xFF0B1717),
           foregroundColor: Colors.white,
           title: Text(
-            _text('My Kiwi Lens', '我的 Kiwi Lens'),
+            _text('My Tasman', '我的 Tasman'),
             style: const TextStyle(fontWeight: FontWeight.w900),
           ),
         ),
@@ -185,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     CircleAvatar(
                       radius: 27,
-                      backgroundColor: const Color(0xFFC8F169),
+                      backgroundColor: TasmanColors.sky,
                       child: Text(
                         profile?.displayName.isNotEmpty == true
                             ? profile!.displayName[0].toUpperCase()
@@ -207,7 +209,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ? profile!.displayName
                                 : profile == null
                                 ? _text('Guest explorer', '访客')
-                                : _text('Kiwi Lens member', 'Kiwi Lens 用户'),
+                                : _text('Tasman member', 'Tasman 用户'),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 19,
@@ -236,7 +238,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         tooltip: _text('Edit profile', '编辑资料'),
                         icon: const Icon(
                           Icons.edit_rounded,
-                          color: Color(0xFFC8F169),
+                          color: TasmanColors.sky,
                         ),
                       ),
                   ],

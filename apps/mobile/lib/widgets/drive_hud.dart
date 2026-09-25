@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
+import '../drive/camera_alert_lifecycle.dart';
 import '../drive/drive_engine.dart';
+import '../theme/tasman_theme.dart';
+import 'road_event_timeline.dart';
 
 class DriveHud extends StatelessWidget {
   const DriveHud({super.key, required this.engine, required this.onStop});
@@ -37,6 +40,13 @@ class DriveHud extends StatelessWidget {
     final step = nav?.currentStep;
     final camera = engine.upcomingCamera;
     final cameraDistance = engine.upcomingCameraDistanceMeters;
+    final passedCamera = engine.passedCamera;
+    final intelligenceLabel = switch (engine.roadIntelligenceStatus) {
+      'live' || 'seed' => 'NZ safety camera alerts active',
+      'stale' => 'Camera data may be out of date',
+      'unsupported' => 'Road Intelligence unavailable here',
+      _ => 'Camera data unavailable',
+    };
     final speeding =
         engine.speedSeverity == SpeedAlertSeverity.minor ||
         engine.speedSeverity == SpeedAlertSeverity.major ||
@@ -57,30 +67,30 @@ class DriveHud extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xF20B1717),
+                    color: TasmanColors.midnightOcean.withValues(alpha: .95),
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.directions_car_filled_rounded,
-                        color: Color(0xFFC8F169),
+                        color: TasmanColors.sky,
                       ),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Drive mode',
-                              style: TextStyle(
+                              engine.routed ? 'Navigation' : 'Just Drive',
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
                             Text(
-                              'Safety camera alerts are active',
-                              style: TextStyle(
+                              intelligenceLabel,
+                              style: const TextStyle(
                                 color: Colors.white60,
                                 fontSize: 11,
                               ),
@@ -104,14 +114,14 @@ class DriveHud extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
                   decoration: BoxDecoration(
-                    color: const Color(0xF20B1717),
+                    color: TasmanColors.midnightOcean.withValues(alpha: .95),
                     borderRadius: BorderRadius.circular(22),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.navigation_rounded,
-                        color: Color(0xFFC8F169),
+                        color: TasmanColors.sky,
                         size: 34,
                       ),
                       const SizedBox(width: 12),
@@ -124,7 +134,7 @@ class DriveHud extends StatelessWidget {
                                 nav?.distanceToCurrentStepMeters?.toDouble(),
                               ),
                               style: const TextStyle(
-                                color: Color(0xFFC8F169),
+                                color: TasmanColors.sky,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -167,8 +177,8 @@ class DriveHud extends StatelessWidget {
                                     ),
                                     decoration: BoxDecoration(
                                       color: recommended
-                                          ? const Color(0xFFC8F169)
-                                          : const Color(0xFF1D302A),
+                                          ? TasmanColors.sky
+                                          : TasmanColors.darkSurface,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
@@ -176,7 +186,7 @@ class DriveHud extends StatelessWidget {
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: recommended
-                                            ? const Color(0xFF102219)
+                                            ? TasmanColors.midnightOcean
                                             : Colors.white70,
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -199,6 +209,42 @@ class DriveHud extends StatelessWidget {
                 ),
               ),
             const Spacer(),
+            if (passedCamera != null &&
+                engine.cameraAlertState.phase == CameraAlertPhase.passed)
+              PointerInterceptor(
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: TasmanSpacing.x2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: TasmanSpacing.x4,
+                    vertical: TasmanSpacing.x3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: TasmanColors.success,
+                    borderRadius: BorderRadius.circular(TasmanRadius.panel),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: TasmanSpacing.x3),
+                      Expanded(
+                        child: Text(
+                          'Camera passed - ${passedCamera.location}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if (camera != null && cameraDistance != null)
               PointerInterceptor(
                 child: Container(
@@ -254,6 +300,10 @@ class DriveHud extends StatelessWidget {
                   ),
                 ),
               ),
+            if (engine.upcomingRoadEvents.isNotEmpty && camera == null) ...[
+              RoadEventTimeline(events: engine.upcomingRoadEvents),
+              const SizedBox(height: TasmanSpacing.x2),
+            ],
             PointerInterceptor(
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -261,7 +311,7 @@ class DriveHud extends StatelessWidget {
                   vertical: 9,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xF20B1717),
+                  color: TasmanColors.midnightOcean.withValues(alpha: .95),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -311,7 +361,7 @@ class _SpeedMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = warning ? const Color(0xFFFF6868) : const Color(0xFFC8F169);
+    final accent = warning ? const Color(0xFFFF6868) : TasmanColors.sky;
 
     return Expanded(
       child: Container(
@@ -416,7 +466,7 @@ class _Metric extends StatelessWidget {
                 Text(
                   value,
                   style: const TextStyle(
-                    color: Color(0xFFC8F169),
+                    color: TasmanColors.sky,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),

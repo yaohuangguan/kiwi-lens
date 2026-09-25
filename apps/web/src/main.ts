@@ -961,7 +961,7 @@ function renderPoiAccountState(place: PoiSelection) {
   comment.disabled = !signedIn;
   saveReview.disabled = !signedIn;
   $('poiOwnReviewHint').textContent = signedIn
-    ? (language === 'zh' ? '仅保存在 Kiwi Lens 账户，不会发布到 Google' : 'Private to Kiwi Lens; not posted to Google')
+    ? (language === 'zh' ? '仅保存在 Tasman 账户，不会发布到 Google' : 'Private to Tasman; not posted to Google')
     : (language === 'zh' ? '登录后撰写私人评价' : 'Sign in to write a private review');
   $('poiAccountHint').textContent = signedIn
     ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)

@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b1717" />
-    <meta name="description" content="Kiwi Lens brings route planning, official NZ safety-camera data and clearer road awareness together." />
+    <meta name="theme-color" content="#061e2c" />
+    <meta name="description" content="Tasman brings route planning, official NZ safety-camera data and clearer road awareness together." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Kiwi Lens · Navigate New Zealand with clarity</title>
+    <title>Tasman · Navigate New Zealand with clarity</title>
   </head>
   <body>
     <div id="app" hidden>
       <div id="map" aria-label="新西兰导航地图"></div>
 
       <header class="topbar">
-        <a class="brand" href="/" aria-label="Kiwi Lens home"><span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="10.5"></circle><path d="M9.4 21.9c1.9-5.4 5.4-4.1 6.8-7.7 1.2-3.2 3.8-4.4 6.7-4.9"></path><circle class="brand-start" cx="9.4" cy="21.9" r="1.7"></circle><circle class="brand-focus" cx="22.9" cy="9.3" r="2.2"></circle></svg></span><span class="brand-word">KIWI<span>LENS</span></span></a>
+        <a class="brand" href="/" aria-label="Tasman home"><span class="brand-icon" aria-hidden="true"><img src="/favicon.svg" alt="" /></span><span class="brand-word">TASMAN</span></a>
         <div class="topbar-right"><button id="gpsBadge" class="gps-badge" type="button" aria-label="启用定位"><i></i><span id="gpsBadgeText">定位中</span></button><button id="profileButton" class="icon-button dark" type="button" aria-label="My profile" title="My profile">♙</button><button id="settingsButton" class="icon-button dark" aria-label="打开设置">⚙</button></div>
       </header>
 
@@ -84,7 +84,7 @@
             <button id="poiSaveNote" type="button" disabled>保存备注</button>
           </section>
           <section id="poiOwnReviewSection" class="poi-account">
-            <div class="poi-section-head"><strong id="poiOwnReviewTitle">My review</strong><span id="poiOwnReviewHint">Private to your Kiwi Lens account</span></div>
+            <div class="poi-section-head"><strong id="poiOwnReviewTitle">My review</strong><span id="poiOwnReviewHint">Private to your Tasman account</span></div>
             <label for="poiOwnRating" id="poiOwnRatingLabel">Your rating</label>
             <select id="poiOwnRating" aria-label="Your rating"><option value="5">★★★★★</option><option value="4">★★★★☆</option><option value="3">★★★☆☆</option><option value="2">★★☆☆☆</option><option value="1">★☆☆☆☆</option></select>
             <textarea id="poiOwnComment" maxlength="2000" rows="3" placeholder="Write a review for your own records" disabled></textarea>

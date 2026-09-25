@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../drive/drive_engine.dart';
 import '../providers/mapbox_navigation_engine.dart';
+import '../theme/tasman_theme.dart';
+import 'road_event_timeline.dart';
 
 class MapboxNavigationOverlay extends StatelessWidget {
   const MapboxNavigationOverlay({
@@ -38,7 +40,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
               left: 14,
               right: 14,
               child: Material(
-                color: const Color(0xFF0D2C4B),
+                color: TasmanColors.midnightOcean,
                 elevation: 10,
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
@@ -91,41 +93,53 @@ class MapboxNavigationOverlay extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
                   padding: const EdgeInsets.all(17),
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${engine.remainingSeconds ~/ 60} min · '
-                              '${(remaining / 1000).toStringAsFixed(1)} km',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 18,
-                              ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${engine.remainingSeconds ~/ 60} min · '
+                                  '${(remaining / 1000).toStringAsFixed(1)} km',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                                if (drive.upcomingCamera != null)
+                                  Text(
+                                    _text(
+                                      'Safety camera ahead · '
+                                          '${drive.upcomingCameraDistanceMeters?.round() ?? 0} m',
+                                      '前方摄像头 · '
+                                          '${drive.upcomingCameraDistanceMeters?.round() ?? 0} 米',
+                                    ),
+                                    style: const TextStyle(
+                                      color: Color(0xFFC25735),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                              ],
                             ),
-                            if (drive.upcomingCamera != null)
-                              Text(
-                                _text(
-                                  'Safety camera ahead · '
-                                      '${drive.upcomingCameraDistanceMeters?.round() ?? 0} m',
-                                  '前方摄像头 · '
-                                      '${drive.upcomingCameraDistanceMeters?.round() ?? 0} 米',
-                                ),
-                                style: const TextStyle(
-                                  color: Color(0xFFC25735),
-                                  fontSize: 12,
-                                ),
-                              ),
-                          ],
+                          ),
+                          TextButton(
+                            onPressed: onEnd,
+                            child: Text(_text('End', '结束')),
+                          ),
+                        ],
+                      ),
+                      if (drive.upcomingRoadEvents.isNotEmpty) ...[
+                        const SizedBox(height: TasmanSpacing.x2),
+                        RoadEventTimeline(
+                          events: drive.upcomingRoadEvents,
+                          dark: false,
                         ),
-                      ),
-                      TextButton(
-                        onPressed: onEnd,
-                        child: Text(_text('End', '结束')),
-                      ),
+                      ],
                     ],
                   ),
                 ),

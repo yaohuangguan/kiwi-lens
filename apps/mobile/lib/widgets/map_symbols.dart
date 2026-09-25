@@ -1,3 +1,5 @@
+import '../theme/tasman_theme.dart';
+
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -55,7 +57,7 @@ class MapSymbols {
       CameraKind.lane => const Color(0xFF3268A4),
       CameraKind.other => const Color(0xFF7250A1),
     };
-    paint.color = onRoute ? const Color(0xFFC8F169) : Colors.white;
+    paint.color = onRoute ? TasmanColors.sky : Colors.white;
     canvas.drawCircle(const Offset(36, 34), 32, paint);
     paint.color = color;
     canvas.drawCircle(const Offset(36, 34), onRoute ? 27 : 29, paint);
@@ -126,7 +128,7 @@ class MapSymbols {
     canvas.drawCircle(const Offset(36, 36), 30, paint);
     paint.color = const Color(0xFF153B32);
     canvas.drawCircle(const Offset(36, 36), 26, paint);
-    paint.color = const Color(0xFFC8F169);
+    paint.color = TasmanColors.sky;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         const Rect.fromLTWH(17, 29, 38, 19),

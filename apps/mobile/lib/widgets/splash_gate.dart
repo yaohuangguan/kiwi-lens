@@ -1,3 +1,5 @@
+import '../theme/tasman_theme.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -44,7 +46,7 @@ class _SplashGateState extends State<SplashGate> {
                     _SplashMark(),
                     SizedBox(height: 24),
                     Text(
-                      'KIWI LENS',
+                      'TASMAN',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 31,
@@ -56,7 +58,7 @@ class _SplashGateState extends State<SplashGate> {
                     Text(
                       'See the road ahead',
                       style: TextStyle(
-                        color: Color(0xFFC8F169),
+                        color: TasmanColors.sky,
                         fontSize: 13,
                         letterSpacing: 1,
                       ),
@@ -73,17 +75,13 @@ class _SplashMark extends StatelessWidget {
   const _SplashMark();
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 86,
-    height: 86,
-    decoration: BoxDecoration(
-      border: Border.all(color: const Color(0xFFC8F169), width: 4),
-      borderRadius: BorderRadius.circular(26),
-    ),
-    child: const Icon(
-      Icons.navigation_rounded,
-      size: 56,
-      color: Color(0xFFC8F169),
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(24),
+    child: Image.asset(
+      'assets/icon/app_icon.png',
+      width: 86,
+      height: 86,
+      fit: BoxFit.cover,
     ),
   );
 }

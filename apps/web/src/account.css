@@ -3,11 +3,11 @@
 .account-note, .account-warning { margin: 0 0 12px; color: #63756a; font-size: 12px; line-height: 1.5; }
 .account-warning { margin-top: 10px; color: #8c6c4d; }
 .account-form { display: grid; gap: 8px; }
-.account-form input { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #d4dfd5; border-radius: 10px; background: #fff; color: #173a2b; outline-color: #c8f169; }
-.account-button { min-height: 41px; padding: 8px 14px; border: 0; border-radius: 10px; background: #c8f169; color: #0b1717; font-weight: 800; }
-.account-button.secondary { background: #eef6e7; color: #456a24; }
+.account-form input { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #d4dfd5; border-radius: 10px; background: #fff; color: #173a2b; outline-color: var(--brand-sky); }
+.account-button { min-height: 41px; padding: 8px 14px; border: 0; border-radius: 10px; background: var(--brand-sky); color: var(--deep-ocean); font-weight: 800; }
+.account-button.secondary { background: #eef6e7; color: #0e7490; }
 .account-button:disabled { opacity: .6; }
-.account-link { margin-top: 11px; padding: 0; border: 0; background: none; color: #456a24; font-size: 12px; font-weight: 800; }
+.account-link { margin-top: 11px; padding: 0; border: 0; background: none; color: #0e7490; font-size: 12px; font-weight: 800; }
 .account-error { color: #a83d27; font-size: 12px; }
 .profile-modal { width: min(600px, 100%); max-height: min(86dvh, 780px); }
 .profile-email { margin: 0 0 14px; color: #63766a; font-size: 13px; }

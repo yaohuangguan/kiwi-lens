@@ -1,3 +1,5 @@
+import '../theme/tasman_theme.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -373,7 +375,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                         width: 20,
                         height: 20,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFC8F169),
+                          color: TasmanColors.sky,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
                             color: const Color(0xFF477B36),
@@ -601,7 +603,7 @@ class DestinationSearchPage extends StatelessWidget {
                     ),
                     leading: const Icon(Icons.directions_car_filled_rounded),
                     title: const Text(
-                      'Drive mode',
+                      'Just Drive',
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     subtitle: const Text('Camera alerts without a destination'),

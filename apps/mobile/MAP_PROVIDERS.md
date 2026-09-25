@@ -38,15 +38,31 @@ reason.
 
 ## Configure Mapbox
 
-Pass a public Mapbox access token when building or running Flutter:
+Pass a public `pk.` Mapbox access token when building or running Flutter:
 
 ```bash
 flutter run --dart-define=MAPBOX_ACCESS_TOKEN=YOUR_PUBLIC_TOKEN
+flutter build apk --dart-define=MAPBOX_ACCESS_TOKEN=YOUR_PUBLIC_TOKEN
 ```
 
-If no token is provided, Settings explains why Mapbox cannot be selected. Do
-not commit a token to this repository. Existing Google Maps platform key setup
-is unchanged. iOS deployment target remains 16.0; Android remains API 24+.
+For local development, put `{"MAPBOX_ACCESS_TOKEN":"pk..."}` in the ignored
+`apps/mobile/.dart-defines.local.json`, then run from `apps/mobile`:
+
+```bash
+flutter run --dart-define-from-file=.dart-defines.local.json
+flutter build apk --dart-define-from-file=.dart-defines.local.json
+```
+
+CI and release builds should supply the public token as a build variable. This
+Maps SDK integration does not currently request a private Mapbox SDK download
+token. A future native Navigation SDK could require a separate `sk.` download
+token stored only in local Gradle properties or CI secrets; never pass that
+secret through `--dart-define` or embed it in the app.
+
+If no public token is provided, Settings explains why Mapbox cannot be
+selected and a previously selected Mapbox map falls back to Google. Existing
+Google Maps platform key setup is unchanged. iOS deployment target remains
+16.0; Android remains API 24+.
 
 ## Remaining verification
 

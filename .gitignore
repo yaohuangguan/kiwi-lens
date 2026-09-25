@@ -9,3 +9,4 @@ dist/
 coverage/
 apps/mobile/.dart_tool/
 apps/mobile/build/
+apps/mobile/.dart-defines.local.json

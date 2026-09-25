@@ -26,6 +26,7 @@ import 'providers/mapbox_navigation_engine.dart';
 import 'providers/mapbox_routing_provider.dart';
 import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
+import 'theme/tasman_theme.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/mapbox_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
@@ -50,25 +51,12 @@ class KiwiLensApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const kiwiGreen = Color(0xFFC8F169);
-    const ink = Color(0xFF0B1717);
-
     return MaterialApp(
-      title: 'Kiwi Lens',
+      title: 'Tasman',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: kiwiGreen,
-          brightness: Brightness.light,
-          surface: const Color(0xFFF6F8F4),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF6F8F4),
-        textTheme: ThemeData.light().textTheme.apply(
-          bodyColor: ink,
-          displayColor: ink,
-        ),
-      ),
+      theme: TasmanTheme.light,
+      darkTheme: TasmanTheme.dark,
+      themeMode: ThemeMode.system,
       home: const SplashGate(child: MapHomePage()),
     );
   }
@@ -355,7 +343,7 @@ class _MapHomePageState extends State<MapHomePage> {
     if (!mounted) return false;
     setState(() {
       _message = whenInUse.isPermanentlyDenied
-          ? 'Location is disabled for Kiwi Lens. Enable it in system settings.'
+          ? 'Location is disabled for Tasman. Enable it in system settings.'
           : 'Location permission is required for navigation.';
     });
     return false;
@@ -796,7 +784,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
               const Text(
-                'Saved to Kiwi Lens only; not published to Google.',
+                'Saved to Tasman only; not published to Google.',
                 style: TextStyle(fontSize: 11, color: Colors.black54),
               ),
             ],
@@ -1066,8 +1054,8 @@ class _MapHomePageState extends State<MapHomePage> {
 
     if (!await GoogleMapsNavigator.areTermsAccepted()) {
       final accepted = await GoogleMapsNavigator.showTermsAndConditionsDialog(
-        'Kiwi Lens Navigation',
-        'Kiwi Lens',
+        'Tasman Navigation',
+        'Tasman',
       );
       if (!accepted) return false;
     }
@@ -1981,7 +1969,7 @@ class _MapHomePageState extends State<MapHomePage> {
     final remaining = nav?.distanceToFinalDestinationMeters;
     final arrival = nav?.timeToFinalDestinationSeconds;
     final details =
-        'Kiwi Lens trip to $_destinationTitle. '
+        'Tasman trip to $_destinationTitle. '
         'Remaining: ${remaining == null ? 'unknown' : '${(remaining / 1000).toStringAsFixed(1)} km'}. '
         'ETA: ${arrival == null ? 'unknown' : DateTime.now().add(Duration(seconds: arrival)).toLocal().toString().substring(0, 16)}. '
         'This is an ETA snapshot, not live location sharing.';
@@ -2298,7 +2286,7 @@ class _MapHomePageState extends State<MapHomePage> {
             padding: const EdgeInsets.only(right: 7),
             child: ActionChip(
               backgroundColor: const Color(0xFFF1F8DF),
-              side: const BorderSide(color: Color(0xFFC8F169), width: 1.3),
+              side: const BorderSide(color: TasmanColors.sky, width: 1.3),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
@@ -2576,7 +2564,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         width: 49,
                         height: 39,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFC8F169),
+                          color: TasmanColors.sky,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: const Row(

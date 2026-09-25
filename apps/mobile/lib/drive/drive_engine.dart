@@ -5,11 +5,16 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../data/camera_repository.dart';
+import '../data/nzta_road_event_provider.dart';
 import '../data/speed_limit_repository.dart';
+import '../domain/country_profile.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
+import '../domain/road_event.dart';
+import '../domain/road_intelligence.dart';
 import '../domain/route_option.dart';
 import '../domain/safety_camera.dart';
+import 'camera_alert_lifecycle.dart';
 import 'camera_matcher.dart';
 import 'route_camera_matcher.dart';
 import 'voice_engine.dart';
@@ -20,15 +25,26 @@ class DriveEngine extends ChangeNotifier {
     CameraMatcher? cameraMatcher,
     VoiceEngine? voiceEngine,
     SpeedLimitRepository? speedLimitRepository,
-  }) : _cameraRepository = cameraRepository ?? CameraRepository(),
-       _cameraMatcher = cameraMatcher ?? const CameraMatcher(),
+    RoadIntelligenceEngine? roadIntelligence,
+    CameraAlertLifecycle? cameraLifecycle,
+  }) : _cameraMatcher = cameraMatcher ?? const CameraMatcher(),
        _voiceEngine = voiceEngine ?? VoiceEngine(),
-       _speedLimitRepository = speedLimitRepository ?? SpeedLimitRepository();
+       _speedLimitRepository = speedLimitRepository ?? SpeedLimitRepository(),
+       _roadIntelligence = roadIntelligence ?? RoadIntelligenceEngine(),
+       _cameraLifecycle = cameraLifecycle ?? CameraAlertLifecycle() {
+    _nztaProvider = NztaRoadEventProvider(
+      cameraRepository ?? CameraRepository(),
+    );
+    _providerRegistry = RoadEventProviderRegistry([_nztaProvider]);
+  }
 
-  final CameraRepository _cameraRepository;
   final CameraMatcher _cameraMatcher;
   final VoiceEngine _voiceEngine;
   final SpeedLimitRepository _speedLimitRepository;
+  final RoadIntelligenceEngine _roadIntelligence;
+  final CameraAlertLifecycle _cameraLifecycle;
+  late final NztaRoadEventProvider _nztaProvider;
+  late final RoadEventProviderRegistry _providerRegistry;
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final Set<String> _spokenAlerts = <String>{};
@@ -36,13 +52,20 @@ class DriveEngine extends ChangeNotifier {
 
   List<SafetyCamera> _cameras = const [];
   RouteOption? _route;
+  Set<String> _highConfidenceCameraIds = const {};
   List<RouteCameraMatch> routeCameras = const [];
   List<SafetyCamera> get cameras => _cameras;
+  List<RoadEvent> roadEvents = const [];
+  List<RoadEvent> upcomingRoadEvents = const [];
+  String roadIntelligenceStatus = 'not_loaded';
+  bool get roadIntelligenceStale => roadIntelligenceStatus == 'stale';
   int get routeCameraCount => routeCameras.length;
   LatLng? get snappedLocation => _lastSnappedLocation;
   LatLng? _lastSnappedLocation;
   LatLng? _lastSpeedLimitLocation;
   DateTime? _lastSpeedLimitLookup;
+  DateTime? _lastRoadEventEvaluationAt;
+  LatLng? _lastRoadEventEvaluationLocation;
   bool _speedLimitLookupPending = false;
   double? _headingDegrees;
   Completer<void>? _roadSnappedFixCompleter;
@@ -61,6 +84,9 @@ class DriveEngine extends ChangeNotifier {
   double? percentageAboveLimit;
   SafetyCamera? upcomingCamera;
   double? upcomingCameraDistanceMeters;
+  SafetyCamera? passedCamera;
+  CameraAlertState cameraAlertState = const CameraAlertState.idle();
+  bool get routed => _route != null;
   NavInfo? navInfo;
   String? error;
 
@@ -149,10 +175,14 @@ class DriveEngine extends ChangeNotifier {
     loadingCameras = true;
     notifyListeners();
     try {
-      _cameras = await _cameraRepository.fetchCameras();
+      roadEvents = await _providerRegistry.load(CountryProfiles.nz);
+      final snapshot = _nztaProvider.lastSnapshot;
+      _cameras = snapshot?.cameras ?? const [];
+      roadIntelligenceStatus = snapshot?.syncStatus ?? 'unavailable';
       _recomputeRouteCameras();
       error = null;
     } catch (exception) {
+      roadIntelligenceStatus = 'unavailable';
       error = 'Could not load safety cameras: $exception';
     } finally {
       loadingCameras = false;
@@ -163,7 +193,10 @@ class DriveEngine extends ChangeNotifier {
   void setRoute(RouteOption? route) {
     _route = route;
     _spokenAlerts.clear();
+    _lastRoadEventEvaluationAt = null;
     _recomputeRouteCameras();
+    _cameraLifecycle.reset();
+    cameraAlertState = const CameraAlertState.idle();
     upcomingCamera = null;
     upcomingCameraDistanceMeters = null;
     notifyListeners();
@@ -173,6 +206,10 @@ class DriveEngine extends ChangeNotifier {
     routeCameras = _route == null
         ? const []
         : _routeMatcher.match(_route!, _cameras);
+    _highConfidenceCameraIds = routeCameras
+        .where((match) => match.highConfidence)
+        .map((match) => match.camera.id)
+        .toSet();
   }
 
   void _onRoadSnappedLocation(RoadSnappedLocationUpdatedEvent event) {
@@ -202,6 +239,24 @@ class DriveEngine extends ChangeNotifier {
     }
 
     _lastSnappedLocation = current;
+    final country = CountryProfiles.at(
+      GeoPoint(current.latitude, current.longitude),
+    );
+    if (country?.code != 'NZ') {
+      roadIntelligenceStatus = 'unsupported';
+      _cameraLifecycle.reset();
+      upcomingRoadEvents = const [];
+      upcomingCamera = null;
+      upcomingCameraDistanceMeters = null;
+      passedCamera = null;
+      cameraAlertState = const CameraAlertState.idle();
+      speedLimitKph = null;
+      speedLimitZoneName = null;
+      notifyListeners();
+      return;
+    }
+    roadIntelligenceStatus =
+        _nztaProvider.lastSnapshot?.syncStatus ?? roadIntelligenceStatus;
     unawaited(_refreshSpeedLimit(current));
 
     CameraMatch? match;
@@ -234,11 +289,56 @@ class DriveEngine extends ChangeNotifier {
       );
     }
 
-    upcomingCamera = match?.camera;
-    upcomingCameraDistanceMeters = match?.distanceMeters;
+    final now = DateTime.now();
+    final lastEventLocation = _lastRoadEventEvaluationLocation;
+    final eventMove = lastEventLocation == null
+        ? double.infinity
+        : distanceMeters(
+            lastEventLocation.latitude,
+            lastEventLocation.longitude,
+            current.latitude,
+            current.longitude,
+          );
+    if (_lastRoadEventEvaluationAt == null ||
+        now.difference(_lastRoadEventEvaluationAt!).inSeconds >= 5 ||
+        eventMove >= 35) {
+      upcomingRoadEvents = _roadIntelligence.relevant(
+        driver: GeoPoint(current.latitude, current.longitude),
+        events: route == null
+            ? roadEvents
+            : roadEvents
+                  .where(
+                    (event) =>
+                        event.type != RoadEventType.safetyCamera ||
+                        _highConfidenceCameraIds.contains(
+                          event.source.sourceId,
+                        ),
+                  )
+                  .toList(growable: false),
+        headingDegrees: _headingDegrees,
+        route: route,
+        now: now,
+      );
+      _lastRoadEventEvaluationAt = now;
+      _lastRoadEventEvaluationLocation = current;
+    }
 
-    if (match != null) {
-      unawaited(_maybeAlert(match));
+    cameraAlertState = _cameraLifecycle.update(match, DateTime.now());
+    if (cameraAlertState.phase == CameraAlertPhase.approaching) {
+      upcomingCamera = match?.camera;
+      upcomingCameraDistanceMeters = match?.distanceMeters;
+      passedCamera = null;
+      if (match != null) unawaited(_maybeAlert(match));
+    } else if (cameraAlertState.phase == CameraAlertPhase.passed) {
+      upcomingCamera = null;
+      upcomingCameraDistanceMeters = null;
+      passedCamera = _cameras
+          .where((camera) => camera.id == cameraAlertState.cameraId)
+          .firstOrNull;
+    } else {
+      upcomingCamera = null;
+      upcomingCameraDistanceMeters = null;
+      passedCamera = null;
     }
 
     notifyListeners();
@@ -287,11 +387,27 @@ class DriveEngine extends ChangeNotifier {
         latitude: current.latitude,
         longitude: current.longitude,
       );
-      speedLimitKph = info.speedLimitKph;
-      speedLimitZoneName = info.zoneName;
-      notifyListeners();
+      final latest = _lastSnappedLocation;
+      if (latest != null &&
+          distanceMeters(
+                current.latitude,
+                current.longitude,
+                latest.latitude,
+                latest.longitude,
+              ) <
+              100 &&
+          CountryProfiles.at(GeoPoint(latest.latitude, latest.longitude))
+                  ?.code ==
+              'NZ') {
+        speedLimitKph = info.speedLimitKph;
+        speedLimitZoneName = info.zoneName;
+        notifyListeners();
+      }
     } catch (_) {
-      // Retain the last known legal limit during short network interruptions.
+      // An old limit may belong to a different road or region.
+      speedLimitKph = null;
+      speedLimitZoneName = null;
+      notifyListeners();
     } finally {
       _speedLimitLookupPending = false;
     }
@@ -326,12 +442,16 @@ class DriveEngine extends ChangeNotifier {
     }
     _subscriptions.clear();
     _spokenAlerts.clear();
+    _cameraLifecycle.reset();
     _route = null;
     routeCameras = const [];
+    upcomingRoadEvents = const [];
     active = false;
     guidanceRunning = false;
     upcomingCamera = null;
     upcomingCameraDistanceMeters = null;
+    passedCamera = null;
+    cameraAlertState = const CameraAlertState.idle();
     navInfo = null;
     speedKph = 0;
     speedLimitKph = null;
@@ -340,6 +460,8 @@ class DriveEngine extends ChangeNotifier {
     _lastSnappedLocation = null;
     _roadSnappedFixCompleter = null;
     _lastSpeedLimitLookup = null;
+    _lastRoadEventEvaluationAt = null;
+    _lastRoadEventEvaluationLocation = null;
     notifyListeners();
   }
 

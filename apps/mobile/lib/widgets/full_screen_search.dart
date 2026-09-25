@@ -1,3 +1,5 @@
+import '../theme/tasman_theme.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -168,17 +170,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(
-                  color: Color(0xFFC8F169),
-                  width: 1.3,
-                ),
+                borderSide: const BorderSide(color: TasmanColors.sky, width: 1.3),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(
-                  color: Color(0xFFC8F169),
-                  width: 1.3,
-                ),
+                borderSide: const BorderSide(color: TasmanColors.sky, width: 1.3),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
@@ -230,7 +226,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
           if (recent && widget.onDriveMode != null)
             ListTile(
               leading: const Icon(Icons.directions_car_filled_rounded),
-              title: Text(_text('Drive mode', '驾驶模式')),
+              title: Text(_text('Just Drive', '自由驾驶')),
               subtitle: Text(
                 _text(
                   'Safety camera alerts without a destination',

@@ -4,20 +4,14 @@ import { currentProfile, initAccount, type AccountProfile, type Language } from 
 import { renderProfileView } from './profile-view';
 
 const logo = `
-  <span class="site-logo" aria-hidden="true">
-    <svg viewBox="0 0 40 40">
-      <circle cx="20" cy="20" r="13"></circle>
-      <path d="M11.8 27.4c2.4-6.7 6.8-5.1 8.5-9.6 1.5-4 4.7-5.5 8.4-6.1"></path>
-      <circle class="site-logo-start" cx="11.8" cy="27.4" r="2.1"></circle>
-      <circle class="site-logo-focus" cx="28.7" cy="11.7" r="2.8"></circle>
-    </svg>
-  </span><span class="site-wordmark">KIWI<span>LENS</span></span>`;
+  <span class="site-logo" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
+  <span class="site-wordmark">TASMAN</span>`;
 
 let language: Language = 'en';
 let voiceEnabled = true;
 
 document.documentElement.lang = 'en-NZ';
-document.title = 'Dashboard · Kiwi Lens';
+document.title = 'Dashboard · Tasman';
 document.body.dataset.surface = 'dashboard';
 document.body.innerHTML = `
   <div class="dashboard-shell">
@@ -28,17 +22,17 @@ document.body.innerHTML = `
     <main class="dashboard-layout">
       <aside class="dashboard-sidebar">
         <span class="dashboard-label">ACCOUNT</span>
-        <h1 id="dashboardTitle">Your Kiwi Lens</h1>
+        <h1 id="dashboardTitle">Your Tasman</h1>
         <p id="dashboardIntro">Sign in to keep recent trips, favorite places, notes and personal reviews together.</p>
         <div id="dashboardAccount" class="dashboard-account"></div>
-        <div class="dashboard-help"><strong>Navigation stays available</strong><p>You can always use Kiwi Lens in guest mode. An account adds synchronization and history.</p><a href="/app">Continue as guest →</a></div>
+        <div class="dashboard-help"><strong>Navigation stays available</strong><p>You can always use Tasman in guest mode. An account adds synchronization and history.</p><a href="/app">Continue as guest →</a></div>
       </aside>
       <section class="dashboard-main">
         <div class="dashboard-topline"><div><span class="dashboard-label">DASHBOARD</span><h2 id="dashboardGreeting">Your activity, all in one place.</h2></div><span class="dashboard-status"><i></i><span id="dashboardStatusText">Guest mode</span></span></div>
         <div id="dashboardEmpty" class="dashboard-empty">
           <div class="dashboard-empty-intro">
             <div class="dashboard-empty-icon">◎</div>
-            <div><h3>Sign in to make Kiwi Lens yours</h3><p>Navigation stays available without an account. Sign in when you want history and personal context to follow you.</p></div>
+            <div><h3>Sign in to make Tasman yours</h3><p>Navigation stays available without an account. Sign in when you want history and personal context to follow you.</p></div>
           </div>
           <div class="dashboard-empty-grid">
             <article><span>↗</span><strong>Recent navigation</strong><p>Keep a lightweight history of destinations, travel modes and trip distance.</p></article>
@@ -66,7 +60,7 @@ function renderDashboard() {
   (document.getElementById('dashboardGreeting') as HTMLElement).textContent = signedIn
     ? (language === 'zh' ? '欢迎回来，这是你的近期活动。' : 'Welcome back. Here’s your recent activity.')
     : (language === 'zh' ? '你的活动，集中在一个页面。' : 'Your activity, all in one place.');
-  (document.getElementById('dashboardTitle') as HTMLElement).textContent = language === 'zh' ? '你的 Kiwi Lens' : 'Your Kiwi Lens';
+  (document.getElementById('dashboardTitle') as HTMLElement).textContent = language === 'zh' ? '你的 Tasman' : 'Your Tasman';
   (document.getElementById('dashboardIntro') as HTMLElement).textContent = language === 'zh'
     ? '登录后可集中查看最近行程、收藏地点、备注和个人评价。'
     : 'Sign in to keep recent trips, favorite places, notes and personal reviews together.';

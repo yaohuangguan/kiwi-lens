@@ -1,0 +1,27 @@
+:root {
+  --brand-sky: #38bdf8;
+  --brand-coastal: #0ea5e9;
+  --brand-ocean: #0284c7;
+  --brand-teal: #0891b2;
+  --deep-ocean: #061e2c;
+  --dark-ocean: #082f49;
+  --surface: #fff;
+  --surface-subtle: #f3fafc;
+  --text-primary: #123044;
+  --text-secondary: #526979;
+  --border: #d4e3ea;
+  --focus: #0284c7;
+  --danger: #dc2626;
+  --warning: #f59e0b;
+  --success: #15803d;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --radius-control: 10px;
+  --radius-button: 14px;
+  --radius-panel: 18px;
+  --radius-sheet: 24px;
+}

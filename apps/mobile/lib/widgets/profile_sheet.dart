@@ -50,7 +50,7 @@ class _ProfileSheetState extends State<ProfileSheet> {
               Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 18),
                 decoration: BoxDecoration(color: const Color(0xFFD0D8D2), borderRadius: BorderRadius.circular(6)))),
               Row(children: [
-                const Expanded(child: Text('My Kiwi Lens', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
+                const Expanded(child: Text('My Tasman', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
                 IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close_rounded)),
               ]),
               if (profile == null) ...[

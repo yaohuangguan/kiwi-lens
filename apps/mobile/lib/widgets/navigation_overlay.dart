@@ -1,11 +1,14 @@
+import '../theme/tasman_theme.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../drive/drive_engine.dart';
+import 'road_event_timeline.dart';
 
 const _ink = Color(0xFF0B1717);
-const _lime = Color(0xFFC8F169);
+const _accent = TasmanColors.sky;
 
 String navigationDistanceLabel(num? metres) {
   if (metres == null || !metres.isFinite) return '—';
@@ -123,7 +126,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 ),
                 child: Row(
                   children: [
-                    Icon(_maneuverIcon(step?.maneuver), color: _lime, size: 40),
+                    Icon(_maneuverIcon(step?.maneuver), color: _accent, size: 40),
                     const SizedBox(width: 13),
                     Expanded(
                       child: Column(
@@ -135,7 +138,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               nav?.distanceToCurrentStepMeters,
                             ),
                             style: const TextStyle(
-                              color: _lime,
+                              color: _accent,
                               fontSize: 25,
                               fontWeight: FontWeight.w900,
                             ),
@@ -164,7 +167,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         Text(
                           arrival,
                           style: const TextStyle(
-                            color: _lime,
+                            color: _accent,
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
                           ),
@@ -224,7 +227,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   lane.laneDirections.any(
                                     (direction) => direction.isRecommended,
                                   )
-                                  ? _lime
+                                  ? _accent
                                   : const Color(0xFF30453B),
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -317,7 +320,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         Text(
                           '${widget.engine.speedKph.round()}',
                           style: TextStyle(
-                            color: speeding ? const Color(0xFFFF6767) : _lime,
+                            color: speeding ? const Color(0xFFFF6767) : _accent,
                             fontWeight: FontWeight.w900,
                             fontSize: 27,
                           ),
@@ -374,7 +377,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     children: [
                       const CircleAvatar(
                         backgroundColor: _ink,
-                        child: Icon(Icons.speed_rounded, color: _lime),
+                        child: Icon(Icons.speed_rounded, color: _accent),
                       ),
                       const SizedBox(width: 10),
                       Flexible(
@@ -466,7 +469,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               FilledButton.icon(
                                 onPressed: widget.onEnd,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: _lime,
+                                  backgroundColor: _accent,
                                   foregroundColor: _ink,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
@@ -499,6 +502,13 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             ),
                           ),
                           const Divider(height: 1),
+                          if (widget.engine.upcomingRoadEvents.isNotEmpty) ...[
+                            const SizedBox(height: TasmanSpacing.x2),
+                            RoadEventTimeline(
+                              events: widget.engine.upcomingRoadEvents,
+                              dark: false,
+                            ),
+                          ],
                           const SizedBox(height: 10),
                           Row(
                             children: [
