@@ -7,7 +7,6 @@ import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, neare
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
 import { currentAccountEmail, initAccount, isSignedIn, ownReview, recentDestinations, rememberDestination, rememberPreferences, rememberRoute, renderAccount, saveOwnReview, savePlace, savedPlace, type AccountProfile } from './account';
-import { renderProfileView } from './profile-view';
 import { lookAheadCenter } from './navigation-view';
 import { initAutocomplete, type SuggestedPlace } from './autocomplete';
 import { GoogleMapAdapter, type PoiSelection } from './google-map';
@@ -1313,30 +1312,19 @@ $('navSheetHandle').onclick = () => {
   if (current && route && navigating && following) requestAnimationFrame(() => map.focusNavigation(lookAheadCenter(current!, latestHeading, route!)));
 };
 $('settingsButton').onclick = () => showOverlay('settingsOverlay');
-function showProfile() {
-  renderProfileView($('profileContent'), language, () => {
-    hideOverlay('profileOverlay');
-    showOverlay('settingsOverlay');
-  });
-  showOverlay('profileOverlay');
-}
-$('profileButton').onclick = showProfile;
-$('closeProfile').onclick = () => hideOverlay('profileOverlay');
+$('profileButton').onclick = () => { window.location.href = '/dashboard'; };
 $('closeSettings').onclick = () => hideOverlay('settingsOverlay');
 $('dataButton').onclick = () => showOverlay('dataOverlay');
 $('closeData').onclick = () => hideOverlay('dataOverlay');
-for (const id of ['settingsOverlay', 'dataOverlay', 'profileOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
+for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
 function applyLanguage() {
   applyUiLanguage(language);
-  $('profileButton').setAttribute('aria-label', language === 'zh' ? '个人主页' : 'My profile');
-  $('profileButton').title = language === 'zh' ? '个人主页' : 'My profile';
-  $('profileTitle').textContent = language === 'zh' ? '个人主页' : 'My profile';
-  $('closeProfile').setAttribute('aria-label', language === 'zh' ? '关闭个人主页' : 'Close profile');
+  $('profileButton').setAttribute('aria-label', language === 'zh' ? '账户总览' : 'Account dashboard');
+  $('profileButton').title = language === 'zh' ? '账户总览' : 'Account dashboard';
   $('poiOwnReviewTitle').textContent = language === 'zh' ? '我的评价' : 'My review';
   $('poiOwnRatingLabel').textContent = language === 'zh' ? '我的评分' : 'My rating';
   $('poiOwnComment').setAttribute('placeholder', language === 'zh' ? '写下自己的私人评价' : 'Write a review for your own records');
   $('poiSaveReview').textContent = language === 'zh' ? '保存我的评价' : 'Save my review';
-  if (!$('profileOverlay').hidden) showProfile();
   $('zhButton').classList.toggle('selected', language === 'zh');
   $('enButton').classList.toggle('selected', language === 'en');
   ($('originInput') as HTMLInputElement).placeholder = currentPlaceLabel ? `${t(language, 'currentPlace')}: ${currentPlaceLabel}` : t(language, 'origin');
@@ -1409,7 +1397,6 @@ window.gm_authFailure = () => {
 window.addEventListener('kiwi-account-change', () => {
   renderTripFlags();
   if (selectedPoi) renderPoiAccountState(selectedPoi);
-  if (!$('profileOverlay').hidden) showProfile();
 });
 
 async function initializeMap() {
