@@ -56,9 +56,22 @@ class AccountRepository extends ChangeNotifier {
       _storage = storage ?? const FlutterSecureStorage();
 
   static const _storageKey = 'kiwi_lens_session';
+  static const _googleIosClientId = String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+    defaultValue: '858928595374-slrbiedfhivmnliv0d4uvpn0n8rh21tu.apps.googleusercontent.com',
+  );
+  static const _googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '858928595374-ht0e455sfe58a2cfgovjka7t40cku2ss.apps.googleusercontent.com',
+  );
   Future<void>? _googleReady;
   Future<void> _initializeGoogle() =>
-      _googleReady ??= GoogleSignIn.instance.initialize();
+      _googleReady ??= GoogleSignIn.instance.initialize(
+        clientId: defaultTargetPlatform == TargetPlatform.iOS
+            ? _googleIosClientId
+            : null,
+        serverClientId: _googleServerClientId,
+      );
   final http.Client _client;
   final FlutterSecureStorage _storage;
   String? _session;
@@ -208,7 +221,7 @@ class AccountRepository extends ChangeNotifier {
           '/api/profile',
           method: 'PATCH',
           body: {
-            'language': language == 'zh-CN' ? 'zh' : 'en',
+            'language': language == 'zh-CN' || language == 'zh' ? 'zh' : 'en',
             'voiceEnabled': voiceEnabled,
           },
         ),

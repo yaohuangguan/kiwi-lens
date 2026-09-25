@@ -86,7 +86,6 @@ class _MapHomePageState extends State<MapHomePage> {
   LatLng? _gpsLocation;
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
-  bool _searchFocused = false;
   CameraPosition? _lastBrowseCamera;
   List<Marker> _cameraMarkers = [];
   Marker? _carMarker;
@@ -96,6 +95,7 @@ class _MapHomePageState extends State<MapHomePage> {
   MapLayerSettings _layers = const MapLayerSettings();
   bool _northUp = false;
   bool _junctionZoomed = false;
+  String _appLanguage = 'en';
   String _voiceLanguage = 'en-NZ';
   double? _gpsAccuracy;
   double? _deviceHeading;
@@ -177,6 +177,7 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _restoreMapSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _useCarMarker = prefs.getBool('kiwi.map.car_marker') ?? false;
+    _appLanguage = prefs.getString('kiwi.app.language') ?? 'en';
     _voiceLanguage = prefs.getString('kiwi.voice.language') ?? 'en-NZ';
     _voiceEnabled = prefs.getBool('kiwi.voice.enabled') ?? true;
     _lanesEnabled = prefs.getBool('kiwi.nav.lanes') ?? true;
@@ -541,10 +542,12 @@ class _MapHomePageState extends State<MapHomePage> {
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
           useCarMarker: _useCarMarker,
+          appLanguage: _appLanguage,
           voiceLanguage: _voiceLanguage,
           onVoiceChanged: _setVoiceEnabled,
           onLanesChanged: _setLanesEnabled,
           onCarMarkerChanged: (value) => unawaited(_setCarMarker(value)),
+          onAppLanguageChanged: (value) => unawaited(_setAppLanguage(value)),
           onLanguageChanged: (value) => unawaited(_setVoiceLanguage(value)),
           onMapLayers: _showMapLayers,
         ),
@@ -1213,11 +1216,10 @@ class _MapHomePageState extends State<MapHomePage> {
             .catchError((_) {}),
       );
     }
-    setState(() => _searchFocused = false);
     _onPoiClicked(
       PointOfInterest(
         placeID: '',
-        name: suggestion.label,
+        name: suggestion.name ?? suggestion.label,
         latLng: suggestion.location,
       ),
     );
@@ -1394,6 +1396,16 @@ class _MapHomePageState extends State<MapHomePage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('kiwi.voice.language', language);
   }
+
+  Future<void> _setAppLanguage(String language) async {
+    final next = language == 'zh' ? 'zh' : 'en';
+    setState(() => _appLanguage = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('kiwi.app.language', next);
+  }
+
+  String _text(String english, String chinese) =>
+      _appLanguage == 'zh' ? chinese : english;
 
   void _showNavigationSettings() => _showProfile();
 
@@ -1626,6 +1638,7 @@ class _MapHomePageState extends State<MapHomePage> {
               currentLocation: _gpsLocation,
               origin: _manualOrigin,
               recent: _recentDestinations,
+              language: _appLanguage,
               onOriginSelected: (value) =>
                   setState(() => _manualOrigin = value),
               onSelected: (selection) {
@@ -1687,10 +1700,10 @@ class _MapHomePageState extends State<MapHomePage> {
         top: false,
         child: Row(
           children: [
-            item(Icons.map_rounded, 'Map', _recenter),
+            item(Icons.map_rounded, _text('Map', '地图'), _recenter),
             item(
               Icons.bookmark_rounded,
-              'Saved',
+              _text('Saved', '收藏'),
               () => unawaited(_showSaved()),
             ),
             Expanded(
@@ -1724,9 +1737,9 @@ class _MapHomePageState extends State<MapHomePage> {
                           ],
                         ),
                       ),
-                      const Text(
-                        '出发',
-                        style: TextStyle(
+                      Text(
+                        _text('Start', '出发'),
+                        style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
                         ),
@@ -1736,7 +1749,8 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-            item(Icons.person_rounded, 'Me', _showProfile),
+            item(Icons.layers_rounded, _text('Layers', '图层'), _showMapLayers),
+            item(Icons.person_rounded, _text('Me', '我的'), _showProfile),
           ],
         ),
       ),
@@ -1946,75 +1960,11 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
             ),
-          if (!_driveEngine.active && !_transitTripRunning && !_searchFocused)
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: PointerInterceptor(
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xEE0B1717),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: const [
-                            BoxShadow(
-                              blurRadius: 20,
-                              color: Color(0x26000000),
-                              offset: Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _BrandMark(),
-                            SizedBox(width: 9),
-                            Text(
-                              'KIWI',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.1,
-                              ),
-                            ),
-                            Text(
-                              'LENS',
-                              style: TextStyle(
-                                color: Color(0xFFC8F169),
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_guidanceRunning)
-                        FilledButton.icon(
-                          onPressed: _stopNavigation,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xEE0B1717),
-                            foregroundColor: Colors.white,
-                          ),
-                          icon: const Icon(Icons.stop_rounded),
-                          label: const Text('End'),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           if (!_driveEngine.active && !_transitTripRunning)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOutCubic,
-              top:
-                  MediaQuery.paddingOf(context).top + (_searchFocused ? 8 : 75),
+              top: MediaQuery.paddingOf(context).top + 8,
               left: 16,
               right: 16,
               child: PointerInterceptor(
@@ -2022,14 +1972,13 @@ class _MapHomePageState extends State<MapHomePage> {
                   currentLocation: _gpsLocation,
                   origin: _manualOrigin,
                   recent: _recentDestinations,
+                  language: _appLanguage,
                   onOriginSelected: (origin) {
                     setState(() => _manualOrigin = origin);
                     if (_selectedPoi != null) {
                       unawaited(_loadRoutePreview(_selectedPoi!));
                     }
                   },
-                  onFocusChanged: (focused) =>
-                      setState(() => _searchFocused = focused),
                   onSelected: _onSearchSelected,
                 ),
               ),
@@ -2169,28 +2118,6 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _BrandMark extends StatelessWidget {
-  const _BrandMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 29,
-      height: 29,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFC8F169), width: 2),
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: const Icon(
-        Icons.navigation_rounded,
-        color: Color(0xFFC8F169),
-        size: 18,
       ),
     );
   }

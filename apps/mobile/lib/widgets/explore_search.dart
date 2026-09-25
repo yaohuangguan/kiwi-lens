@@ -9,9 +9,16 @@ import '../data/api_config.dart';
 import '../domain/geo_math.dart';
 
 class DestinationSuggestion {
-  const DestinationSuggestion({required this.label, required this.location});
+  const DestinationSuggestion({
+    required this.label,
+    required this.location,
+    this.name,
+    this.address,
+  });
   final String label;
   final LatLng location;
+  final String? name;
+  final String? address;
 }
 
 class ExploreSearch extends StatefulWidget {
@@ -23,6 +30,7 @@ class ExploreSearch extends StatefulWidget {
     this.onOriginSelected,
     this.onFocusChanged,
     this.recent = const [],
+    this.language = 'en',
   });
 
   final LatLng? currentLocation;
@@ -31,6 +39,7 @@ class ExploreSearch extends StatefulWidget {
   final ValueChanged<DestinationSuggestion?>? onOriginSelected;
   final ValueChanged<bool>? onFocusChanged;
   final List<DestinationSuggestion> recent;
+  final String language;
 
   @override
   State<ExploreSearch> createState() => _ExploreSearchState();
@@ -51,6 +60,26 @@ class _ExploreSearchState extends State<ExploreSearch> {
   String _locationLabel = 'Locating current position…';
   LatLng? _lastReverseLocation;
   bool _reverseLookupPending = false;
+
+  bool get _isChinese => widget.language == 'zh';
+  String _text(String english, String chinese) =>
+      _isChinese ? chinese : english;
+
+  String _distanceLabel(DestinationSuggestion result) {
+    final current = widget.currentLocation;
+    if (current == null) return '';
+    final metres = distanceMeters(
+      current.latitude,
+      current.longitude,
+      result.location.latitude,
+      result.location.longitude,
+    );
+    if (metres < 1000) return '${metres.round()} m';
+    final kilometres = metres / 1000;
+    return kilometres < 10
+        ? '${kilometres.toStringAsFixed(1)} km'
+        : '${kilometres.round()} km';
+  }
 
   @override
   void initState() {
@@ -145,21 +174,23 @@ class _ExploreSearchState extends State<ExploreSearch> {
         final uri = Uri.parse('$workerBaseUrl/api/suggest').replace(
           queryParameters: {
             'q': query,
-            'lang': 'en',
+            'lang': widget.language,
             if (near != null) 'near': '${near.longitude},${near.latitude}',
           },
         );
         var response = await _client.get(
           _suggestConfigured
               ? uri
-              : Uri.parse('$workerBaseUrl/api/search')
-                    .replace(queryParameters: {'q': query}),
+              : Uri.parse('$workerBaseUrl/api/search').replace(
+                  queryParameters: {'q': query, 'lang': widget.language},
+                ),
         );
         if (_suggestConfigured && response.statusCode == 503) {
           _suggestConfigured = false;
           response = await _client.get(
-            Uri.parse('$workerBaseUrl/api/search')
-                .replace(queryParameters: {'q': query}),
+            Uri.parse(
+              '$workerBaseUrl/api/search',
+            ).replace(queryParameters: {'q': query, 'lang': widget.language}),
           );
         }
         if (response.statusCode != 200) {
@@ -172,8 +203,15 @@ class _ExploreSearchState extends State<ExploreSearch> {
               final latitude = item['latitude'];
               final longitude = item['longitude'];
               if (latitude is! num || longitude is! num) return null;
+              final label =
+                  item['label']?.toString() ??
+                  _text('Selected destination', '所选目的地');
               return DestinationSuggestion(
-                label: item['label']?.toString() ?? 'Selected destination',
+                label: label,
+                name: item['name']?.toString().trim().isNotEmpty == true
+                    ? item['name'].toString().trim()
+                    : label,
+                address: item['address']?.toString().trim(),
                 location: LatLng(
                   latitude: latitude.toDouble(),
                   longitude: longitude.toDouble(),
@@ -191,7 +229,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
         if (!mounted || request != _request) return;
         setState(() {
           _results = const [];
-          _error = 'Address search is unavailable';
+          _error = _text('Address search is unavailable', '地址搜索暂不可用');
         });
       }
     });
@@ -201,7 +239,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
   Widget build(BuildContext context) {
     final location = widget.currentLocation;
     final locationText = location == null
-        ? 'Locating current position…'
+        ? _text('Locating current position…', '正在定位当前位置…')
         : _locationLabel;
     return Material(
       color: Colors.white,
@@ -263,7 +301,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                 Row(
                   children: [
                     Semantics(
-                      label: 'Destination',
+                      label: _text('Destination', '目的地'),
                       child: Container(
                         key: const Key('destinationSearchIcon'),
                         width: 20,
@@ -294,11 +332,11 @@ class _ExploreSearchState extends State<ExploreSearch> {
                         controller: _controller,
                         focusNode: _destinationFocus,
                         onChanged: (value) => _search(value, origin: false),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           isDense: true,
                           border: InputBorder.none,
-                          hintText: 'Search destination',
-                          hintStyle: TextStyle(color: Color(0xFF8A968E)),
+                          hintText: _text('Search destination', '搜索目的地'),
+                          hintStyle: const TextStyle(color: Color(0xFF8A968E)),
                         ),
                       ),
                     ),
@@ -333,18 +371,50 @@ class _ExploreSearchState extends State<ExploreSearch> {
                   final result = _results.isNotEmpty
                       ? _results[index]
                       : widget.recent[index];
+                  final address = result.address?.trim() ?? '';
+                  final distance = _distanceLabel(result);
                   return ListTile(
-                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
                     leading: const Icon(
                       Icons.place_outlined,
                       color: Color(0xFF527C60),
                     ),
                     title: Text(
-                      result.label,
+                      result.name ?? result.label,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
+                    subtitle: address.isEmpty && distance.isEmpty
+                        ? null
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (address.isNotEmpty)
+                                Text(
+                                  address,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              if (distance.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    distance,
+                                    style: const TextStyle(
+                                      color: Color(0xFF477B36),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                     onTap: () {
                       _debounce?.cancel();
                       _request++;

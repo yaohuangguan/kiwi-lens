@@ -10,10 +10,12 @@ class ProfilePage extends StatefulWidget {
     required this.voiceEnabled,
     required this.lanesEnabled,
     required this.useCarMarker,
+    required this.appLanguage,
     required this.voiceLanguage,
     required this.onVoiceChanged,
     required this.onLanesChanged,
     required this.onCarMarkerChanged,
+    required this.onAppLanguageChanged,
     required this.onLanguageChanged,
     required this.onMapLayers,
   });
@@ -22,10 +24,12 @@ class ProfilePage extends StatefulWidget {
   final bool voiceEnabled;
   final bool lanesEnabled;
   final bool useCarMarker;
+  final String appLanguage;
   final String voiceLanguage;
   final ValueChanged<bool> onVoiceChanged;
   final ValueChanged<bool> onLanesChanged;
   final ValueChanged<bool> onCarMarkerChanged;
+  final ValueChanged<String> onAppLanguageChanged;
   final ValueChanged<String> onLanguageChanged;
   final VoidCallback onMapLayers;
 
@@ -41,7 +45,11 @@ class _ProfilePageState extends State<ProfilePage> {
   late bool _voice = widget.voiceEnabled;
   late bool _lanes = widget.lanesEnabled;
   late bool _car = widget.useCarMarker;
+  late String _appLanguage = widget.appLanguage;
   late String _language = widget.voiceLanguage;
+
+  String _text(String english, String chinese) =>
+      _appLanguage == 'zh' ? chinese : english;
 
   @override
   void dispose() {
@@ -123,13 +131,18 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() => _voice = value);
     widget.onVoiceChanged(value);
     widget.account
-        .updatePreferences(language: _language, voiceEnabled: value)
+        .updatePreferences(language: _appLanguage, voiceEnabled: value)
         .catchError((_) {});
   }
 
   void _languageChanged(String value) {
     setState(() => _language = value);
     widget.onLanguageChanged(value);
+  }
+
+  void _appLanguageChanged(String value) {
+    setState(() => _appLanguage = value);
+    widget.onAppLanguageChanged(value);
     widget.account
         .updatePreferences(language: value, voiceEnabled: _voice)
         .catchError((_) {});
@@ -145,9 +158,9 @@ class _ProfilePageState extends State<ProfilePage> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF0B1717),
           foregroundColor: Colors.white,
-          title: const Text(
-            'My Kiwi Lens',
-            style: TextStyle(fontWeight: FontWeight.w900),
+          title: Text(
+            _text('My Kiwi Lens', '我的 Kiwi Lens'),
+            style: const TextStyle(fontWeight: FontWeight.w900),
           ),
         ),
         body: SafeArea(
@@ -185,8 +198,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             profile?.displayName.isNotEmpty == true
                                 ? profile!.displayName
                                 : profile == null
-                                ? 'Guest explorer'
-                                : 'Kiwi Lens member',
+                                ? _text('Guest explorer', '访客')
+                                : _text('Kiwi Lens member', 'Kiwi Lens 用户'),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 19,
@@ -195,7 +208,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           Text(
                             profile?.email ??
-                                'Sign in to sync your trips and places',
+                                _text(
+                                  'Sign in to sync your trips and places',
+                                  '登录以同步行程和地点',
+                                ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -209,7 +225,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     if (profile != null)
                       IconButton(
                         onPressed: _editName,
-                        tooltip: 'Edit profile',
+                        tooltip: _text('Edit profile', '编辑资料'),
                         icon: const Icon(
                           Icons.edit_rounded,
                           color: Color(0xFFC8F169),
@@ -232,9 +248,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
                   autofillHints: const [AutofillHints.email],
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: _text('Email', '邮箱'),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -248,26 +264,33 @@ class _ProfilePageState extends State<ProfilePage> {
                   ],
                   decoration: InputDecoration(
                     labelText: _register
-                        ? 'Password (12+ characters)'
-                        : 'Password',
+                        ? _text('Password (12+ characters)', '密码（至少 12 个字符）')
+                        : _text('Password', '密码'),
                     border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
                   onPressed: widget.account.loading ? null : _signIn,
-                  child: Text(_register ? 'Create account' : 'Sign in'),
+                  child: Text(
+                    _register
+                        ? _text('Create account', '创建账号')
+                        : _text('Sign in', '登录'),
+                  ),
                 ),
                 TextButton(
                   onPressed: () => setState(() => _register = !_register),
                   child: Text(
                     _register
-                        ? 'Already have an account? Sign in'
-                        : 'New here? Create an account',
+                        ? _text('Already have an account? Sign in', '已有账号？登录')
+                        : _text('New here? Create an account', '第一次使用？创建账号'),
                   ),
                 ),
-                const Center(
-                  child: Text('or', style: TextStyle(color: Colors.black54)),
+                Center(
+                  child: Text(
+                    _text('or', '或'),
+                    style: const TextStyle(color: Colors.black54),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
@@ -280,27 +303,30 @@ class _ProfilePageState extends State<ProfilePage> {
                       fontSize: 20,
                     ),
                   ),
-                  label: const Text('Continue with Google'),
+                  label: Text(_text('Continue with Google', '使用 Google 继续')),
                 ),
               ] else ...[
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    _Stat('${profile.routes.length}', 'Routes'),
+                    _Stat('${profile.routes.length}', _text('Routes', '路线')),
                     _Stat(
                       '${profile.places.where((place) => place['isFavorite'] == true).length}',
-                      'Saved',
+                      _text('Saved', '收藏'),
                     ),
-                    _Stat('${profile.reviews.length}', 'Reviews'),
+                    _Stat('${profile.reviews.length}', _text('Reviews', '评价')),
                   ],
                 ),
                 if (!profile.providers.contains('google'))
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.link_rounded),
-                    title: const Text('Link Google account'),
-                    subtitle: const Text(
-                      'Use the same email address to sign in with Google later',
+                    title: Text(_text('Link Google account', '关联 Google 账号')),
+                    subtitle: Text(
+                      _text(
+                        'Use the same email address to sign in with Google later',
+                        '以后可使用相同邮箱通过 Google 登录',
+                      ),
                     ),
                     onTap: widget.account.loading
                         ? null
@@ -308,18 +334,37 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
               ],
               const SizedBox(height: 18),
-              const _SectionTitle('Navigation & voice'),
+              _SectionTitle(_text('App', '应用')),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.translate_rounded),
+                title: Text(_text('App language', '应用语言')),
+                trailing: DropdownButton<String>(
+                  value: _appLanguage,
+                  items: const [
+                    DropdownMenuItem(value: 'en', child: Text('English')),
+                    DropdownMenuItem(value: 'zh', child: Text('中文')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) _appLanguageChanged(value);
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              _SectionTitle(_text('Navigation & voice', '导航与语音')),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 secondary: const Icon(Icons.volume_up_rounded),
-                title: const Text('Voice guidance & camera alerts'),
+                title: Text(
+                  _text('Voice guidance & camera alerts', '语音导航与摄像头提醒'),
+                ),
                 value: _voice,
                 onChanged: _voiceChanged,
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.language_rounded),
-                title: const Text('Camera alert language'),
+                title: Text(_text('Camera alert language', '摄像头提醒语言')),
                 trailing: DropdownButton<String>(
                   value: _language,
                   items: const [
@@ -334,7 +379,7 @@ class _ProfilePageState extends State<ProfilePage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 secondary: const Icon(Icons.alt_route_rounded),
-                title: const Text('Lane guidance'),
+                title: Text(_text('Lane guidance', '车道指引')),
                 value: _lanes,
                 onChanged: (value) {
                   setState(() => _lanes = value);
@@ -344,8 +389,10 @@ class _ProfilePageState extends State<ProfilePage> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 secondary: const Icon(Icons.directions_car_filled_rounded),
-                title: const Text('Car location icon'),
-                subtitle: const Text('Replace the blue dot on the map'),
+                title: Text(_text('Car location icon', '车辆位置图标')),
+                subtitle: Text(
+                  _text('Replace the blue dot on the map', '替换地图上的蓝点'),
+                ),
                 value: _car,
                 onChanged: (value) {
                   setState(() => _car = value);
@@ -355,14 +402,16 @@ class _ProfilePageState extends State<ProfilePage> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.layers_rounded),
-                title: const Text('Map layers'),
-                subtitle: const Text('Cameras, traffic and map style'),
+                title: Text(_text('Map layers', '地图图层')),
+                subtitle: Text(
+                  _text('Cameras, traffic and map style', '摄像头、路况与地图样式'),
+                ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onMapLayers,
               ),
               if (profile != null) ...[
                 const SizedBox(height: 12),
-                const _SectionTitle('Your activity'),
+                _SectionTitle(_text('Your activity', '你的活动')),
                 _ActivitySection(
                   'Recent routes',
                   Icons.route_rounded,
