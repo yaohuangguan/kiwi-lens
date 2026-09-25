@@ -68,8 +68,9 @@ class RoadEventTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visible = events.take(4).toList(growable: false);
-    if (visible.isEmpty && maneuverLabel == null)
+    if (visible.isEmpty && maneuverLabel == null) {
       return const SizedBox.shrink();
+    }
     final foreground = dark ? TasmanColors.darkText : TasmanColors.lightText;
     final muted = dark
         ? TasmanColors.darkTextSecondary
