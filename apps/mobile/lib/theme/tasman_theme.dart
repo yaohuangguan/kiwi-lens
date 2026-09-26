@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 /// Shared colors and geometry for the Ocean identity.
 abstract final class TasmanColors {
-  static const sky = Color(0xFF38BDF8);
-  static const coastal = Color(0xFF0EA5E9);
-  static const ocean = Color(0xFF0284C7);
-  static const teal = Color(0xFF0891B2);
+  static const sky = Color(0xFFB9E1FF);
+  static const coastal = Color(0xFF3B82F6);
+  static const ocean = Color(0xFF0077B6);
+  static const teal = Color(0xFF00A6A6);
   static const deepTeal = Color(0xFF0E7490);
   static const deepOcean = Color(0xFF0C4A6E);
   static const darkOcean = Color(0xFF082F49);
-  static const midnightOcean = Color(0xFF061E2C);
+  static const midnightOcean = Color(0xFF032B45);
   static const lightBackground = Color(0xFFF3FAFC);
   static const lightSurface = Color(0xFFFFFFFF);
   static const lightText = Color(0xFF123044);

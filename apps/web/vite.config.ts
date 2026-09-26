@@ -5,11 +5,11 @@ export default defineConfig({
   server: { port: 5173, proxy: { '/api': 'http://localhost:8787' } },
   plugins: [VitePWA({
     registerType: 'autoUpdate',
-    includeAssets: ['favicon.svg'],
+    includeAssets: ['brand/tasman-icon-192.png', 'brand/tasman-icon-512.png'],
     manifest: {
       name: 'Tasman · NZ Navigation', short_name: 'Tasman', description: 'Route planning and road-safety awareness for New Zealand.',
-      theme_color: '#061e2c', background_color: '#061e2c', display: 'standalone', start_url: '/app', scope: '/', orientation: 'portrait',
-      icons: [{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }]
+      theme_color: '#032b45', background_color: '#032b45', display: 'standalone', start_url: '/app', scope: '/', orientation: 'portrait',
+      icons: [{ src: '/brand/tasman-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: '/brand/tasman-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }]
     },
     workbox: {
       navigateFallback: '/index.html',

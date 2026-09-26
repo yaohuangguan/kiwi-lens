@@ -6,6 +6,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../data/camera_repository.dart';
 import '../data/nzta_road_event_provider.dart';
+import '../data/nzta_traffic_road_event_provider.dart';
 import '../data/speed_limit_repository.dart';
 import '../domain/country_profile.dart';
 import '../domain/geo_math.dart';
@@ -35,7 +36,8 @@ class DriveEngine extends ChangeNotifier {
     _nztaProvider = NztaRoadEventProvider(
       cameraRepository ?? CameraRepository(),
     );
-    _providerRegistry = RoadEventProviderRegistry([_nztaProvider]);
+    _trafficProvider = NztaTrafficRoadEventProvider();
+    _providerRegistry = RoadEventProviderRegistry([_nztaProvider, _trafficProvider]);
   }
 
   final CameraMatcher _cameraMatcher;
@@ -44,9 +46,11 @@ class DriveEngine extends ChangeNotifier {
   final RoadIntelligenceEngine _roadIntelligence;
   final CameraAlertLifecycle _cameraLifecycle;
   late final NztaRoadEventProvider _nztaProvider;
+  late final NztaTrafficRoadEventProvider _trafficProvider;
   late final RoadEventProviderRegistry _providerRegistry;
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  Timer? _roadIntelligenceRefreshTimer;
   final Set<String> _spokenAlerts = <String>{};
   final RouteCameraMatcher _routeMatcher = const RouteCameraMatcher();
 
@@ -99,6 +103,7 @@ class DriveEngine extends ChangeNotifier {
 
     await _voiceEngine.initialize();
     await loadCameras(force: true);
+    _startRoadIntelligenceRefreshTimer();
 
     final snapped =
         await GoogleMapsNavigator.setRoadSnappedLocationUpdatedListener(
@@ -151,6 +156,7 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
     await _voiceEngine.initialize();
     await loadCameras(force: true);
+    _startRoadIntelligenceRefreshTimer();
     _subscriptions.add(
       Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
@@ -178,7 +184,18 @@ class DriveEngine extends ChangeNotifier {
       roadEvents = await _providerRegistry.load(CountryProfiles.nz);
       final snapshot = _nztaProvider.lastSnapshot;
       _cameras = snapshot?.cameras ?? const [];
-      roadIntelligenceStatus = snapshot?.syncStatus ?? 'unavailable';
+      final cameraStatus = snapshot?.syncStatus ?? 'unavailable';
+      final trafficStatus = _trafficProvider.lastSyncStatus;
+      final providerErrors = _providerRegistry.lastErrors;
+      roadIntelligenceStatus =
+          cameraStatus == 'stale' || trafficStatus == 'stale'
+              ? 'stale'
+              : (providerErrors.isNotEmpty ||
+                    cameraStatus == 'unavailable' ||
+                    trafficStatus == 'unavailable' ||
+                    trafficStatus == 'not_loaded'
+                    ? 'partial'
+                    : 'live');
       _recomputeRouteCameras();
       error = null;
     } catch (exception) {
@@ -188,6 +205,14 @@ class DriveEngine extends ChangeNotifier {
       loadingCameras = false;
       notifyListeners();
     }
+  }
+
+  void _startRoadIntelligenceRefreshTimer() {
+    _roadIntelligenceRefreshTimer?.cancel();
+    _roadIntelligenceRefreshTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => unawaited(loadCameras(force: true)),
+    );
   }
 
   void setRoute(RouteOption? route) {
@@ -255,8 +280,6 @@ class DriveEngine extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    roadIntelligenceStatus =
-        _nztaProvider.lastSnapshot?.syncStatus ?? roadIntelligenceStatus;
     unawaited(_refreshSpeedLimit(current));
 
     CameraMatch? match;
@@ -437,6 +460,8 @@ class DriveEngine extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _roadIntelligenceRefreshTimer?.cancel();
+    _roadIntelligenceRefreshTimer = null;
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }
@@ -467,6 +492,7 @@ class DriveEngine extends ChangeNotifier {
 
   @override
   void dispose() {
+    _roadIntelligenceRefreshTimer?.cancel();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }

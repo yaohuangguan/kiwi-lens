@@ -226,3 +226,8 @@ button, input { font: inherit; }
 
 /* Canonical Tasman mark: website, dashboard and PWA use the same source. */
 .site-logo img { width: 34px; height: 34px; display: block; border-radius: 9px; }
+
+/* Source artwork cropped directly from the approved Tasman identity board. */
+.site-lockup { display: block; width: 217px; height: auto; mix-blend-mode: multiply; }
+.mini-brand .site-lockup { width: 170px; mix-blend-mode: normal; }
+.product-window-bar { background: #fff; color: #032b45; border-bottom: 1px solid #d4e3ea; }

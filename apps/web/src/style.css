@@ -444,3 +444,11 @@ body[data-mode='explore'] .poi-card { display: flex; flex-direction: column; bot
 
 /* Canonical Tasman mark. */
 .brand-icon img { width: 31px; height: 31px; display: block; border-radius: 8px; }
+
+/* Tasman approved lockup and coastal navigation chrome. */
+.topbar { background: rgba(255,255,255,.96); color: #032b45; box-shadow: 0 8px 20px rgba(3,43,69,.12); }
+.brand { flex: none; }
+.brand img { display: block; width: 185px; height: 44px; object-fit: contain; object-position: left center; mix-blend-mode: multiply; }
+@media (max-width: 759px) { .brand img { width: 145px; height: 35px; } }
+@media (max-width: 390px) { .brand img { width: 125px; height: 31px; } }
+@media (min-width: 1100px) { .topbar { background: rgba(255,255,255,.96); } }

@@ -1,8 +1,6 @@
 import './site.css';
 
-const logo = `
-  <span class="site-logo" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
-  <span class="site-wordmark">TASMAN</span>`;
+const logo = `<img class="site-lockup" src="/brand/tasman-lockup.png" alt="Tasman Maps & Navigation" />`;
 
 document.documentElement.lang = 'en-NZ';
 document.title = 'Tasman · Navigate New Zealand with clarity';

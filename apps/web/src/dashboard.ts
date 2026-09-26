@@ -3,9 +3,7 @@ import './site.css';
 import { currentProfile, initAccount, type AccountProfile, type Language } from './account';
 import { renderProfileView } from './profile-view';
 
-const logo = `
-  <span class="site-logo" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
-  <span class="site-wordmark">TASMAN</span>`;
+const logo = `<img class="site-lockup" src="/brand/tasman-lockup.png" alt="Tasman Maps & Navigation" />`;
 
 let language: Language = 'en';
 let voiceEnabled = true;

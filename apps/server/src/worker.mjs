@@ -3,6 +3,7 @@ import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
 import { handleAccount } from './auth.mjs';
 import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
+import { loadRoadEventState } from './road_events.mjs';
 
 const CAMERA_KEY = 'cameras/current';
 let lastSearchAt = 0;
@@ -94,6 +95,9 @@ async function handleApi(request, env, ctx) {
     const state = await readCameraState(env);
     if (state.syncStatus === 'seed') ctx.waitUntil(syncCameras(env));
     return json({ ...state, source: SOURCE_URL });
+  }
+  if (url.pathname === '/api/road-events') {
+    return json(await loadRoadEventState(env));
   }
   if (url.pathname === '/api/speed-limit') {
     const at = validateCoordinatePair(url.searchParams.get('at'));

@@ -87,3 +87,21 @@ void main() {
     expect(results.map((event) => event.id), ['ahead']);
   });
 }
+
+class FailingProvider implements RoadEventProvider {
+  @override
+  bool supports(CountryProfile country) => true;
+
+  @override
+  Future<List<RoadEvent>> load() async => throw StateError('upstream failed');
+}
+
+test('provider registry keeps partial road intelligence when one provider fails', () async {
+  final registry = RoadEventProviderRegistry([
+    CountingProvider(),
+    FailingProvider(),
+  ]);
+  final events = await registry.load(CountryProfiles.nz);
+  expect(events, hasLength(1));
+  expect(registry.lastErrors, hasLength(1));
+});

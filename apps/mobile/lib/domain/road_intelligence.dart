@@ -13,16 +13,23 @@ abstract class RoadEventProvider {
 }
 
 class RoadEventProviderRegistry {
-  const RoadEventProviderRegistry(this.providers);
+  RoadEventProviderRegistry(this.providers);
   final List<RoadEventProvider> providers;
+  List<Object> lastErrors = const [];
 
   Future<List<RoadEvent>> load(CountryProfile country) async {
     if (!country.roadIntelligenceAvailable) return const [];
     final available = providers.where((p) => p.supports(country));
     final events = <RoadEvent>[];
+    final errors = <Object>[];
     for (final provider in available) {
-      events.addAll(await provider.load());
+      try {
+        events.addAll(await provider.load());
+      } catch (error) {
+        errors.add(error);
+      }
     }
+    lastErrors = List.unmodifiable(errors);
     return events;
   }
 }

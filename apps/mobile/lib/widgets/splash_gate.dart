@@ -1,5 +1,3 @@
-import '../theme/tasman_theme.dart';
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -35,53 +33,23 @@ class _SplashGateState extends State<SplashGate> {
     duration: const Duration(milliseconds: 360),
     child: _ready
         ? KeyedSubtree(key: const ValueKey('kiwi-map'), child: widget.child)
-        : const Scaffold(
+        : Scaffold(
             key: ValueKey('kiwi-splash'),
-            backgroundColor: Color(0xFF0B1717),
+            backgroundColor: Colors.white,
             body: SafeArea(
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _SplashMark(),
-                    SizedBox(height: 24),
-                    Text(
-                      'TASMAN',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 31,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    SizedBox(height: 9),
-                    Text(
-                      'See the road ahead',
-                      style: TextStyle(
-                        color: TasmanColors.sky,
-                        fontSize: 13,
-                        letterSpacing: 1,
-                      ),
+                    Image.asset(
+                      'assets/icon/tasman_lockup.png',
+                      width: 315,
+                      fit: BoxFit.contain,
                     ),
                   ],
                 ),
               ),
             ),
           ),
-  );
-}
-
-class _SplashMark extends StatelessWidget {
-  const _SplashMark();
-
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(24),
-    child: Image.asset(
-      'assets/icon/app_icon.png',
-      width: 86,
-      height: 86,
-      fit: BoxFit.cover,
-    ),
   );
 }
