@@ -10,7 +10,10 @@ abstract final class TasmanColors {
   static const deepOcean = Color(0xFF0C4A6E);
   static const darkOcean = Color(0xFF082F49);
   static const midnightOcean = Color(0xFF032B45);
-  static const lightBackground = Color(0xFFF3FAFC);
+  static const lightBackground = Color(0xFFF5FAFD);
+  static const mist = Color(0xFFEAF6FC);
+  static const ice = Color(0xFFDDF1FB);
+  static const horizon = Color(0xFF65C7E8);
   static const lightSurface = Color(0xFFFFFFFF);
   static const lightText = Color(0xFF123044);
   static const lightTextSecondary = Color(0xFF526979);
@@ -63,6 +66,34 @@ abstract final class TasmanTheme {
           ? TasmanColors.midnightOcean
           : TasmanColors.lightBackground,
       dividerColor: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
+      appBarTheme: AppBarTheme(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: dark ? TasmanColors.darkOcean : TasmanColors.lightBackground,
+        foregroundColor: dark ? TasmanColors.darkText : TasmanColors.deepOcean,
+        surfaceTintColor: Colors.transparent,
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: dark ? TasmanColors.darkSurface : TasmanColors.lightSurface,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder),
+          borderRadius: BorderRadius.circular(TasmanRadius.panel),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: dark ? TasmanColors.darkSurface : TasmanColors.lightSurface,
+        selectedColor: dark ? TasmanColors.deepTeal : TasmanColors.ice,
+        side: BorderSide(color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        labelStyle: TextStyle(color: dark ? TasmanColors.darkText : TasmanColors.deepOcean, fontWeight: FontWeight.w700),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        elevation: 0,
+        backgroundColor: dark ? TasmanColors.darkOcean : TasmanColors.lightSurface,
+        indicatorColor: dark ? TasmanColors.deepTeal : TasmanColors.ice,
+        labelTextStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: dark ? TasmanColors.darkText : TasmanColors.deepOcean)),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(TasmanRadius.button),

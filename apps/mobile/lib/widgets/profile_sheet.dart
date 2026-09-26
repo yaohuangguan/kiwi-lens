@@ -1,3 +1,5 @@
+import '../theme/tasman_theme.dart';
+
 import 'package:flutter/material.dart';
 
 import '../data/account_repository.dart';
@@ -48,7 +50,7 @@ class _ProfileSheetState extends State<ProfileSheet> {
             child: ListView(padding: EdgeInsets.fromLTRB(20, 12, 20,
               MediaQuery.viewInsetsOf(context).bottom + 24), children: [
               Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 18),
-                decoration: BoxDecoration(color: const Color(0xFFD0D8D2), borderRadius: BorderRadius.circular(6)))),
+                decoration: BoxDecoration(color: TasmanColors.lightBorder, borderRadius: BorderRadius.circular(6)))),
               Row(children: [
                 const Expanded(child: Text('My Tasman', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
                 IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close_rounded)),

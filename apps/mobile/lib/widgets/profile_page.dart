@@ -109,21 +109,21 @@ class _ProfilePageState extends State<ProfilePage> {
     final name = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit display name'),
+        title: Text(_text('Edit display name', '编辑显示名称')),
         content: TextField(
           controller: controller,
           autofocus: true,
           maxLength: 100,
-          decoration: const InputDecoration(labelText: 'Name'),
+          decoration: InputDecoration(labelText: _text('Name', '名称')),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(_text('Cancel', '取消')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Save'),
+            child: Text(_text('Save', '保存')),
           ),
         ],
       ),
@@ -164,9 +164,9 @@ class _ProfilePageState extends State<ProfilePage> {
     builder: (context, _) {
       final profile = widget.account.profile;
       return Scaffold(
-        backgroundColor: const Color(0xFFF7F9F5),
+        backgroundColor: TasmanColors.lightBackground,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF0B1717),
+          backgroundColor: TasmanColors.darkOcean,
           foregroundColor: Colors.white,
           title: Text(
             _text('My Tasman', '我的 Tasman'),
@@ -180,7 +180,11 @@ class _ProfilePageState extends State<ProfilePage> {
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0B1717),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [TasmanColors.darkOcean, TasmanColors.ocean],
+                  ),
                   borderRadius: BorderRadius.circular(22),
                 ),
                 child: Row(
@@ -191,9 +195,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: Text(
                         profile?.displayName.isNotEmpty == true
                             ? profile!.displayName[0].toUpperCase()
-                            : 'K',
+                            : 'T',
                         style: const TextStyle(
-                          color: Color(0xFF0B1717),
+                          color: TasmanColors.darkOcean,
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                         ),
@@ -418,22 +422,22 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: Text(_text('Location marker', '位置标记')),
                 trailing: DropdownButton<LocationMarkerStyle>(
                   value: _locationMarker,
-                  items: const [
+                  items: [
                     DropdownMenuItem(
                       value: LocationMarkerStyle.kiwi,
-                      child: Text('Kiwi'),
+                      child: Text(_text('Tasman bird', 'Tasman 鸟标')),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.arrow,
-                      child: Text('Arrow'),
+                      child: Text(_text('Arrow', '箭头')),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.car,
-                      child: Text('Car'),
+                      child: Text(_text('Car', '车辆')),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.classic,
-                      child: Text('Classic'),
+                      child: Text(_text('Classic', '经典')),
                     ),
                   ],
                   onChanged: (value) {
@@ -493,28 +497,34 @@ class _ProfilePageState extends State<ProfilePage> {
                 const SizedBox(height: 12),
                 _SectionTitle(_text('Your activity', '你的活动')),
                 _ActivitySection(
-                  'Recent routes',
+                  _text('Recent routes', '最近路线'),
                   Icons.route_rounded,
                   profile.routes
                       .map(
                         (item) =>
-                            item['destinationName']?.toString() ?? 'Route',
+                            item['destinationName']?.toString() ?? _text('Route', '路线'),
                       )
                       .toList(),
+                  countLabel: _text('items', '项'),
+                  emptyLabel: _text('Nothing here yet', '这里还没有内容'),
                 ),
                 _ActivitySection(
-                  'Saved places',
+                  _text('Saved places', '已收藏地点'),
                   Icons.bookmark_rounded,
                   profile.places
-                      .map((item) => item['name']?.toString() ?? 'Place')
+                      .map((item) => item['name']?.toString() ?? _text('Place', '地点'))
                       .toList(),
+                  countLabel: _text('items', '项'),
+                  emptyLabel: _text('Nothing here yet', '这里还没有内容'),
                 ),
                 _ActivitySection(
-                  'Your reviews',
+                  _text('Your reviews', '你的评价'),
                   Icons.rate_review_rounded,
                   profile.reviews
-                      .map((item) => item['placeName']?.toString() ?? 'Place')
+                      .map((item) => item['placeName']?.toString() ?? _text('Place', '地点'))
                       .toList(),
+                  countLabel: _text('items', '项'),
+                  emptyLabel: _text('Nothing here yet', '这里还没有内容'),
                 ),
                 const SizedBox(height: 15),
                 OutlinedButton.icon(
@@ -523,7 +533,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     if (mounted) setState(() => _error = null);
                   },
                   icon: const Icon(Icons.logout_rounded),
-                  label: const Text('Sign out'),
+                  label: Text(_text('Sign out', '退出登录')),
                 ),
               ],
             ],
@@ -557,7 +567,7 @@ class _Stat extends StatelessWidget {
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFE8F4D6),
+        color: TasmanColors.ice,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -575,18 +585,26 @@ class _Stat extends StatelessWidget {
 }
 
 class _ActivitySection extends StatelessWidget {
-  const _ActivitySection(this.title, this.icon, this.items);
+  const _ActivitySection(
+    this.title,
+    this.icon,
+    this.items, {
+    required this.countLabel,
+    required this.emptyLabel,
+  });
   final String title;
   final IconData icon;
   final List<String> items;
+  final String countLabel;
+  final String emptyLabel;
   @override
   Widget build(BuildContext context) => ExpansionTile(
     tilePadding: EdgeInsets.zero,
     leading: Icon(icon),
     title: Text(title),
-    subtitle: Text('${items.length} items'),
+    subtitle: Text('${items.length} $countLabel'),
     children: items.isEmpty
-        ? [const ListTile(title: Text('Nothing here yet'))]
+        ? [ListTile(title: Text(emptyLabel))]
         : items.take(30).map((item) => ListTile(title: Text(item))).toList(),
   );
 }

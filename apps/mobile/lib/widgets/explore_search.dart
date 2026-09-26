@@ -317,7 +317,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       const Icon(
                         Icons.my_location_rounded,
                         size: 19,
-                        color: Color(0xFF295747),
+                        color: TasmanColors.deepOcean,
                       ),
                       const SizedBox(width: 11),
                       Expanded(
@@ -387,7 +387,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                             width: 6,
                             height: 6,
                             decoration: const BoxDecoration(
-                              color: Color(0xFF153B32),
+                              color: TasmanColors.deepOcean,
                               shape: BoxShape.circle,
                             ),
                           ),

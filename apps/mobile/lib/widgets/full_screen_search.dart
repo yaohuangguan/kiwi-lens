@@ -179,7 +179,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: Color(0xFF8FBE2E),
+                  color: TasmanColors.ocean,
                   width: 1.8,
                 ),
               ),

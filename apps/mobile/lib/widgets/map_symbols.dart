@@ -138,7 +138,7 @@ class MapSymbols {
     final paint = Paint()..isAntiAlias = true;
     paint.color = Colors.white;
     canvas.drawCircle(const Offset(36, 36), 30, paint);
-    paint.color = const Color(0xFF153B32);
+    paint.color = TasmanColors.deepOcean;
     canvas.drawCircle(const Offset(36, 36), 26, paint);
     paint.color = TasmanColors.sky;
     canvas.drawRRect(
@@ -155,7 +155,7 @@ class MapSymbols {
       ),
       paint,
     );
-    paint.color = const Color(0xFF153B32);
+    paint.color = TasmanColors.deepOcean;
     canvas.drawCircle(const Offset(25, 49), 4, paint);
     canvas.drawCircle(const Offset(47, 49), 4, paint);
     final image = await recorder.endRecording().toImage(72, 72);

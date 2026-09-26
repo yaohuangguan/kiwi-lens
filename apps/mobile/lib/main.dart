@@ -2653,16 +2653,19 @@ class _MapHomePageState extends State<MapHomePage> {
   Widget _buildBottomBar() {
     Widget item(IconData icon, String label, VoidCallback action) => Expanded(
       child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: action,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 25, color: const Color(0xFF153B32)),
+              Icon(icon, size: 22, color: TasmanColors.deepOcean),
+              const SizedBox(height: 2),
               Text(
                 label,
                 style: const TextStyle(
+                  color: TasmanColors.deepOcean,
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
                 ),
@@ -2672,69 +2675,67 @@ class _MapHomePageState extends State<MapHomePage> {
         ),
       ),
     );
-    return Material(
-      color: Colors.white,
-      elevation: 16,
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            item(Icons.map_rounded, _text('Map', '地图'), _recenter),
-            item(
-              Icons.explore_rounded,
-              _text('Explore', '探索'),
-              () => unawaited(_showExplore()),
-            ),
-            Expanded(
-              child: InkWell(
-                onTap: _showGoSearch,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 49,
-                        height: 39,
-                        decoration: BoxDecoration(
-                          color: TasmanColors.sky,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.directions_car_filled_rounded,
-                              size: 21,
-                              color: Color(0xFF0B1717),
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .96),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: TasmanColors.sky.withValues(alpha: .6)),
+          boxShadow: const [
+            BoxShadow(color: Color(0x22082F49), blurRadius: 22, offset: Offset(0, 8)),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+          child: Row(
+            children: [
+              item(Icons.map_outlined, _text('Map', '地图'), _recenter),
+              item(Icons.explore_outlined, _text('Explore', '探索'), () => unawaited(_showExplore())),
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(17),
+                  onTap: _showGoSearch,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 3),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 55,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [TasmanColors.ocean, TasmanColors.teal],
                             ),
-                            Icon(
-                              Icons.pedal_bike_rounded,
-                              size: 17,
-                              color: Color(0xFF0B1717),
-                            ),
-                          ],
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: const [
+                              BoxShadow(color: Color(0x300077B6), blurRadius: 10, offset: Offset(0, 4)),
+                            ],
+                          ),
+                          child: const Icon(Icons.navigation_rounded, size: 22, color: Colors.white),
                         ),
-                      ),
-                      Text(
-                        _text('Start', '出发'),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
+                        const SizedBox(height: 2),
+                        Text(
+                          _text('Start', '出发'),
+                          style: const TextStyle(
+                            color: TasmanColors.ocean,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            item(
-              Icons.bookmark_rounded,
-              _text('Saved', '收藏'),
-              () => unawaited(_showSaved()),
-            ),
-            item(Icons.person_rounded, _text('Me', '我的'), _showProfile),
-          ],
+              item(Icons.bookmark_outline_rounded, _text('Saved', '收藏'), () => unawaited(_showSaved())),
+              item(Icons.person_outline_rounded, _text('Me', '我的'), _showProfile),
+            ],
+          ),
         ),
       ),
     );
@@ -3036,32 +3037,65 @@ class _MapHomePageState extends State<MapHomePage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Material(
-                      color: Colors.white,
-                      elevation: 8,
-                      borderRadius: BorderRadius.circular(22),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .96),
+                        borderRadius: BorderRadius.circular(19),
+                        border: Border.all(color: TasmanColors.sky.withValues(alpha: .72)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x18082F49),
+                            blurRadius: 18,
+                            offset: Offset(0, 7),
+                          ),
+                        ],
+                      ),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(19),
                         onTap: _showGoSearch,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 17,
-                            vertical: 16,
-                          ),
+                          padding: const EdgeInsets.fromLTRB(9, 8, 12, 8),
                           child: Row(
                             children: [
-                              const Icon(
-                                Icons.search_rounded,
-                                color: Color(0xFF1479FF),
+                              Container(
+                                width: 39,
+                                height: 39,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [TasmanColors.ocean, TasmanColors.teal],
+                                  ),
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: const Icon(Icons.explore_rounded, color: Colors.white, size: 22),
                               ),
                               const SizedBox(width: 11),
-                              Text(
-                                _text('Where to?', '去哪儿？'),
-                                style: const TextStyle(
-                                  color: Color(0xFF61758A),
-                                  fontWeight: FontWeight.w700,
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _text('Where to?', '去哪儿？'),
+                                      style: const TextStyle(
+                                        color: TasmanColors.deepOcean,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w850,
+                                      ),
+                                    ),
+                                    Text(
+                                      _text('Navigate Aotearoa with Tasman', '用 Tasman 探索新西兰'),
+                                      style: const TextStyle(
+                                        color: TasmanColors.lightTextSecondary,
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
+                              const Icon(Icons.arrow_forward_rounded, color: TasmanColors.ocean, size: 19),
                             ],
                           ),
                         ),

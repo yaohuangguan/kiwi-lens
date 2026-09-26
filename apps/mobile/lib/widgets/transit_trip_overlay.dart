@@ -5,7 +5,7 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
 
-const _ink = Color(0xFF0B1717);
+const _ink = TasmanColors.darkOcean;
 const _accent = TasmanColors.sky;
 
 String _duration(int seconds) {
