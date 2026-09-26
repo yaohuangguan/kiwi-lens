@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../data/place_details_repository.dart';
 import '../domain/coordinate_formatter.dart';
 import '../domain/map_provider.dart';
+import '../theme/tasman_theme.dart';
 
 class PlaceDetailsContent extends StatelessWidget {
   const PlaceDetailsContent({
@@ -33,6 +34,8 @@ class PlaceDetailsContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final place = details;
     final address = place?.address.isNotEmpty == true
         ? place!.address
@@ -42,165 +45,311 @@ class PlaceDetailsContent extends StatelessWidget {
             selectedPlace.location.latitude,
             selectedPlace.location.longitude,
           );
+    final title = place?.name ?? selectedPlace.name;
+    final type =
+        (place?.primaryType.isNotEmpty == true
+                ? place!.primaryType
+                : selectedPlace.category)
+            .replaceAll('_', ' ')
+            .trim();
+
     return Material(
-      color: Colors.white,
-      elevation: 18,
-      borderRadius: BorderRadius.circular(26),
+      color: scheme.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+        side: BorderSide(color: theme.dividerColor),
+      ),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+          maxHeight: (MediaQuery.sizeOf(context).height * .66).clamp(
+            430.0,
+            620.0,
+          ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (place?.photos.isNotEmpty == true)
+                _PhotoStrip(photos: place!.photos)
+              else
+                _PhotoFallback(title: title),
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 8),
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 2),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (place?.photos.isNotEmpty == true)
-                      _PhotoStrip(photos: place!.photos),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 16, 12, 4),
-                      child: Row(
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  place?.name ?? selectedPlace.name,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                if (place?.primaryType.isNotEmpty == true)
-                                  Text(
-                                    place!.primaryType.toUpperCase(),
-                                    style: const TextStyle(
-                                      color: Color(0xFF507060),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  address,
-                                  style: const TextStyle(
-                                    color: Color(0xFF68766F),
-                                    fontSize: 12,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ],
+                          Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              height: 1.05,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
-                          IconButton(
-                            onPressed: onClose,
-                            icon: const Icon(Icons.close_rounded),
-                            tooltip: 'Close',
+                          if (type.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              type,
+                              style: TextStyle(
+                                color: scheme.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          Text(
+                            address,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                              height: 1.3,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    if (detailsLoading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 8,
-                        ),
-                        child: LinearProgressIndicator(minHeight: 2),
-                      ),
-                    if (detailsError != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 6,
-                        ),
-                        child: Text(
-                          detailsError!,
-                          style: const TextStyle(
-                            color: Color(0xFF9B4B3D),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    if (place != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
-                        child: _DetailsBody(place: place),
-                      ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Close',
+                    ),
                   ],
                 ),
               ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: routeBusy ? null : onNavigate,
-                      icon: routeBusy
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.directions_rounded, size: 19),
-                      label: Text(routeBusy ? 'Routing' : 'Directions'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: onFavorite,
-                    icon: Icon(
-                      isFavorite
-                          ? Icons.bookmark_rounded
-                          : Icons.bookmark_outline_rounded,
-                    ),
-                    label: const Text('Save'),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-              child: Row(
-                children: [
-                  TextButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(
-                        ClipboardData(
-                          text:
-                              '${selectedPlace.name}\n$address\n'
-                              '${selectedPlace.location.latitude},'
-                              '${selectedPlace.location.longitude}',
-                        ),
-                      );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Place copied to clipboard'),
+              if (place?.rating != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: TasmanColors.warning,
+                            size: 17,
                           ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.share_outlined, size: 18),
-                    label: const Text('Share'),
+                          const SizedBox(width: 4),
+                          Text(
+                            place!.rating!.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            '${place.userRatingCount ?? 0} ratings',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (place.businessStatus != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 4,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: scheme.outline,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              place.businessStatus == 'OPERATIONAL'
+                                  ? 'Open / operational'
+                                  : place.businessStatus!.replaceAll('_', ' '),
+                              style: TextStyle(
+                                color: place.businessStatus == 'OPERATIONAL'
+                                    ? TasmanColors.success
+                                    : scheme.onSurfaceVariant,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
                   ),
-                  TextButton.icon(
-                    onPressed: onReview,
-                    icon: const Icon(Icons.more_horiz_rounded, size: 18),
-                    label: const Text('More'),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _PlaceAction(
+                        icon: Icons.directions_car_filled_rounded,
+                        label: routeBusy ? 'Routing' : 'Drive',
+                        selected: true,
+                        busy: routeBusy,
+                        onTap: routeBusy ? null : onNavigate,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: _PlaceAction(
+                        icon: isFavorite
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        label: 'Save',
+                        selected: false,
+                        onTap: onFavorite,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: _PlaceAction(
+                        icon: Icons.ios_share_rounded,
+                        label: 'Share',
+                        selected: false,
+                        onTap: () async {
+                          await Clipboard.setData(
+                            ClipboardData(
+                              text:
+                                  '${selectedPlace.name}\n$address\n'
+                                  '${selectedPlace.location.latitude},'
+                                  '${selectedPlace.location.longitude}',
+                            ),
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Place copied to clipboard'),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: _PlaceAction(
+                        icon: Icons.more_horiz_rounded,
+                        label: 'More',
+                        selected: false,
+                        onTap: onReview,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (detailsLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              if (detailsError != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+                  child: Text(
+                    detailsError!,
+                    style: TextStyle(
+                      color: scheme.error,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ],
+                ),
+              if (place != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
+                  child: _DetailsBody(place: place),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaceAction extends StatelessWidget {
+  const _PlaceAction({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.busy = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final background = selected ? scheme.primary : scheme.surfaceContainerLow;
+    final foreground = selected ? scheme.onPrimary : scheme.primary;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: Container(
+        height: 58,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(15),
+          border: selected
+              ? null
+              : Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (busy)
+              SizedBox(
+                width: 19,
+                height: 19,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: foreground,
+                ),
+              )
+            else
+              Icon(icon, color: foreground, size: 21),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ],
@@ -216,56 +365,89 @@ class _PhotoStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
-      height: 185,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: photos.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 3),
+      height: 150,
+      child: PageView.builder(
+        itemCount: photos.length.clamp(1, 4),
         itemBuilder: (context, index) {
           final photo = photos[index];
-          return SizedBox(
-            width: MediaQuery.sizeOf(context).width * 0.78,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(
-                  photo.url,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, progress) => progress == null
-                      ? child
-                      : const ColoredBox(
-                          color: Color(0xFFE7ECE8),
-                          child: Center(child: CircularProgressIndicator()),
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                photo.url,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) => progress == null
+                    ? child
+                    : ColoredBox(
+                        color: scheme.surfaceContainerHighest,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: scheme.primary,
+                          ),
                         ),
-                  errorBuilder: (_, _, _) => const ColoredBox(
-                    color: Color(0xFFE7ECE8),
-                    child: Center(
-                      child: Icon(Icons.image_not_supported_outlined),
+                      ),
+                errorBuilder: (_, _, _) => ColoredBox(
+                  color: scheme.surfaceContainerHighest,
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: .28),
+                    ],
+                  ),
+                ),
+              ),
+              if (photo.attribution.isNotEmpty)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  bottom: 6,
+                  child: Text(
+                    '© ${photo.attribution}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      shadows: [Shadow(blurRadius: 5, color: Colors.black87)],
                     ),
                   ),
                 ),
-                if (photo.attribution.isNotEmpty)
-                  Positioned(
-                    left: 7,
-                    right: 7,
-                    bottom: 5,
-                    child: Text(
-                      '© ${photo.attribution}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        shadows: [Shadow(blurRadius: 5, color: Colors.black87)],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+            ],
           );
         },
       ),
+    );
+  }
+}
+
+class _PhotoFallback extends StatelessWidget {
+  const _PhotoFallback({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 92,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [scheme.primaryContainer, scheme.surfaceContainerHighest],
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Icon(Icons.place_rounded, color: scheme.primary, size: 34),
     );
   }
 }
@@ -276,38 +458,17 @@ class _DetailsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final chips = <String>[
-      if (place.businessStatus == 'OPERATIONAL') 'Open / operational',
-      if (place.businessStatus != null && place.businessStatus != 'OPERATIONAL')
-        place.businessStatus!.replaceAll('_', ' '),
       if (place.priceLevel != null) place.priceLevel!.replaceAll('_', ' '),
       if (place.phone.isNotEmpty) place.phone,
     ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (place.rating != null)
-          Row(
-            children: [
-              const Icon(
-                Icons.star_rounded,
-                color: Color(0xFFE0A11B),
-                size: 20,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                place.rating!.toStringAsFixed(1),
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '${place.userRatingCount ?? 0} ratings',
-                style: const TextStyle(color: Color(0xFF78857F), fontSize: 12),
-              ),
-            ],
-          ),
-        if (chips.isNotEmpty) ...[
-          const SizedBox(height: 10),
+        if (chips.isNotEmpty)
           Wrap(
             spacing: 7,
             runSpacing: 7,
@@ -319,19 +480,29 @@ class _DetailsBody extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0F5F1),
+                    color: scheme.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: theme.dividerColor),
                   ),
-                  child: Text(chip, style: const TextStyle(fontSize: 11)),
+                  child: Text(
+                    chip,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
             ],
           ),
-        ],
         if (place.editorialSummary.isNotEmpty) ...[
-          const SizedBox(height: 14),
+          if (chips.isNotEmpty) const SizedBox(height: 12),
           Text(
             place.editorialSummary,
-            style: const TextStyle(fontSize: 13, height: 1.45),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.4,
+              color: scheme.onSurface,
+            ),
           ),
         ],
         if (place.openingHours.isNotEmpty) ...[
@@ -340,6 +511,8 @@ class _DetailsBody extends StatelessWidget {
             tilePadding: EdgeInsets.zero,
             childrenPadding: EdgeInsets.zero,
             dense: true,
+            shape: const Border(),
+            collapsedShape: const Border(),
             title: const Text(
               'Opening hours',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
@@ -352,8 +525,8 @@ class _DetailsBody extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 5),
                     child: Text(
                       line,
-                      style: const TextStyle(
-                        color: Color(0xFF5E6D66),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
@@ -363,7 +536,7 @@ class _DetailsBody extends StatelessWidget {
           ),
         ],
         if (place.reviews.isNotEmpty) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Row(
             children: [
               const Text(
@@ -373,11 +546,11 @@ class _DetailsBody extends StatelessWidget {
               const Spacer(),
               Text(
                 '${place.reviews.length} shown',
-                style: const TextStyle(color: Color(0xFF849089), fontSize: 10),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           for (final review in place.reviews) _ReviewTile(review: review),
         ],
       ],
@@ -391,20 +564,25 @@ class _ReviewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
             radius: 16,
-            backgroundColor: const Color(0xFFE9EFEA),
+            backgroundColor: scheme.surfaceContainerHighest,
             backgroundImage: review.authorPhoto?.isNotEmpty == true
                 ? NetworkImage(review.authorPhoto!)
                 : null,
             child: review.authorPhoto?.isNotEmpty == true
                 ? null
-                : const Icon(Icons.person_rounded, size: 17),
+                : Icon(
+                    Icons.person_rounded,
+                    size: 17,
+                    color: scheme.onSurfaceVariant,
+                  ),
           ),
           const SizedBox(width: 9),
           Expanded(
@@ -426,7 +604,7 @@ class _ReviewTile extends StatelessWidget {
                       Text(
                         '${review.rating!.toStringAsFixed(1)} ★',
                         style: const TextStyle(
-                          color: Color(0xFF9A7115),
+                          color: TasmanColors.warning,
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
                         ),
@@ -436,8 +614,8 @@ class _ReviewTile extends StatelessWidget {
                 if (review.relativeTime.isNotEmpty)
                   Text(
                     review.relativeTime,
-                    style: const TextStyle(
-                      color: Color(0xFF8A948E),
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
                       fontSize: 9,
                     ),
                   ),
@@ -445,8 +623,8 @@ class _ReviewTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     review.text,
-                    style: const TextStyle(
-                      color: Color(0xFF52635B),
+                    style: TextStyle(
+                      color: scheme.onSurface,
                       fontSize: 11,
                       height: 1.4,
                     ),

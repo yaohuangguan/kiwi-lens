@@ -322,114 +322,28 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                     ],
                   ),
-                  if (selectedMode == KiwiTravelMode.drive)
-                    _ParkingChoices(
-                      places: parkingPlaces,
-                      selectedId: selectedParkingId,
-                      finalDestinationTitle:
-                          finalDestinationTitle ?? destinationTitle,
-                      loading: parkingLoading,
-                      onSelected: onParkingSelected,
-                      onDirect: onDirectDestination,
-                      isChinese: isChinese,
-                    ),
                   if (routes.isNotEmpty) ...[
                     const Divider(height: 12),
-                    SizedBox(
-                      height: 72,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: routes.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 8),
-                        itemBuilder: (context, index) {
-                          final route = routes[index];
-                          final active = route.id == selected?.id;
-                          final delay = route.trafficDelaySeconds;
-                          return InkWell(
-                            onTap: () => onRouteSelected(route),
-                            borderRadius: BorderRadius.circular(15),
-                            child: Container(
-                              width: 166,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: active
-                                    ? Theme.of(context)
-                                          .colorScheme
-                                          .primaryContainer
-                                    : Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainerLow,
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: active
-                                      ? TasmanColors.ocean
-                                      : Theme.of(context).dividerColor,
-                                ),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Container(
-                                    width: 4,
-                                    decoration: BoxDecoration(
-                                      color: active
-                                          ? TasmanColors.ocean
-                                          : TasmanColors.sky,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 9),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          route.durationSeconds ==
-                                                  fastestDuration
-                                              ? 'Fastest'
-                                              : 'Alternative',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                          ),
-                                        ),
-                                        Text(
-                                          _duration(route.durationSeconds),
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${_distance(route.distanceMeters)}'
-                                          '${route.durationSeconds > fastestDuration + 60 ? ' · +${_duration(route.durationSeconds - fastestDuration)}' : ''}'
-                                          '${delay != null && delay > 60 ? ' · ${_duration(delay)} traffic' : ''}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        isChinese ? '路线选项' : 'Route options',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
+                    const SizedBox(height: 5),
+                    for (var index = 0; index < routes.length; index++) ...[
+                      _RouteOptionTile(
+                        route: routes[index],
+                        active: routes[index].id == selected?.id,
+                        fastestDuration: fastestDuration,
+                        onTap: () => onRouteSelected(routes[index]),
+                      ),
+                      if (index != routes.length - 1) const SizedBox(height: 6),
+                    ],
                   ],
                   if (selected != null) ...[
                     const SizedBox(height: 10),
@@ -488,6 +402,17 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (selectedMode == KiwiTravelMode.drive)
+                      _ParkingChoices(
+                        places: parkingPlaces,
+                        selectedId: selectedParkingId,
+                        finalDestinationTitle:
+                            finalDestinationTitle ?? destinationTitle,
+                        loading: parkingLoading,
+                        onSelected: onParkingSelected,
+                        onDirect: onDirectDestination,
+                        isChinese: isChinese,
+                      ),
                     if (customOrigin)
                       Align(
                         alignment: Alignment.centerLeft,
@@ -504,67 +429,80 @@ class RoutePreviewSheet extends StatelessWidget {
                     const SizedBox(height: 7),
                     Row(
                       children: [
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 8,
+                              ),
                             ),
-                          ),
-                          onPressed: selectedMode == KiwiTravelMode.transit
-                              ? null
-                              : onAddStop,
-                          icon: const Icon(
-                            Icons.add_location_alt_outlined,
-                            size: 17,
-                          ),
-                          label: Text(
-                            stopCount == 0 ? 'Add stop' : 'Stops $stopCount',
+                            onPressed: selectedMode == KiwiTravelMode.transit
+                                ? null
+                                : onAddStop,
+                            icon: const Icon(
+                              Icons.add_location_alt_outlined,
+                              size: 16,
+                            ),
+                            label: Text(
+                              stopCount == 0 ? 'Add stop' : 'Stops $stopCount',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 8,
+                              ),
                             ),
+                            onPressed: onSave,
+                            icon: const Icon(
+                              Icons.bookmark_border_rounded,
+                              size: 16,
+                            ),
+                            label: const Text('Save', maxLines: 1),
                           ),
-                          onPressed: onSave,
-                          icon: const Icon(
-                            Icons.bookmark_border_rounded,
-                            size: 17,
-                          ),
-                          label: const Text('Save'),
                         ),
-                        const Spacer(),
-                        FilledButton.icon(
-                          onPressed: busy ? null : onStart,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: TasmanColors.ocean,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 9,
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: busy ? null : onStart,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: TasmanColors.ocean,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 8,
+                              ),
                             ),
-                          ),
-                          icon: busy
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                            icon: busy
+                                ? const SizedBox(
+                                    width: 15,
+                                    height: 15,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.navigation_rounded,
+                                    size: 16,
                                   ),
-                                )
-                              : const Icon(Icons.navigation_rounded),
-                          label: Text(
-                            busy
-                                ? 'Starting…'
-                                : selectedMode == KiwiTravelMode.transit
-                                ? 'Start trip'
-                                : 'Start',
+                            label: Text(
+                              busy
+                                  ? 'Starting…'
+                                  : selectedMode == KiwiTravelMode.transit
+                                  ? 'Start trip'
+                                  : 'Start',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                       ],
@@ -574,6 +512,170 @@ class RoutePreviewSheet extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteOptionTile extends StatelessWidget {
+  const _RouteOptionTile({
+    required this.route,
+    required this.active,
+    required this.fastestDuration,
+    required this.onTap,
+  });
+
+  final RouteOption route;
+  final bool active;
+  final int fastestDuration;
+  final VoidCallback onTap;
+
+  String get _trafficLabel {
+    if (route.traffic.trafficJam > 0) return 'Heavier traffic';
+    if (route.traffic.slow > 0) return 'Some traffic';
+    return 'Light traffic';
+  }
+
+  Color _trafficColor() {
+    if (route.traffic.trafficJam > 0) return TasmanColors.danger;
+    if (route.traffic.slow > 0) return TasmanColors.warning;
+    return TasmanColors.ocean;
+  }
+
+  List<Color> _trafficBars() {
+    if (route.traffic.trafficJam > 0) {
+      return const [
+        TasmanColors.ocean,
+        TasmanColors.warning,
+        TasmanColors.warning,
+        TasmanColors.danger,
+        TasmanColors.danger,
+      ];
+    }
+    if (route.traffic.slow > 0) {
+      return const [
+        TasmanColors.ocean,
+        TasmanColors.ocean,
+        TasmanColors.ocean,
+        TasmanColors.warning,
+        TasmanColors.warning,
+      ];
+    }
+    return const [
+      TasmanColors.ocean,
+      TasmanColors.ocean,
+      TasmanColors.ocean,
+      TasmanColors.ocean,
+      TasmanColors.ocean,
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final fastest = route.durationSeconds == fastestDuration;
+    final delay = route.trafficDelaySeconds;
+    final description = route.description.trim().isNotEmpty
+        ? route.description.trim()
+        : fastest
+        ? 'Best route'
+        : 'Alternative';
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: active
+              ? scheme.primaryContainer.withValues(alpha: .72)
+              : scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active ? scheme.primary : theme.dividerColor,
+            width: active ? 1.6 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: active ? scheme.primary : scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                _icon(route.mode),
+                size: 17,
+                color: active ? scheme.onPrimary : scheme.primary,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _duration(route.durationSeconds),
+                    style: TextStyle(
+                      color: active ? scheme.primary : scheme.onSurface,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    '${_distance(route.distanceMeters)} · $description'
+                    '${delay != null && delay > 60 ? ' · ${_duration(delay)} traffic' : ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 84,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _trafficLabel,
+                    style: TextStyle(
+                      color: _trafficColor(),
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      for (final color in _trafficBars()) ...[
+                        Container(
+                          width: 10,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -717,22 +819,32 @@ class _ParkingChoices extends StatelessWidget {
       margin: const EdgeInsets.only(top: 7),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: scheme.primaryContainer.withValues(alpha: .35),
-        border: Border.all(color: scheme.primary.withValues(alpha: .22)),
-        borderRadius: BorderRadius.circular(18),
+        color: scheme.surfaceContainerLow,
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.local_parking_rounded, color: scheme.primary),
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(
+                  Icons.local_parking_rounded,
+                  color: scheme.primary,
+                  size: 18,
+                ),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  isChinese
-                      ? '终点附近停车 · $finalDestinationTitle'
-                      : 'Park near $finalDestinationTitle',
+                  isChinese ? '附近停车' : 'Nearby parking',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w800),
@@ -748,7 +860,9 @@ class _ParkingChoices extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            isChinese ? '先驾车到停车点，再步行至终点。所示距离为直线距离。' : 'Drive to a car park, then continue on foot. Distance shown is straight line.',
+            isChinese
+                ? '$finalDestinationTitle · 先驾车停车，再步行至终点'
+                : '$finalDestinationTitle · Drive, park, then continue on foot',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
