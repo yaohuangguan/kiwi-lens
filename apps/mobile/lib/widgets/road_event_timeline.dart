@@ -151,6 +151,7 @@ class RoadEventTimeline extends StatelessWidget {
             ],
               ),
             ),
+            ),
           ],
         ),
       ),
