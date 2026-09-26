@@ -1,3 +1,8 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 #include "Generated.xcconfig"
 #include? "Secrets.xcconfig"
+
+# Public Google OAuth client identifiers (not secrets).
+GOOGLE_IOS_CLIENT_ID=858928595374-slrbiedfhivmnliv0d4uvpn0n8rh21tu.apps.googleusercontent.com
+GOOGLE_SERVER_CLIENT_ID=858928595374-ht0e455sfe58a2cfgovjka7t40cku2ss.apps.googleusercontent.com
+GOOGLE_REVERSED_CLIENT_ID=com.googleusercontent.apps.858928595374-slrbiedfhivmnliv0d4uvpn0n8rh21tu

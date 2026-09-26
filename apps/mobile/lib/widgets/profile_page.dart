@@ -14,6 +14,8 @@ class ProfilePage extends StatefulWidget {
     required this.lanesEnabled,
     required this.appLanguage,
     required this.voiceLanguage,
+    this.themeMode = ThemeMode.system,
+    this.onThemeModeChanged,
     required this.onVoiceChanged,
     required this.onLanesChanged,
     required this.onAppLanguageChanged,
@@ -39,6 +41,8 @@ class ProfilePage extends StatefulWidget {
   final bool lanesEnabled;
   final String appLanguage;
   final String voiceLanguage;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
   final ValueChanged<bool> onVoiceChanged;
   final ValueChanged<bool> onLanesChanged;
   final ValueChanged<String> onAppLanguageChanged;
@@ -71,6 +75,7 @@ class _ProfilePageState extends State<ProfilePage> {
   late bool _lanes = widget.lanesEnabled;
   late String _appLanguage = widget.appLanguage;
   late String _language = widget.voiceLanguage;
+  late ThemeMode _themeMode = widget.themeMode;
   late MapProvider _mapProvider = widget.mapProvider;
   late LocationMarkerStyle _locationMarker = widget.locationMarker;
   late bool _notifySafetyCameras = widget.notifySafetyCameras;
@@ -273,7 +278,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.only(top: 13),
                   child: Text(
                     _error!,
-                    style: const TextStyle(color: Color(0xFFB44032)),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 ),
               if (profile == null) ...[
@@ -353,6 +360,99 @@ class _ProfilePageState extends State<ProfilePage> {
                     _Stat('${profile.reviews.length}', _text('Reviews', '评价')),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.cloud_done_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _text('Tasman Sync', 'Tasman 同步'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              _text(
+                                'Routes, saved places, reviews and preferences are synced.',
+                                '路线、收藏地点、评价和偏好设置已同步。',
+                              ),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        profile.providers
+                            .map(
+                              (provider) => provider == 'google'
+                                  ? 'Google'
+                                  : _text('Email', '邮箱'),
+                            )
+                            .join(' · '),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (profile.recentDestinations.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _SectionTitle(_text('Recent destinations', '最近目的地')),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                    ),
+                    child: Column(
+                      children: [
+                        for (final item in profile.recentDestinations.take(3))
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.history_rounded),
+                            title: Text(
+                              item['label']?.toString() ??
+                                  _text('Destination', '目的地'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: item['createdAt'] == null
+                                ? null
+                                : Text(
+                                    item['createdAt'].toString(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (!profile.providers.contains('google'))
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -383,6 +483,45 @@ class _ProfilePageState extends State<ProfilePage> {
                   ],
                   onChanged: (value) {
                     if (value != null) _appLanguageChanged(value);
+                  },
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  _themeMode == ThemeMode.dark
+                      ? Icons.dark_mode_rounded
+                      : _themeMode == ThemeMode.light
+                      ? Icons.light_mode_rounded
+                      : Icons.brightness_auto_rounded,
+                ),
+                title: Text(_text('Appearance', '外观')),
+                subtitle: Text(
+                  _text(
+                    'Use Tasman in light, dark or follow the system',
+                    '选择浅色、深色或跟随系统',
+                  ),
+                ),
+                trailing: DropdownButton<ThemeMode>(
+                  value: _themeMode,
+                  items: [
+                    DropdownMenuItem(
+                      value: ThemeMode.system,
+                      child: Text(_text('System', '系统')),
+                    ),
+                    DropdownMenuItem(
+                      value: ThemeMode.light,
+                      child: Text(_text('Light', '浅色')),
+                    ),
+                    DropdownMenuItem(
+                      value: ThemeMode.dark,
+                      child: Text(_text('Dark', '深色')),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _themeMode = value);
+                    widget.onThemeModeChanged?.call(value);
                   },
                 ),
               ),
@@ -704,13 +843,47 @@ class _ActivitySection extends StatelessWidget {
   final String countLabel;
   final String emptyLabel;
   @override
-  Widget build(BuildContext context) => ExpansionTile(
-    tilePadding: EdgeInsets.zero,
-    leading: Icon(icon),
-    title: Text(title),
-    subtitle: Text('${items.length} $countLabel'),
-    children: items.isEmpty
-        ? [ListTile(title: Text(emptyLabel))]
-        : items.take(30).map((item) => ListTile(title: Text(item))).toList(),
-  );
+  Widget build(BuildContext context) {
+    final preview = items.take(3).toList(growable: false);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: ExpansionTile(
+        shape: const Border(),
+        collapsedShape: const Border(),
+        leading: Icon(icon),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text('${items.length} $countLabel'),
+        children: items.isEmpty
+            ? [ListTile(title: Text(emptyLabel))]
+            : [
+                for (final item in preview)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.chevron_right_rounded, size: 18),
+                    title: Text(
+                      item,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                if (items.length > preview.length)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      '+${items.length - preview.length}',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+              ],
+      ),
+    );
+  }
 }

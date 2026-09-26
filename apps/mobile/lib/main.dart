@@ -49,8 +49,43 @@ void main() {
   runApp(const KiwiLensApp());
 }
 
-class KiwiLensApp extends StatelessWidget {
+class KiwiLensApp extends StatefulWidget {
   const KiwiLensApp({super.key});
+
+  @override
+  State<KiwiLensApp> createState() => _KiwiLensAppState();
+}
+
+class _KiwiLensAppState extends State<KiwiLensApp> {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreAppearance());
+  }
+
+  Future<void> _restoreAppearance() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('tasman.appearance') ?? 'system';
+    final mode = switch (saved) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
+    if (mounted) setState(() => _themeMode = mode);
+  }
+
+  Future<void> _setThemeMode(ThemeMode mode) async {
+    if (_themeMode == mode) return;
+    setState(() => _themeMode = mode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('tasman.appearance', switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,8 +94,13 @@ class KiwiLensApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: TasmanTheme.light,
       darkTheme: TasmanTheme.dark,
-      themeMode: ThemeMode.system,
-      home: const SplashGate(child: MapHomePage()),
+      themeMode: _themeMode,
+      home: SplashGate(
+        child: MapHomePage(
+          themeMode: _themeMode,
+          onThemeModeChanged: (mode) => unawaited(_setThemeMode(mode)),
+        ),
+      ),
     );
   }
 }
@@ -201,7 +241,14 @@ class _TransientTasmanBannerState extends State<_TransientTasmanBanner> {
 }
 
 class MapHomePage extends StatefulWidget {
-  const MapHomePage({super.key});
+  const MapHomePage({
+    super.key,
+    this.themeMode = ThemeMode.system,
+    this.onThemeModeChanged,
+  });
+
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
 
   @override
   State<MapHomePage> createState() => _MapHomePageState();
@@ -1302,6 +1349,8 @@ class _MapHomePageState extends State<MapHomePage> {
           lanesEnabled: _lanesEnabled,
           appLanguage: _appLanguage,
           voiceLanguage: _voiceLanguage,
+          themeMode: widget.themeMode,
+          onThemeModeChanged: (mode) => widget.onThemeModeChanged?.call(mode),
           onVoiceChanged: _setVoiceEnabled,
           onLanesChanged: _setLanesEnabled,
           onAppLanguageChanged: (value) => unawaited(_setAppLanguage(value)),

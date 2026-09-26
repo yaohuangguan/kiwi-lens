@@ -5,6 +5,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../data/explore_repository.dart';
 import '../domain/geo_math.dart';
+import '../theme/tasman_theme.dart';
 
 class ExplorePage extends StatefulWidget {
   const ExplorePage({
@@ -151,10 +152,12 @@ class _ExplorePageState extends State<ExplorePage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F3),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F7F3),
+        backgroundColor: theme.scaffoldBackgroundColor,
         surfaceTintColor: Colors.transparent,
         title: Text(
           _text('Explore', '探索'),
@@ -185,7 +188,7 @@ class _ExplorePageState extends State<ExplorePage> {
                         'Popular places around your current location',
                         '根据当前位置自动推荐热门地点',
                       ),
-                      style: const TextStyle(color: Color(0xFF63736B)),
+                      style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 15),
                     TextField(
@@ -197,7 +200,10 @@ class _ExplorePageState extends State<ExplorePage> {
                           'Search restaurants, museums, activities…',
                           '搜索餐厅、博物馆、玩乐地点…',
                         ),
-                        prefixIcon: const Icon(Icons.search_rounded),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: scheme.primary,
+                        ),
                         suffixIcon: _search.text.isEmpty
                             ? null
                             : IconButton(
@@ -211,10 +217,21 @@ class _ExplorePageState extends State<ExplorePage> {
                                 icon: const Icon(Icons.close_rounded),
                               ),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: scheme.surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
+                          borderSide: BorderSide(color: theme.dividerColor),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide(color: theme.dividerColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide(
+                            color: scheme.primary,
+                            width: 1.6,
+                          ),
                         ),
                       ),
                     ),
@@ -255,7 +272,7 @@ class _ExplorePageState extends State<ExplorePage> {
                     child: Text(
                       _error!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFF8B4A3A)),
+                      style: TextStyle(color: scheme.error),
                     ),
                   ),
                 ),
@@ -282,6 +299,7 @@ class _ExplorePageState extends State<ExplorePage> {
                     place: place,
                     distance: _distance(place),
                     price: _priceLabel(place.priceLevel),
+                    language: widget.language,
                   );
                 },
               ),
@@ -298,18 +316,27 @@ class _ExploreCard extends StatelessWidget {
     required this.place,
     required this.distance,
     required this.price,
+    required this.language,
   });
   final ExplorePlace place;
   final String distance;
   final String price;
+  final String language;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final photo = place.photoUrl;
     final rating = place.rating;
+    final isChinese = language == 'zh';
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
+      color: scheme.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: theme.dividerColor),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).pop(place),
@@ -368,12 +395,14 @@ class _ExploreCard extends StatelessWidget {
                         ),
                       if (place.openNow != null)
                         Text(
-                          place.openNow! ? 'Open now' : 'Closed',
+                          place.openNow!
+                              ? (isChinese ? '营业中' : 'Open now')
+                              : (isChinese ? '已关闭' : 'Closed'),
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: place.openNow!
-                                ? const Color(0xFF397A43)
-                                : const Color(0xFFA44C42),
+                                ? TasmanColors.success
+                                : scheme.error,
                           ),
                         ),
                     ],
@@ -384,7 +413,7 @@ class _ExploreCard extends StatelessWidget {
                       place.address,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF647269)),
+                      style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
                   ],
                 ],
@@ -402,14 +431,17 @@ class _PhotoFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(color: Color(0xFFE7EDE3)),
-      child: Center(
-        child: Icon(
-          Icons.local_activity_rounded,
-          size: 42,
-          color: Color(0xFF527C60),
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [scheme.primaryContainer, scheme.surfaceContainerHighest],
         ),
+      ),
+      child: Center(
+        child: Icon(Icons.explore_rounded, size: 42, color: scheme.primary),
       ),
     );
   }

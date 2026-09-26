@@ -69,7 +69,9 @@ abstract final class TasmanTheme {
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: dark ? TasmanColors.darkOcean : TasmanColors.lightBackground,
+        backgroundColor: dark
+            ? TasmanColors.darkOcean
+            : TasmanColors.lightBackground,
         foregroundColor: dark ? TasmanColors.darkText : TasmanColors.deepOcean,
         surfaceTintColor: Colors.transparent,
       ),
@@ -77,27 +79,99 @@ abstract final class TasmanTheme {
         elevation: 0,
         color: dark ? TasmanColors.darkSurface : TasmanColors.lightSurface,
         shape: RoundedRectangleBorder(
-          side: BorderSide(color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder),
+          side: BorderSide(
+            color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
+          ),
           borderRadius: BorderRadius.circular(TasmanRadius.panel),
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: dark ? TasmanColors.darkSurface : TasmanColors.lightSurface,
+        backgroundColor: dark
+            ? TasmanColors.darkSurface
+            : TasmanColors.lightSurface,
         selectedColor: dark ? TasmanColors.deepTeal : TasmanColors.ice,
-        side: BorderSide(color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder),
+        side: BorderSide(
+          color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
-        labelStyle: TextStyle(color: dark ? TasmanColors.darkText : TasmanColors.deepOcean, fontWeight: FontWeight.w700),
+        labelStyle: TextStyle(
+          color: dark ? TasmanColors.darkText : TasmanColors.deepOcean,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         elevation: 0,
-        backgroundColor: dark ? TasmanColors.darkOcean : TasmanColors.lightSurface,
+        backgroundColor: dark
+            ? TasmanColors.darkOcean
+            : TasmanColors.lightSurface,
         indicatorColor: dark ? TasmanColors.deepTeal : TasmanColors.ice,
-        labelTextStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: dark ? TasmanColors.darkText : TasmanColors.deepOcean)),
+        labelTextStyle: WidgetStatePropertyAll(
+          TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: dark ? TasmanColors.darkText : TasmanColors.deepOcean,
+          ),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: dark ? TasmanColors.darkSurface : TasmanColors.lightSurface,
+        hintStyle: TextStyle(
+          color: dark
+              ? TasmanColors.darkTextSecondary
+              : TasmanColors.lightTextSecondary,
+        ),
+        labelStyle: TextStyle(
+          color: dark
+              ? TasmanColors.darkTextSecondary
+              : TasmanColors.lightTextSecondary,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(TasmanRadius.button),
+          borderSide: BorderSide(
+            color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
+          ),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(TasmanRadius.button),
+          borderSide: BorderSide(
+            color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(TasmanRadius.button),
+          borderSide: BorderSide(
+            color: dark ? TasmanColors.sky : TasmanColors.ocean,
+            width: 1.6,
+          ),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: dark
+            ? TasmanColors.darkOcean
+            : TasmanColors.lightSurface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(TasmanRadius.sheet),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: dark
+            ? TasmanColors.darkOcean
+            : TasmanColors.lightSurface,
+        modalBackgroundColor: dark
+            ? TasmanColors.darkOcean
+            : TasmanColors.lightSurface,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+      ),
+      dividerTheme: DividerThemeData(
+        color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
+        space: 1,
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: dark ? TasmanColors.sky : TasmanColors.deepOcean,
+        textColor: dark ? TasmanColors.darkText : TasmanColors.lightText,
       ),
     );
   }

@@ -134,6 +134,8 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final recent = _controller.text.trim().isEmpty;
     final items = recent
         ? widget.recent
@@ -150,12 +152,12 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               .toList(growable: false)
         : _results;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F9FC),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.scaffoldBackgroundColor,
         titleSpacing: 0,
         title: Material(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(22),
           child: TextField(
             controller: _controller,
@@ -170,11 +172,17 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(color: TasmanColors.sky, width: 1.3),
+                borderSide: const BorderSide(
+                  color: TasmanColors.sky,
+                  width: 1.3,
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(color: TasmanColors.sky, width: 1.3),
+                borderSide: const BorderSide(
+                  color: TasmanColors.sky,
+                  width: 1.3,
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
@@ -209,8 +217,8 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               padding: const EdgeInsets.fromLTRB(18, 22, 18, 8),
               child: Text(
                 _text('Recent', '最近搜索'),
-                style: const TextStyle(
-                  color: Color(0xFF607D96),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -218,10 +226,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.all(18),
-              child: Text(
-                _error!,
-                style: const TextStyle(color: Color(0xFFB14535)),
-              ),
+              child: Text(_error!, style: TextStyle(color: scheme.error)),
             ),
           if (recent && widget.onDriveMode != null)
             ListTile(
@@ -254,7 +259,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                     item.kind == PlaceKind.address
                         ? Icons.signpost_outlined
                         : Icons.place_outlined,
-                    color: const Color(0xFF1479FF),
+                    color: scheme.primary,
                   ),
                   title: Text(
                     item.name,
@@ -273,8 +278,8 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                       ? null
                       : Text(
                           distance,
-                          style: const TextStyle(
-                            color: Color(0xFF607D96),
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
