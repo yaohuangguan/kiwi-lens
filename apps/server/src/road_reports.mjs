@@ -16,7 +16,7 @@ export async function readRoadReports(env, now = new Date()) {
   });
 }
 
-export async function createRoadReport(env, payload, now = new Date()) {
+export async function createRoadReport(env, payload, reporter = null, now = new Date()) {
   const latitude = Number(payload?.latitude);
   const longitude = Number(payload?.longitude);
   const type = String(payload?.type || '');
@@ -45,7 +45,10 @@ export async function createRoadReport(env, payload, now = new Date()) {
     },
     metadata: {
       description: String(payload?.description || '').trim().slice(0, 120),
-      userReported: true
+      userReported: true,
+      reporterName: reporter?.displayName || 'Tasman driver',
+      reporterId: reporter?.id || null,
+      reportedAt: now.toISOString()
     }
   };
   const current = await readRoadReports(env, now);

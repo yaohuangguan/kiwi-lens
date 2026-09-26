@@ -1,6 +1,6 @@
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
-import { handleAccount } from './auth.mjs';
+import { handleAccount, roadReportAuthor } from './auth.mjs';
 import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
 import { loadRoadEventState } from './road_events.mjs';
@@ -80,7 +80,14 @@ async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   if (url.pathname === '/api/road-reports' && request.method === 'POST') {
     try {
-      const report = await createRoadReport(env, await request.json());
+      const reporter = env.USER_DB
+        ? await roadReportAuthor(env.USER_DB, request)
+        : null;
+      const report = await createRoadReport(
+        env,
+        await request.json(),
+        reporter
+      );
       return json({ ok: true, report }, 201);
     } catch (error) {
       return json({ error: String(error.message || error) }, 400);

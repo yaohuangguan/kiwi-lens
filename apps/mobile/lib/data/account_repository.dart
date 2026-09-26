@@ -196,6 +196,29 @@ class AccountRepository extends ChangeNotifier {
     }
   }
 
+  Future<void> submitRoadReport({
+    required String type,
+    required double latitude,
+    required double longitude,
+    double? headingDegrees,
+    required String description,
+  }) async {
+    final response = await _request(
+      '/api/road-reports',
+      method: 'POST',
+      body: {
+        'type': type,
+        'latitude': latitude,
+        'longitude': longitude,
+        'headingDegrees': headingDegrees,
+        'description': description,
+      },
+    );
+    if (response.statusCode != 201) {
+      throw StateError('Road report failed: ' + response.statusCode.toString());
+    }
+  }
+
   Future<void> updateDisplayName(String name) async {
     if (_session == null) throw StateError('Sign in to edit your profile');
     profile = AccountProfile.fromJson(

@@ -13,6 +13,7 @@ class MapSymbols {
   static final Map<CameraKind, ImageDescriptor> _normal = {};
   static final Map<CameraKind, ImageDescriptor> _route = {};
   static ImageDescriptor? car;
+  static ImageDescriptor? roadReport;
   static final Map<LocationMarkerStyle, ImageDescriptor> _location = {};
   static Future<void>? _registration;
 
@@ -34,6 +35,7 @@ class MapSymbols {
       _route[kind] = await _registerCamera(kind, onRoute: true);
     }
     car = await _registerCar();
+    roadReport = await _registerRoadReport();
     for (final style in LocationMarkerStyle.values) {
       if (style == LocationMarkerStyle.classic) continue;
       final bytes = await LocationMarkerArt.png(style);
@@ -126,6 +128,32 @@ class MapSymbols {
         canvas.drawCircle(const Offset(36, 38), 5, paint);
         break;
     }
+    final image = await recorder.endRecording().toImage(72, 72);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return registerBitmapImage(bitmap: bytes!, imagePixelRatio: 2);
+  }
+
+  static Future<ImageDescriptor> _registerRoadReport() async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint = Paint()..isAntiAlias = true;
+    paint.color = Colors.white;
+    canvas.drawCircle(const Offset(36, 34), 32, paint);
+    paint.color = TasmanColors.ocean;
+    canvas.drawCircle(const Offset(36, 34), 28, paint);
+    paint.color = Colors.white;
+    final path = Path()
+      ..moveTo(36, 15)
+      ..lineTo(54, 48)
+      ..lineTo(18, 48)
+      ..close();
+    canvas.drawPath(path, paint);
+    paint.color = TasmanColors.ocean;
+    paint.strokeWidth = 4;
+    paint.strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(36, 27), const Offset(36, 37), paint);
+    canvas.drawCircle(const Offset(36, 43), 2.4, paint);
     final image = await recorder.endRecording().toImage(72, 72);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();

@@ -7,6 +7,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
+import '../domain/road_event.dart';
 import 'location_marker_art.dart';
 import 'provider_contracts.dart';
 
@@ -26,6 +27,8 @@ class MapboxMapRenderer extends StatefulWidget {
     required this.moving,
     required this.language,
     required this.cameras,
+    required this.roadEvents,
+    required this.onRoadEvent,
     required this.route,
     required this.selectedPlace,
     required this.explorePlaces,
@@ -44,6 +47,8 @@ class MapboxMapRenderer extends StatefulWidget {
   final bool moving;
   final String language;
   final List<SafetyCamera> cameras;
+  final List<RoadEvent> roadEvents;
+  final ValueChanged<RoadEvent> onRoadEvent;
   final List<GeoPoint> route;
   final PlaceSummary? selectedPlace;
   final List<PlaceSummary> explorePlaces;
@@ -64,6 +69,8 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
   mb.CircleAnnotationManager? _cameraManager;
   mb.CircleAnnotationManager? _selectedManager;
   mb.CircleAnnotationManager? _exploreManager;
+  mb.CircleAnnotationManager? _roadEventManager;
+  final Map<String, RoadEvent> _roadEventAnnotations = {};
   final Map<String, PlaceSummary> _exploreAnnotations = {};
   mb.PolylineAnnotationManager? _routeManager;
   int _syncVersion = 0;
@@ -105,6 +112,7 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
       unawaited(_setLocationPuck());
     }
     if (!listEquals(oldWidget.cameras, widget.cameras) ||
+        !listEquals(oldWidget.roadEvents, widget.roadEvents) ||
         !listEquals(oldWidget.route, widget.route) ||
         oldWidget.selectedPlace != widget.selectedPlace ||
         !listEquals(oldWidget.explorePlaces, widget.explorePlaces) ||
@@ -137,6 +145,13 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
     _routeManager = await map.annotations.createPolylineAnnotationManager();
     _selectedManager = await map.annotations.createCircleAnnotationManager();
     _exploreManager = await map.annotations.createCircleAnnotationManager();
+    _roadEventManager = await map.annotations.createCircleAnnotationManager();
+    _roadEventManager!.tapEvents(
+      onTap: (annotation) {
+        final event = _roadEventAnnotations[annotation.id];
+        if (event != null) widget.onRoadEvent(event);
+      },
+    );
     _exploreManager!.tapEvents(
       onTap: (annotation) {
         final place = _exploreAnnotations[annotation.id];
@@ -193,17 +208,21 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
     final selected = _selectedManager;
     final routes = _routeManager;
     final explore = _exploreManager;
+    final roadEvents = _roadEventManager;
     if (cameras == null ||
         selected == null ||
         routes == null ||
-        explore == null) {
+        explore == null ||
+        roadEvents == null) {
       return;
     }
     await cameras.deleteAll();
     await routes.deleteAll();
     await selected.deleteAll();
     await explore.deleteAll();
+    await roadEvents.deleteAll();
     _exploreAnnotations.clear();
+    _roadEventAnnotations.clear();
     if (!mounted || version != _syncVersion) return;
 
     final visibleCameras = widget.cameras
@@ -216,7 +235,9 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
               CameraKind.spotSpeed => const Color(0xFF1670B9).toARGB32(),
               CameraKind.averageSpeed => const Color(0xFF0891B2).toARGB32(),
               CameraKind.redLight => const Color(0xFFD95640).toARGB32(),
-              CameraKind.dualRedLightSpeed => const Color(0xFFD97706).toARGB32(),
+              CameraKind.dualRedLightSpeed => const Color(
+                0xFFD97706,
+              ).toARGB32(),
               CameraKind.other => const Color(0xFF325A77).toARGB32(),
             },
             circleStrokeColor: Colors.white.toARGB32(),
@@ -225,6 +246,19 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
         )
         .toList(growable: false);
     if (visibleCameras.isNotEmpty) await cameras.createMulti(visibleCameras);
+    if (!mounted || version != _syncVersion) return;
+    for (final event in widget.roadEvents) {
+      final annotation = await roadEvents.create(
+        mb.CircleAnnotationOptions(
+          geometry: _point(event.location),
+          circleRadius: 9,
+          circleColor: const Color(0xFF0284C7).toARGB32(),
+          circleStrokeColor: Colors.white.toARGB32(),
+          circleStrokeWidth: 3,
+        ),
+      );
+      _roadEventAnnotations[annotation.id] = event;
+    }
     if (!mounted || version != _syncVersion) return;
     for (final place in widget.explorePlaces) {
       if (version != _syncVersion) {

@@ -20,10 +20,12 @@ test('creates and reads a short-lived NZ road report', async () => {
     latitude: -36.85,
     longitude: 174.76,
     headingDegrees: 375
-  }, now);
+  }, { id: 'user-1', displayName: 'Sam' }, now);
   assert.equal(report.type, 'roadworks');
   assert.equal(report.observation, 'observed');
   assert.equal(report.headingDegrees, 15);
+  assert.equal(report.metadata.reporterName, 'Sam');
+  assert.equal(report.metadata.reporterId, 'user-1');
   assert.equal((await readRoadReports(env, now)).length, 1);
   assert.equal((await readRoadReports(env, new Date('2026-09-26T05:00:00Z'))).length, 0);
 });

@@ -89,6 +89,19 @@ async function userFromRequest(db, request) {
     .bind(await digest(token), Date.now()).first();
 }
 
+export async function roadReportAuthor(db, request) {
+  const user = await userFromRequest(db, request);
+  if (!user) return null;
+  const profile = await db.prepare(
+    'SELECT display_name FROM profiles WHERE user_id = ?'
+  ).bind(user.id).first();
+  const displayName = String(profile?.display_name || '').trim();
+  return {
+    id: user.id,
+    displayName: displayName || 'Tasman driver'
+  };
+}
+
 async function userProfile(db, user) {
   const profile = await db.prepare('SELECT language, voice_enabled, display_name FROM profiles WHERE user_id = ?').bind(user.id).first();
   const googleIdentity = await db.prepare('SELECT google_sub FROM google_identities WHERE user_id = ?').bind(user.id).first();

@@ -20,6 +20,7 @@ import 'domain/map_layer_settings.dart';
 import 'domain/map_provider.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
+import 'domain/road_event.dart';
 import 'drive/device_heading.dart';
 import 'drive/drive_engine.dart';
 import 'providers/google_map_renderer.dart';
@@ -28,6 +29,7 @@ import 'providers/mapbox_navigation_engine.dart';
 import 'providers/mapbox_routing_provider.dart';
 import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
+import 'services/notification_service.dart';
 import 'theme/tasman_theme.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/mapbox_navigation_overlay.dart';
@@ -119,6 +121,86 @@ class _OnboardingFeature extends StatelessWidget {
   );
 }
 
+class _TransientTasmanBanner extends StatefulWidget {
+  const _TransientTasmanBanner({
+    super.key,
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  State<_TransientTasmanBanner> createState() => _TransientTasmanBannerState();
+}
+
+class _TransientTasmanBannerState extends State<_TransientTasmanBanner> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(const Duration(seconds: 4), widget.onDismiss);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Align(
+      alignment: Alignment.topCenter,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 76, 20, 0),
+        child: PointerInterceptor(
+          child: Material(
+            color: TasmanColors.darkOcean.withValues(alpha: .96),
+            elevation: 8,
+            borderRadius: BorderRadius.circular(15),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 9, 5, 9),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.info_outline_rounded,
+                    color: TasmanColors.sky,
+                    size: 19,
+                  ),
+                  const SizedBox(width: 9),
+                  Flexible(
+                    child: Text(
+                      widget.message,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Dismiss',
+                    onPressed: widget.onDismiss,
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white70,
+                      size: 18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class MapHomePage extends StatefulWidget {
   const MapHomePage({super.key});
 
@@ -179,6 +261,7 @@ class _MapHomePageState extends State<MapHomePage> {
   final List<DestinationSuggestion> _guestRecent = [];
   CameraPosition? _lastBrowseCamera;
   List<Marker> _cameraMarkers = [];
+  List<Marker> _roadEventMarkers = [];
   Marker? _carMarker;
   Circle? _accuracyCircle;
   String _markerSignature = '';
@@ -233,11 +316,14 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _guidanceRunning = false;
   bool _busy = false;
   String? _message;
+  String? _lastNotifiedCameraId;
+  final Set<String> _notifiedRoadEventIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _mapboxNavigation = MapboxNavigationEngine(_driveEngine);
+    unawaited(TasmanNotificationService.instance.initialize());
     initializeMapboxMaps(_mapboxToken);
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
@@ -251,7 +337,18 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _maybeShowCoreOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('tasman.onboarding.core.v1') == true || !mounted) return;
+    if (prefs.getBool('tasman.onboarding.core.v1') == true) {
+      if (prefs.getBool('tasman.notifications.permission_prompted.v1') !=
+          true) {
+        await prefs.setBool(
+          'tasman.notifications.permission_prompted.v1',
+          true,
+        );
+        unawaited(TasmanNotificationService.instance.requestPermission());
+      }
+      return;
+    }
+    if (!mounted) return;
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     await showDialog<void>(
@@ -326,6 +423,11 @@ class _MapHomePageState extends State<MapHomePage> {
           FilledButton.icon(
             onPressed: () async {
               await prefs.setBool('tasman.onboarding.core.v1', true);
+              await prefs.setBool(
+                'tasman.notifications.permission_prompted.v1',
+                true,
+              );
+              unawaited(TasmanNotificationService.instance.requestPermission());
               if (dialogContext.mounted) Navigator.of(dialogContext).pop();
             },
             icon: const Icon(Icons.arrow_forward_rounded),
@@ -359,8 +461,10 @@ class _MapHomePageState extends State<MapHomePage> {
         );
       }
     }
+    unawaited(_notifyRoadIntelligence());
+    final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
-        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:${_layers.markerSignature}';
+        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}';
     if (signature != _markerSignature) {
       unawaited(_syncCameraMarkers());
       if (_routePlan != null || _mapProvider == MapProvider.mapbox) {
@@ -369,6 +473,169 @@ class _MapHomePageState extends State<MapHomePage> {
         });
       }
     }
+  }
+
+  List<RoadEvent> get _communityRoadEvents => _driveEngine.roadEvents
+      .where((event) => event.metadata['userReported'] == true)
+      .toList(growable: false);
+
+  String _roadEventLabel(RoadEventType type) => switch (type) {
+    RoadEventType.incident => _text('Crash / hazard', '事故 / 危险'),
+    RoadEventType.roadworks => _text('Roadworks', '道路施工'),
+    RoadEventType.roadClosure => _text('Road closed', '道路封闭'),
+    RoadEventType.congestion => _text('Heavy traffic', '严重拥堵'),
+    RoadEventType.flooding => _text('Flooding', '积水 / 洪水'),
+    RoadEventType.slip => _text('Slip / debris', '滑坡 / 道路杂物'),
+    _ => _text('Road report', '道路报告'),
+  };
+
+  String _relativeTime(DateTime? date) {
+    if (date == null) return _text('recently', '刚刚');
+    final delta = DateTime.now().difference(date);
+    if (delta.inMinutes < 1) return _text('just now', '刚刚');
+    if (delta.inMinutes < 60) {
+      return _text('${delta.inMinutes} min ago', '${delta.inMinutes} 分钟前');
+    }
+    if (delta.inHours < 24) {
+      return _text('${delta.inHours} hr ago', '${delta.inHours} 小时前');
+    }
+    return _text('${delta.inDays} d ago', '${delta.inDays} 天前');
+  }
+
+  String _remainingTime(DateTime? date) {
+    if (date == null) return '';
+    final delta = date.difference(DateTime.now());
+    if (delta.isNegative) return _text('expired', '已过期');
+    if (delta.inMinutes < 60) {
+      return _text('${delta.inMinutes} min left', '剩余 ${delta.inMinutes} 分钟');
+    }
+    return _text('${delta.inHours} hr left', '剩余 ${delta.inHours} 小时');
+  }
+
+  Future<void> _notifyRoadIntelligence() async {
+    if (!_driveEngine.active) return;
+    final camera = _driveEngine.upcomingCamera;
+    final cameraDistance = _driveEngine.upcomingCameraDistanceMeters;
+    if (camera != null &&
+        cameraDistance != null &&
+        cameraDistance <= 600 &&
+        _lastNotifiedCameraId != camera.id) {
+      _lastNotifiedCameraId = camera.id;
+      await TasmanNotificationService.instance.showRoadAlert(
+        id: 'camera:${camera.id}',
+        title: _text('Safety camera ahead', '前方安全摄像头'),
+        body: _text(
+          '${camera.type} · ${cameraDistance.round()} m',
+          '${camera.type} · ${cameraDistance.round()} 米',
+        ),
+      );
+    }
+    if (camera == null) _lastNotifiedCameraId = null;
+
+    for (final event in _driveEngine.upcomingRoadEvents) {
+      final distance = event.distanceAlongRoute ?? event.distanceFromDriver;
+      if (distance == null || distance > 1500) continue;
+      final important =
+          event.severity == RoadEventSeverity.warning ||
+          event.severity == RoadEventSeverity.critical ||
+          event.metadata['userReported'] == true;
+      if (!important || !_notifiedRoadEventIds.add(event.id)) continue;
+      final reporter = event.metadata['reporterName']?.toString();
+      await TasmanNotificationService.instance.showRoadAlert(
+        id: event.id,
+        title: _roadEventLabel(event.type),
+        body: reporter == null
+            ? _text('${distance.round()} m ahead', '前方 ${distance.round()} 米')
+            : _text(
+                '${distance.round()} m ahead · reported by $reporter',
+                '前方 ${distance.round()} 米 · $reporter 报告',
+              ),
+      );
+    }
+  }
+
+  Future<void> _showRoadEventDetails(RoadEvent event) async {
+    final reporter =
+        event.metadata['reporterName']?.toString() ??
+        _text('Tasman driver', 'Tasman 用户');
+    final description = event.metadata['description']?.toString();
+    final reportedAt =
+        DateTime.tryParse(event.metadata['reportedAt']?.toString() ?? '') ??
+        event.source.updatedAt;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: TasmanColors.ice,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.add_alert_rounded,
+                    color: TasmanColors.ocean,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _roadEventLabel(event.type),
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                      color: TasmanColors.deepOcean,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              _text(
+                reporter + ' reported this ' + _relativeTime(reportedAt),
+                reporter + ' · ' + _relativeTime(reportedAt) + '报告',
+              ),
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: TasmanColors.deepOcean,
+              ),
+            ),
+            if (description != null && description.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(description),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              _remainingTime(event.validUntil),
+              style: const TextStyle(
+                color: TasmanColors.lightTextSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _restoreMapSettings() async {
@@ -767,23 +1034,16 @@ class _MapHomePageState extends State<MapHomePage> {
     );
     if (selected == null) return;
     try {
-      final response = await http
-          .post(
-            Uri.parse('$workerBaseUrl/api/road-reports'),
-            headers: {'content-type': 'application/json'},
-            body: jsonEncode({
-              'type': selected.$1,
-              'latitude': location.latitude,
-              'longitude': location.longitude,
-              'headingDegrees': _travelHeading ?? _deviceHeading,
-              'description': selected.$2,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode != 201) {
-        throw StateError('HTTP ${response.statusCode}');
-      }
+      await _account.submitRoadReport(
+        type: selected.$1,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        headingDegrees: _travelHeading ?? _deviceHeading,
+        description: selected.$2,
+      );
       await _driveEngine.loadCameras(force: true);
+      _markerSignature = '';
+      unawaited(_syncCameraMarkers());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_text('Road report submitted', '道路情况已上报'))),
@@ -1870,10 +2130,11 @@ class _MapHomePageState extends State<MapHomePage> {
     final controller = _driveEngine.active
         ? _navigationController
         : _browseController;
-    if (controller == null || _driveEngine.cameras.isEmpty) return;
+    if (controller == null) return;
     _markerSyncing = true;
+    final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
-        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:${_layers.markerSignature}';
+        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}';
     try {
       try {
         await MapSymbols.ensureRegistered();
@@ -1882,6 +2143,9 @@ class _MapHomePageState extends State<MapHomePage> {
       }
       if (_cameraMarkers.isNotEmpty) {
         await controller.removeMarkers(_cameraMarkers);
+      }
+      if (_roadEventMarkers.isNotEmpty) {
+        await controller.removeMarkers(_roadEventMarkers);
       }
       final onRoute = _driveEngine.routeCameras
           .map((match) => match.camera.id)
@@ -1911,13 +2175,47 @@ class _MapHomePageState extends State<MapHomePage> {
       _cameraMarkers = options.isEmpty
           ? []
           : (await controller.addMarkers(options)).whereType<Marker>().toList();
+      final roadEventOptions = [
+        for (final event in _communityRoadEvents)
+          MarkerOptions(
+            position: LatLng(
+              latitude: event.location.latitude,
+              longitude: event.location.longitude,
+            ),
+            icon: MapSymbols.roadReport ?? ImageDescriptor.defaultImage,
+            zIndex: 35,
+            infoWindow: InfoWindow(
+              title: _roadEventLabel(event.type),
+              snippet:
+                  (event.metadata['reporterName']?.toString() ??
+                      _text('Tasman driver', 'Tasman 用户')) +
+                  ' · ' +
+                  _relativeTime(
+                    DateTime.tryParse(
+                          event.metadata['reportedAt']?.toString() ?? '',
+                        ) ??
+                        event.source.updatedAt,
+                  ) +
+                  ' · ' +
+                  _remainingTime(event.validUntil),
+            ),
+          ),
+      ];
+      _roadEventMarkers = roadEventOptions.isEmpty
+          ? []
+          : (await controller.addMarkers(roadEventOptions))
+                .whereType<Marker>()
+                .toList();
       _markerSignature = signature;
     } catch (_) {
       _markerSignature = signature;
     } finally {
       _markerSyncing = false;
+      final latestReportIds = _communityRoadEvents
+          .map((event) => event.id)
+          .join(',');
       final latest =
-          '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:${_layers.markerSignature}';
+          '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$latestReportIds:${_layers.markerSignature}';
       if (mounted && _markerSignature != latest) {
         Future<void>.delayed(
           const Duration(milliseconds: 200),
@@ -2074,6 +2372,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _browseRenderer = null;
     _lastBrowseCamera = null;
     _cameraMarkers = [];
+    _roadEventMarkers = [];
     _carMarker = null;
     _accuracyCircle = null;
     _exploreMarkers = [];
@@ -2944,6 +3243,7 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _onMapViewCreated(GoogleMapViewController controller) async {
     _browseController = controller;
     _cameraMarkers = [];
+    _roadEventMarkers = [];
     _carMarker = null;
     _accuracyCircle = null;
     _markerSignature = '';
@@ -2975,6 +3275,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _navigationController = controller;
     _browseController = null;
     _cameraMarkers = [];
+    _roadEventMarkers = [];
     _carMarker = null;
     _accuracyCircle = null;
     _markerSignature = '';
@@ -3084,6 +3385,9 @@ class _MapHomePageState extends State<MapHomePage> {
                     moving: _travelHeading != null,
                     language: _appLanguage,
                     cameras: _driveEngine.cameras,
+                    roadEvents: _communityRoadEvents,
+                    onRoadEvent: (event) =>
+                        unawaited(_showRoadEventDetails(event)),
                     route:
                         (_mapboxNavigation.route ?? _selectedRoute)?.points
                             .map(
@@ -3211,9 +3515,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     ),
                     const SizedBox(height: 8),
                     Material(
-                      color: _following
-                          ? TasmanColors.sky.withValues(alpha: .13)
-                          : Colors.white,
+                      color: Colors.white,
                       elevation: 5,
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
@@ -3392,29 +3694,12 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
           if (_message != null)
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 76, 20, 0),
-                  child: PointerInterceptor(
-                    child: Material(
-                      color: TasmanColors.darkOcean.withValues(alpha: .93),
-                      borderRadius: BorderRadius.circular(14),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        child: Text(
-                          _message!,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            _TransientTasmanBanner(
+              key: ValueKey(_message),
+              message: _message!,
+              onDismiss: () {
+                if (mounted) setState(() => _message = null);
+              },
             ),
           if (!_driveEngine.active &&
               !_transitTripRunning &&
