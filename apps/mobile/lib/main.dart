@@ -4,14 +4,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
-import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
-import 'data/api_config.dart';
 import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/route_repository.dart';
@@ -612,8 +610,8 @@ class _MapHomePageState extends State<MapHomePage> {
             const SizedBox(height: 14),
             Text(
               _text(
-                reporter + ' reported this ' + _relativeTime(reportedAt),
-                reporter + ' · ' + _relativeTime(reportedAt) + '报告',
+                '$reporter reported this ${_relativeTime(reportedAt)}',
+                '$reporter · ${_relativeTime(reportedAt)}报告',
               ),
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
@@ -2186,18 +2184,19 @@ class _MapHomePageState extends State<MapHomePage> {
             zIndex: 35,
             infoWindow: InfoWindow(
               title: _roadEventLabel(event.type),
-              snippet:
-                  (event.metadata['reporterName']?.toString() ??
-                      _text('Tasman driver', 'Tasman 用户')) +
-                  ' · ' +
-                  _relativeTime(
-                    DateTime.tryParse(
-                          event.metadata['reportedAt']?.toString() ?? '',
-                        ) ??
-                        event.source.updatedAt,
-                  ) +
-                  ' · ' +
-                  _remainingTime(event.validUntil),
+              snippet: () {
+                final reporter =
+                    event.metadata['reporterName']?.toString() ??
+                    _text('Tasman driver', 'Tasman 用户');
+                final time = _relativeTime(
+                  DateTime.tryParse(
+                        event.metadata['reportedAt']?.toString() ?? '',
+                      ) ??
+                      event.source.updatedAt,
+                );
+                final remaining = _remainingTime(event.validUntil);
+                return '$reporter · $time · $remaining';
+              }(),
             ),
           ),
       ];
