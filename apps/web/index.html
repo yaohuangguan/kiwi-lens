@@ -119,6 +119,13 @@
           <span><i class="traffic-dot jam"></i>Heavy traffic</span>
         </div>
         <div id="routeInfoCards" class="route-info-cards" hidden></div>
+        <section id="parkingSection" class="parking-section" hidden aria-live="polite">
+          <div class="parking-heading"><div><span class="parking-kicker" id="parkingKicker">ARRIVE WITH A PLAN</span><h2 id="parkingTitle">Parking near your destination</h2></div><span class="parking-symbol" aria-hidden="true">P</span></div>
+          <p id="parkingSummary" class="parking-summary"></p>
+          <div id="parkingList" class="parking-list"></div>
+          <div id="parkingActions" class="parking-actions" hidden></div>
+          <div class="parking-source"><span id="parkingSourceNote">Place locations by Google · availability not provided</span><a id="parkingSourceLink" href="https://services2.arcgis.com/JkPEgZJGxhSjYOo0/arcgis/rest/services/ParkingService/FeatureServer/1" target="_blank" rel="noopener noreferrer">AT source ↗</a></div>
+        </section>
         <div id="planningActions" class="planning-actions" hidden>
           <button id="addStopButton" type="button">＋ Add stop</button>
           <button id="saveRouteButton" type="button">♡ Save</button>
@@ -160,6 +167,7 @@
           <button id="navOverviewChip" type="button">Route overview</button>
         </div>
         <div id="navTrafficCard" class="nav-traffic-card" hidden></div>
+        <div id="navParkingHint" class="nav-parking-hint" hidden></div>
         <div id="navSecondary" class="nav-secondary" hidden>
           <div><span id="navSpeedLimitLabel">Speed limit</span><strong id="navSpeedLimit">—</strong></div>
           <div><span id="navNextCameraLabel">Next camera</span><strong id="navNextCamera">—</strong></div>

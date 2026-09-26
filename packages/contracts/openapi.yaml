@@ -40,6 +40,31 @@ paths:
                   syncStatus: { type: string, enum: [seed, live, stale] }
                   syncError: { type: string, nullable: true }
                   source: { type: string, format: uri }
+  /parking:
+    get:
+      summary: AT Open GIS car parks within 1.5 km of a New Zealand coordinate
+      description: Auckland Transport locations and static capacity only; live availability is not asserted. Returns an empty array outside AT coverage.
+      parameters:
+        - in: query
+          name: at
+          required: true
+          description: longitude,latitude
+          schema: { type: string }
+      responses:
+        '200':
+          description: Nearby AT parking locations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  sourceUrl: { type: string, format: uri }
+                  places:
+                    type: array
+                    items: { $ref: '#/components/schemas/ParkingPlace' }
+        '400': { description: Invalid coordinate }
+        '502': { description: AT source temporarily unavailable }
   /search:
     get:
       summary: Search addresses within New Zealand
@@ -84,6 +109,24 @@ paths:
               schema: { $ref: '#/components/schemas/Route' }
 components:
   schemas:
+    ParkingPlace:
+      type: object
+      required: [id, source, name, address, coordinate, distanceMeters]
+      properties:
+        id: { type: string }
+        source: { type: string, enum: [at] }
+        name: { type: string }
+        address: { type: string }
+        coordinate:
+          type: array
+          description: longitude,latitude
+          minItems: 2
+          maxItems: 2
+          items: { type: number }
+        distanceMeters: { type: number }
+        totalSpaces: { type: integer, nullable: true, description: Published capacity, not live availability }
+        mobilitySpaces: { type: integer, nullable: true }
+        clearanceMeters: { type: number, nullable: true }
     Camera:
       type: object
       required: [id, name, region, suburb, location, type, latitude, longitude, source, updatedAt]

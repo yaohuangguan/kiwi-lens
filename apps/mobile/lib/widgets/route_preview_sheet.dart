@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
-
-const _ink = TasmanColors.darkOcean;
+import '../data/parking_repository.dart';
 
 String _duration(int seconds) {
   final duration = Duration(seconds: seconds);
@@ -77,6 +76,13 @@ class RoutePreviewSheet extends StatelessWidget {
     required this.onFavorite,
     required this.onReview,
     required this.onClose,
+    this.parkingPlaces = const [],
+    this.selectedParkingId,
+    this.finalDestinationTitle,
+    this.parkingLoading = false,
+    this.onParkingSelected,
+    this.onDirectDestination,
+    this.isChinese = false,
   });
 
   final String destinationTitle;
@@ -97,6 +103,13 @@ class RoutePreviewSheet extends StatelessWidget {
   final VoidCallback onFavorite;
   final VoidCallback onReview;
   final VoidCallback onClose;
+  final List<ParkingPlace> parkingPlaces;
+  final String? selectedParkingId;
+  final String? finalDestinationTitle;
+  final bool parkingLoading;
+  final ValueChanged<ParkingPlace>? onParkingSelected;
+  final VoidCallback? onDirectDestination;
+  final bool isChinese;
 
   @override
   Widget build(BuildContext context) {
@@ -117,14 +130,14 @@ class RoutePreviewSheet extends StatelessWidget {
 
     return PointerInterceptor(
       child: Material(
-        color: TasmanColors.lightSurface,
+        color: Theme.of(context).colorScheme.surface,
         elevation: 0,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         clipBehavior: Clip.antiAlias,
         child: SafeArea(
           top: false,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 520),
+            constraints: const BoxConstraints(maxHeight: 640),
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
               child: Column(
@@ -135,7 +148,7 @@ class RoutePreviewSheet extends StatelessWidget {
                     height: 5,
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
-                      color: TasmanColors.lightBorder,
+                      color: Theme.of(context).dividerColor,
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
@@ -161,7 +174,9 @@ class RoutePreviewSheet extends StatelessWidget {
                           isFavorite
                               ? Icons.favorite_rounded
                               : Icons.favorite_border_rounded,
-                          color: isFavorite ? Colors.redAccent : _ink,
+                          color: isFavorite
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.primary,
                         ),
                       ),
                       IconButton(
@@ -206,24 +221,50 @@ class RoutePreviewSheet extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (finalDestinationTitle != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          isChinese
+                              ? '前往 $finalDestinationTitle · 停车点'
+                              : 'Parking for $finalDestinationTitle',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
                   Row(
                     children: [
                       for (final mode in KiwiTravelMode.values)
                         Expanded(
                           child: InkWell(
-                            onTap: plan.forMode(mode).isEmpty
+                            onTap:
+                                plan.forMode(mode).isEmpty ||
+                                    (selectedParkingId != null &&
+                                        mode != KiwiTravelMode.drive)
                                 ? null
                                 : () => onModeChanged(mode),
                             borderRadius: BorderRadius.circular(14),
                             child: Opacity(
-                              opacity: plan.forMode(mode).isEmpty ? .35 : 1,
+                              opacity:
+                                  plan.forMode(mode).isEmpty ||
+                                      (selectedParkingId != null &&
+                                          mode != KiwiTravelMode.drive)
+                                  ? .35
+                                  : 1,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 10,
                                 ),
                                 decoration: BoxDecoration(
                                   color: selectedMode == mode
-                                      ? TasmanColors.ice
+                                      ? Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer
                                       : Colors.transparent,
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -232,8 +273,12 @@ class RoutePreviewSheet extends StatelessWidget {
                                     Icon(
                                       _icon(mode),
                                       color: selectedMode == mode
-                                          ? _ink
-                                          : Colors.black54,
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .onPrimaryContainer
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
                                       size: 21,
                                     ),
                                     const SizedBox(height: 4),
@@ -259,6 +304,17 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                     ],
                   ),
+                  if (selectedMode == KiwiTravelMode.drive)
+                    _ParkingChoices(
+                      places: parkingPlaces,
+                      selectedId: selectedParkingId,
+                      finalDestinationTitle:
+                          finalDestinationTitle ?? destinationTitle,
+                      loading: parkingLoading,
+                      onSelected: onParkingSelected,
+                      onDirect: onDirectDestination,
+                      isChinese: isChinese,
+                    ),
                   if (routes.isNotEmpty) ...[
                     const Divider(height: 20),
                     SizedBox(
@@ -282,13 +338,17 @@ class RoutePreviewSheet extends StatelessWidget {
                               ),
                               decoration: BoxDecoration(
                                 color: active
-                                    ? TasmanColors.ice
-                                    : TasmanColors.lightBackground,
+                                    ? Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer
+                                    : Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerLow,
                                 borderRadius: BorderRadius.circular(15),
                                 border: Border.all(
                                   color: active
                                       ? TasmanColors.ocean
-                                      : TasmanColors.lightBorder,
+                                      : Theme.of(context).dividerColor,
                                 ),
                               ),
                               child: Row(
@@ -333,9 +393,11 @@ class RoutePreviewSheet extends StatelessWidget {
                                           '${delay != null && delay > 60 ? ' · ${_duration(delay)} traffic' : ''}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 10,
-                                            color: Color(0xFF68756E),
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
                                           ),
                                         ),
                                       ],
@@ -365,8 +427,10 @@ class RoutePreviewSheet extends StatelessWidget {
                             routeExplanation(selected, routes).isNotEmpty
                                 ? routeExplanation(selected, routes)
                                 : 'Route preview',
-                            style: const TextStyle(
-                              color: Color(0xFF5D6C64),
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
@@ -379,7 +443,9 @@ class RoutePreviewSheet extends StatelessWidget {
                       child: Chip(
                         avatar: const Icon(Icons.speed_rounded, size: 18),
                         label: Text('$cameraCount cameras on selected route'),
-                        backgroundColor: TasmanColors.ice,
+                        backgroundColor: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer,
                       ),
                     ),
                     if (customOrigin)
@@ -543,6 +609,261 @@ class _TransitDetails extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ParkingChoices extends StatelessWidget {
+  const _ParkingChoices({
+    required this.places,
+    required this.selectedId,
+    required this.finalDestinationTitle,
+    required this.loading,
+    required this.onSelected,
+    required this.onDirect,
+    required this.isChinese,
+  });
+
+  final List<ParkingPlace> places;
+  final String? selectedId;
+  final String finalDestinationTitle;
+  final bool loading;
+  final ValueChanged<ParkingPlace>? onSelected;
+  final VoidCallback? onDirect;
+  final bool isChinese;
+
+  String _walkDistance(double metres) => metres >= 1000
+      ? '${(metres / 1000).toStringAsFixed(1)} km'
+      : '${metres.round()} m';
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: .35),
+        border: Border.all(color: scheme.primary.withValues(alpha: .22)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.local_parking_rounded, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isChinese
+                      ? '终点附近停车 · $finalDestinationTitle'
+                      : 'Park near $finalDestinationTitle',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (loading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            isChinese ? '先驾车到停车点，再步行至终点。所示距离为直线距离。' : 'Drive to a car park, then continue on foot. Distance shown is straight line.',
+            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+          ),
+          if (onDirect != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onDirect,
+                icon: const Icon(Icons.route_rounded, size: 17),
+                label: Text(
+                  isChinese ? '直接前往终点' : 'Route straight to destination',
+                ),
+              ),
+            ),
+          if (!loading && places.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                isChinese ? '附近暂无停车数据。' : 'No nearby parking data found.',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ),
+          if (places.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 114,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: places.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final place = places[index];
+                  final active = selectedId == place.id;
+                  return InkWell(
+                    onTap: () => onSelected?.call(place),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      width: 220,
+                      padding: const EdgeInsets.all(11),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? scheme.primaryContainer
+                            : scheme.surface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: active
+                              ? scheme.primary
+                              : scheme.outlineVariant,
+                          width: active ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            place.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            isChinese
+                                ? '距终点 ${_walkDistance(place.distanceMeters)} · ${place.source}'
+                                : '${_walkDistance(place.distanceMeters)} from destination · ${place.source}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                          if (place.address.isNotEmpty)
+                            Text(
+                              place.address,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 11,
+                              ),
+                            ),
+                          const Spacer(),
+                          Text(
+                            place.totalSpaces == null
+                                ? (isChinese ? '选择停车点' : 'Select parking')
+                                : isChinese
+                                ? '总车位 ${place.totalSpaces}'
+                                      '${place.mobilitySpaces == null ? '' : ' · 无障碍 ${place.mobilitySpaces}'}'
+                                : '${place.totalSpaces} total spaces'
+                                      '${place.mobilitySpaces == null ? '' : ' · ${place.mobilitySpaces} accessible'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: scheme.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class ParkingContinuationCard extends StatelessWidget {
+  const ParkingContinuationCard({
+    super.key,
+    required this.destinationTitle,
+    required this.parkingTitle,
+    required this.onContinue,
+    required this.onEnd,
+    this.isChinese = false,
+  });
+
+  final String destinationTitle;
+  final String parkingTitle;
+  final VoidCallback onContinue;
+  final VoidCallback onEnd;
+  final bool isChinese;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PointerInterceptor(
+      child: Material(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        clipBehavior: Clip.antiAlias,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.local_parking_rounded, color: scheme.primary),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        isChinese ? '驾车路段已结束' : 'Driving leg ended',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '$parkingTitle → $destinationTitle',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: onEnd,
+                        child: Text(isChinese ? '结束行程' : 'End trip'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: onContinue,
+                        icon: const Icon(Icons.directions_walk_rounded),
+                        label: Text(isChinese ? '继续步行' : 'Continue on foot'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

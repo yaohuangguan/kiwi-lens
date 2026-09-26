@@ -12,6 +12,7 @@ import { initAutocomplete, type SuggestedPlace } from './autocomplete';
 import { GoogleMapAdapter, type PoiSelection } from './google-map';
 import { computeGoogleRoute, computeGoogleRoutes, enrichRouteLanes } from './google-routes';
 import { fetchRoutePlan, formatModeDuration, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
+import type { ParkingPlace } from './parking';
 
 type Language = 'zh' | 'en';
 type Place = { id: number; label: string; latitude: number; longitude: number };
@@ -63,6 +64,218 @@ let lastSpeedLimitLookupAt = 0;
 let lastSpeedLimitCoordinate: Coordinate | null = null;
 let speedLimitLookupPending = false;
 const spokenCameras = new Set<string>();
+
+type ParkingDestination = { coordinate: Coordinate; name: string };
+let parkingDestination: ParkingDestination | null = null;
+let parkingPlaces: ParkingPlace[] = [];
+let selectedParking: ParkingPlace | null = null;
+let parkingLoading = false;
+let parkingError = '';
+let parkingSearchSequence = 0;
+let parkedAtParking = false;
+
+function setDestinationSelection(coordinate: Coordinate, name: string) {
+  ++parkingSearchSequence;
+  parkingDestination = null;
+  selectedParking = null;
+  parkedAtParking = false;
+  parkingPlaces = [];
+  parkingLoading = false;
+  parkingError = '';
+  selectedTravelMode = 'drive';
+  destination = coordinate;
+  destinationName = name;
+  map.renderParking([], null, selectParking);
+  renderParking();
+  void loadParking();
+}
+
+async function loadParking() {
+  const target = destination;
+  if (!target || parkingDestination) return;
+  const request = ++parkingSearchSequence;
+  parkingLoading = true;
+  parkingError = '';
+  renderParking();
+  try {
+    const official = await api<{ places: ParkingPlace[] }>(
+      `/api/parking?at=${target[0]},${target[1]}`
+    ).catch(() => null);
+    const places = official?.places?.length ? official.places : await map.searchParking(target);
+    if (request !== parkingSearchSequence || !destination || parkingDestination) return;
+    parkingPlaces = places;
+    parkingError = '';
+  } catch {
+    if (request !== parkingSearchSequence) return;
+    parkingPlaces = [];
+    parkingError = language === 'zh' ? '停车地点暂时无法加载。' : 'Parking places are temporarily unavailable.';
+  } finally {
+    if (request === parkingSearchSequence) {
+      parkingLoading = false;
+      renderParking();
+    }
+  }
+}
+
+function selectParking(place: ParkingPlace) {
+  if (navigating || !destination) return;
+  if (!parkingDestination) parkingDestination = { coordinate: destination, name: destinationName };
+  selectedParking = place;
+  parkedAtParking = false;
+  destination = place.coordinate;
+  destinationName = place.name;
+  selectedTravelMode = 'drive';
+  map.renderParking(parkingPlaces, place.id, selectParking);
+  renderParking();
+  if (manualOrigin || current) void planRoute();
+}
+
+function driveToDestination() {
+  if (!parkingDestination) return;
+  destination = parkingDestination.coordinate;
+  destinationName = parkingDestination.name;
+  parkingDestination = null;
+  selectedParking = null;
+  parkedAtParking = false;
+  selectedTravelMode = 'drive';
+  map.renderParking(parkingPlaces, null, selectParking);
+  renderParking();
+  if (manualOrigin || current) void planRoute();
+}
+
+function continueOnFoot() {
+  if (!parkingDestination || !selectedParking || !parkedAtParking) return;
+  destination = parkingDestination.coordinate;
+  destinationName = parkingDestination.name;
+  parkingDestination = null;
+  selectedParking = null;
+  parkedAtParking = false;
+  parkingPlaces = [];
+  selectedTravelMode = 'walk';
+  routeStops.splice(0, routeStops.length);
+  manualOrigin = null;
+  renderStops();
+  map.renderParking([], null, selectParking);
+  route = null;
+  drivingAlternatives = [];
+  routePlan = null;
+  map.clearRoute();
+  ($('driveButton') as HTMLButtonElement).disabled = true;
+  $('travelModes').hidden = true;
+  $('routeAlternatives').hidden = true;
+  renderParking();
+  if (current) void planRoute('walk');
+  else requestGps();
+}
+
+function renderParking() {
+  const section = $('parkingSection');
+  const hint = $('navParkingHint');
+  section.hidden = !destination || selectedTravelMode !== 'drive';
+  $('navDestinationLabel').textContent = selectedParking && selectedTravelMode === 'drive'
+    ? (language === 'zh' ? '停车点' : 'PARKING STOP')
+    : (language === 'zh' ? '目的地' : 'DESTINATION');
+  hint.hidden = !selectedParking || !parkingDestination || selectedTravelMode !== 'drive';
+  if (section.hidden) {
+    map.renderParking([], null, selectParking);
+    return;
+  }
+  const target = parkingDestination || { coordinate: destination!, name: destinationName };
+  $('parkingKicker').textContent = language === 'zh' ? '到达前，先看停车' : 'ARRIVE WITH A PLAN';
+  $('parkingTitle').textContent = language === 'zh' ? '终点附近停车' : 'Parking near your destination';
+  const isAtSource = parkingPlaces[0]?.source === 'at';
+  $('parkingSourceNote').textContent = isAtSource
+    ? (language === 'zh' ? '来源：AT Open GIS · 总车位并非实时空位' : 'Source: AT Open GIS · total spaces are not live availability')
+    : (language === 'zh' ? '来源：Google Places · 不提供实时空位' : 'Source: Google Places · live spaces unavailable');
+  const sourceLink = $('parkingSourceLink') as HTMLAnchorElement;
+  sourceLink.hidden = !isAtSource;
+  sourceLink.textContent = language === 'zh' ? 'AT 原始数据 ↗' : 'AT source ↗';
+  $('parkingSummary').textContent = selectedParking
+    ? (language === 'zh'
+      ? `已选 ${selectedParking.name}，距 ${target.name} 约 ${formatDistance(selectedParking.distanceMeters, language)}（直线距离）。`
+      : `Driving to ${selectedParking.name} · ${formatDistance(selectedParking.distanceMeters, language)} from ${target.name} as the crow flies.`)
+    : (language === 'zh'
+      ? '先选停车点，导航会以它为驾车终点；距离为直线距离，停车后可继续步行。'
+      : 'Choose a parking place for the driving leg, then continue on foot. Distances are straight line.');
+  if (!hint.hidden) hint.textContent = language === 'zh'
+    ? `停车：${selectedParking!.name} · 之后步行到 ${target.name}`
+    : `Parking: ${selectedParking!.name} · then walk to ${target.name}`;
+  const list = $('parkingList');
+  list.replaceChildren();
+  if (parkingLoading && !parkingPlaces.length) {
+    list.textContent = language === 'zh' ? '正在寻找停车点…' : 'Finding nearby parking…';
+  } else if (parkingError && !parkingPlaces.length) {
+    list.textContent = parkingError;
+  } else if (!parkingPlaces.length) {
+    list.textContent = language === 'zh' ? '附近暂无已收录停车点。' : 'No listed parking places nearby.';
+  } else {
+    for (const place of parkingPlaces) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'parking-option' + (place.id === selectedParking?.id ? ' selected' : '');
+      button.setAttribute('aria-pressed', String(place.id === selectedParking?.id));
+      const icon = document.createElement('span');
+      icon.className = 'parking-option-icon';
+      icon.textContent = 'P';
+      const copy = document.createElement('span');
+      copy.className = 'parking-option-copy';
+      const name = document.createElement('strong');
+      name.textContent = place.name;
+      const address = document.createElement('small');
+      address.textContent = place.address || (language === 'zh' ? '停车地点' : 'Parking place');
+      copy.append(name, address);
+      if (place.source === 'at') {
+        const details = document.createElement('small');
+        details.className = 'parking-option-detail';
+        details.textContent = [
+          place.totalSpaces !== null ? (language === 'zh' ? `总车位 ${place.totalSpaces}` : `${place.totalSpaces} total spaces`) : '',
+          place.mobilitySpaces !== null ? (language === 'zh' ? `无障碍 ${place.mobilitySpaces}` : `${place.mobilitySpaces} accessible`) : '',
+          place.clearanceMeters !== null ? (language === 'zh' ? `限高 ${place.clearanceMeters}m` : `${place.clearanceMeters}m clearance`) : ''
+        ].filter(Boolean).join(' · ') || 'AT Open GIS';
+        copy.append(details);
+      }
+      const distance = document.createElement('span');
+      distance.className = 'parking-option-distance';
+      distance.textContent = formatDistance(place.distanceMeters, language);
+      button.append(icon, copy, distance);
+      button.onclick = () => selectParking(place);
+      list.append(button);
+    }
+  }
+  const actions = $('parkingActions');
+  actions.replaceChildren();
+  actions.hidden = !selectedParking;
+  if (selectedParking) {
+    const direct = document.createElement('button');
+    direct.type = 'button';
+    direct.textContent = language === 'zh' ? '改为直接到目的地' : 'Drive to destination instead';
+    direct.onclick = driveToDestination;
+    actions.append(direct);
+    const detailsUrl = selectedParking.source === 'at'
+      ? 'https://at.govt.nz/driving-and-parking/find-parking'
+      : selectedParking.googleMapsURI;
+    if (detailsUrl) {
+      const details = document.createElement('a');
+      details.href = detailsUrl;
+      details.target = '_blank';
+      details.rel = 'noopener noreferrer';
+      details.textContent = selectedParking.source === 'at'
+        ? (language === 'zh' ? 'AT 费用与规则 ↗' : 'AT rates & rules ↗')
+        : (language === 'zh' ? '查看地点 ↗' : 'Place details ↗');
+      actions.append(details);
+    }
+    if (parkedAtParking) {
+      const walk = document.createElement('button');
+      walk.type = 'button';
+      walk.className = 'primary';
+      walk.textContent = language === 'zh' ? '继续步行到目的地 →' : 'Continue on foot →';
+      walk.onclick = continueOnFoot;
+      actions.prepend(walk);
+    }
+  }
+  map.renderParking(parkingPlaces, selectedParking?.id || null, selectParking);
+}
+
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
@@ -591,8 +804,7 @@ async function search(target: 'origin' | 'destination' | 'stop') {
           ($('stopInput') as HTMLInputElement).value = '';
           renderStops();
         } else {
-          destination = coordinate;
-          destinationName = place.label.split(',').slice(0, 2).join(',');
+          setDestinationSelection(coordinate, place.label.split(',').slice(0, 2).join(','));
           ($('destinationInput') as HTMLInputElement).value = destinationName;
           $('clearDestinationButton').hidden = false;
           void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
@@ -607,7 +819,7 @@ async function search(target: 'origin' | 'destination' | 'stop') {
   }
 }
 
-async function planRoute() {
+async function planRoute(modeOverride?: TravelMode) {
   const from = manualOrigin || current;
   if (!from || !destination) return;
   routeAbort?.abort();
@@ -615,7 +827,7 @@ async function planRoute() {
   const signal = routeAbort.signal;
   $('tripEyebrow').textContent = 'CALCULATING ROUTE';
   $('tripTitle').textContent = t(language, 'routeCalculating');
-  const requestedMode = navigating ? selectedTravelMode : 'drive';
+  const requestedMode = modeOverride || selectedTravelMode;
   try {
     const stopCoordinates = routeStops.map((stop) => stop.coordinate);
     const stopQuery = stopCoordinates.length
@@ -653,6 +865,7 @@ async function planRoute() {
       : '—';
     $('navNextCamera').textContent = $('sheetNextCamera').textContent;
     renderRoutePlanner();
+    renderParking();
     if (navigating && selectedTravelMode !== 'drive') document.body.dataset.travelMode = selectedTravelMode;
     if (navigating) updateGuidance();
   } catch (error) {
@@ -664,6 +877,16 @@ async function planRoute() {
 }
 
 function clearDestination() {
+  ++parkingSearchSequence;
+  parkingDestination = null;
+  selectedParking = null;
+  parkedAtParking = false;
+  parkingPlaces = [];
+  parkingLoading = false;
+  parkingError = '';
+  map.renderParking([], null, selectParking);
+  $('parkingSection').hidden = true;
+  $('navParkingHint').hidden = true;
   routeAbort?.abort();
   routeAbort = null;
   destination = null;
@@ -921,13 +1144,21 @@ function stopNavigation(arrived = false) {
   $('cameraAlert').hidden = true;
   setUiMode('explore');
   if (route) map.fitRoute(route);
-  $('tripEyebrow').textContent = arrived ? 'ARRIVED' : 'ROUTE READY';
+  if (arrived && selectedParking && parkingDestination && selectedTravelMode === 'drive') {
+    parkedAtParking = true;
+    renderParking();
+    $('bottomPanel').classList.remove('sheet-collapsed');
+    requestAnimationFrame(() => $('parkingSection').scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+  $('tripEyebrow').textContent = arrived ? (parkedAtParking ? 'PARKING REACHED' : 'ARRIVED') : 'ROUTE READY';
   $('driveLabel').textContent = t(language, 'start');
   $('driveIcon').textContent = '➤';
   $('drivingStatus').textContent = t(language, 'drivingStopped');
   void wakeLock?.release();
   wakeLock = null;
-  if (arrived) speak(language === 'zh' ? '已到达目的地。' : 'You have arrived.');
+  if (arrived) speak(parkedAtParking
+    ? (language === 'zh' ? '已到达停车点。停车后请继续步行到目的地。' : 'You have reached the parking place. Continue on foot to your destination.')
+    : (language === 'zh' ? '已到达目的地。' : 'You have arrived.'));
 }
 
 function showOverlay(id: string) { $(id).hidden = false; }
@@ -1109,14 +1340,13 @@ async function saveSelectedPlace(nextFavorite?: boolean) {
 
 function navigateToSelectedPoi() {
   if (!selectedPoi) return;
-  destination = selectedPoi.coordinate;
-  destinationName = selectedPoi.name;
+  setDestinationSelection(selectedPoi.coordinate, selectedPoi.name);
   ($('destinationInput') as HTMLInputElement).value = destinationName;
   $('clearDestinationButton').hidden = false;
   void rememberDestination({
     label: selectedPoi.address ? `${selectedPoi.name}, ${selectedPoi.address}` : selectedPoi.name,
-    latitude: destination[1],
-    longitude: destination[0]
+    latitude: selectedPoi.coordinate[1],
+    longitude: selectedPoi.coordinate[0]
   });
   hidePoiCard();
   if (manualOrigin || current) void planRoute();
@@ -1207,8 +1437,7 @@ initAutocomplete({
       manualOrigin = coordinate;
       ($('originInput') as HTMLInputElement).value = place.label.split(',').slice(0, 2).join(',');
     } else {
-      destination = coordinate;
-      destinationName = place.label.split(',').slice(0, 2).join(',');
+      setDestinationSelection(coordinate, place.label.split(',').slice(0, 2).join(','));
       ($('destinationInput') as HTMLInputElement).value = destinationName;
       $('clearDestinationButton').hidden = false;
       void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
@@ -1233,6 +1462,17 @@ $('travelModes').addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-mode]');
   if (!button || button.disabled) return;
   selectedTravelMode = button.dataset.mode as TravelMode;
+  if (selectedTravelMode !== 'drive' && parkingDestination) {
+    destination = parkingDestination.coordinate;
+    destinationName = parkingDestination.name;
+    parkingDestination = null;
+    selectedParking = null;
+    parkedAtParking = false;
+    map.renderParking(parkingPlaces, null, selectParking);
+    renderParking();
+    void planRoute(selectedTravelMode);
+    return;
+  }
   if (selectedTravelMode === 'drive') {
     applyDrivingRoute(selectedDrivingRoute);
   } else {
@@ -1240,6 +1480,7 @@ $('travelModes').addEventListener('click', (event) => {
     map.clearTrafficRoutes();
   }
   renderRoutePlanner();
+  renderParking();
 });
 $('driveButton').onclick = () => {
   if (navigating) stopNavigation();
@@ -1331,7 +1572,9 @@ function applyLanguage() {
   $('driveLabel').textContent = t(language, navigating ? 'stop' : 'start');
   $('drivingStatus').textContent = t(language, navigating ? 'drivingStarted' : 'drivingStopped');
   $('navEndLabel').textContent = t(language, 'stop');
-  $('navDestinationLabel').textContent = language === 'zh' ? '目的地' : 'DESTINATION';
+  $('navDestinationLabel').textContent = selectedParking && selectedTravelMode === 'drive'
+    ? (language === 'zh' ? '停车点' : 'PARKING STOP')
+    : (language === 'zh' ? '目的地' : 'DESTINATION');
   $('navCamerasLabel').textContent = t(language, 'camerasAlong');
   $('navDistanceLabel').textContent = t(language, 'distance');
   $('navArrivalLabel').textContent = t(language, 'arrival');
@@ -1356,6 +1599,7 @@ function applyLanguage() {
   renderGpsStatus();
   renderSpeedHud();
   renderTripFlags();
+  renderParking();
   if (selectedPoi) showPoiCard(selectedPoi);
   if (navigating) updateGuidance();
 }
@@ -1420,6 +1664,8 @@ async function initializeMap() {
     onPoiSelected: showPoiCard
   });
   map.setTrafficEnabled(trafficLayerEnabled);
+  renderParking();
+  if (destination && !parkingDestination && !parkingPlaces.length) void loadParking();
 }
 
 void initializeMap().catch((error) => {

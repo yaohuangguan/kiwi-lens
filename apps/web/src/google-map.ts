@@ -1,5 +1,6 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
-import { cameraLabel, type Camera, type Coordinate, type Route } from '@kiwi-lens/core';
+import { cameraLabel, distanceMeters, type Camera, type Coordinate, type Route } from '@kiwi-lens/core';
+import type { ParkingPlace } from './parking';
 import type { TrafficInterval } from './route-planner';
 
 export type PoiReview = {
@@ -45,6 +46,7 @@ export class GoogleMapAdapter {
   private AdvancedMarker?: typeof google.maps.marker.AdvancedMarkerElement;
   private Place?: typeof google.maps.places.Place;
   private cameraMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
+  private parkingMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
   private positionMarker?: google.maps.marker.AdvancedMarkerElement;
   private destinationMarker?: google.maps.marker.AdvancedMarkerElement;
   private routeOutline?: google.maps.Polyline;
@@ -230,6 +232,60 @@ export class GoogleMapAdapter {
     });
   }
 
+  async searchParking(center: Coordinate): Promise<ParkingPlace[]> {
+    if (!this.Place) throw new Error('Map is still loading');
+    const { places } = await this.Place.searchNearby({
+      fields: ['id', 'displayName', 'formattedAddress', 'location', 'googleMapsURI', 'businessStatus'],
+      locationRestriction: {
+        center: { lat: center[1], lng: center[0] },
+        radius: 1500
+      },
+      includedTypes: ['parking', 'parking_garage', 'parking_lot'],
+      maxResultCount: 12,
+      rankPreference: 'DISTANCE',
+      region: 'NZ'
+    });
+    return places
+      .filter((place) => place.id && place.location && place.businessStatus !== 'CLOSED_PERMANENTLY')
+      .map((place) => {
+        const coordinate: Coordinate = [place.location!.lng(), place.location!.lat()];
+        return {
+          id: place.id,
+          source: 'google' as const,
+          name: place.displayName || 'Parking',
+          address: place.formattedAddress || '',
+          coordinate,
+          distanceMeters: distanceMeters(center, coordinate),
+          googleMapsURI: place.googleMapsURI || '',
+          totalSpaces: null,
+          mobilitySpaces: null,
+          clearanceMeters: null
+        };
+      })
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)
+      .slice(0, 8);
+  }
+
+  renderParking(places: ParkingPlace[], selectedId: string | null, onSelect: (place: ParkingPlace) => void) {
+    for (const marker of this.parkingMarkers) marker.map = null;
+    this.parkingMarkers = [];
+    if (!this.map || !this.AdvancedMarker) return;
+    for (const place of places) {
+      const content = document.createElement('span');
+      content.className = 'parking-pin' + (place.id === selectedId ? ' selected' : '');
+      content.textContent = 'P';
+      const marker = new this.AdvancedMarker({
+        map: this.map,
+        position: { lat: place.coordinate[1], lng: place.coordinate[0] },
+        title: place.name,
+        zIndex: place.id === selectedId ? 490 : 80,
+        content
+      });
+      marker.addListener('click', () => onSelect(place));
+      this.parkingMarkers.push(marker);
+    }
+  }
+
   setPosition(coordinate: Coordinate, heading: number | null) {
     this.pendingPosition = { coordinate, heading };
     if (!this.map || !this.AdvancedMarker) return;
@@ -292,7 +348,7 @@ export class GoogleMapAdapter {
       points.push({ lat: nextLat * 180 / Math.PI, lng: nextLon * 180 / Math.PI });
     }
     if (!this.radar) {
-      this.radar = new google.maps.Polygon({ map: this.map, clickable: false, fillColor: '#aaf05f', fillOpacity: 0.19, strokeColor: '#86cb48', strokeOpacity: 0.55, strokeWeight: 1.5, zIndex: 5 });
+      this.radar = new google.maps.Polygon({ map: this.map, clickable: false, fillColor: '#27c7bf', fillOpacity: 0.17, strokeColor: '#008c98', strokeOpacity: 0.55, strokeWeight: 1.5, zIndex: 5 });
     }
     this.radar.setPaths(points);
   }
@@ -306,7 +362,7 @@ export class GoogleMapAdapter {
     this.clearTrafficRoutes();
 
     const color = (speed: TrafficInterval['speed']) =>
-      speed === 'trafficJam' ? '#EA4335' : speed === 'slow' ? '#F9AB00' : '#34A853';
+      speed === 'trafficJam' ? '#EA4335' : speed === 'slow' ? '#F9AB00' : '#00A6A6';
 
     routes.forEach(({ route, trafficIntervals }, index) => {
       const selected = index === selectedIndex;
@@ -338,7 +394,7 @@ export class GoogleMapAdapter {
         const segment = new google.maps.Polyline({
           map: this.map,
           path: points.map(([lng, lat]) => ({ lat, lng })),
-          strokeColor: interval.speed === 'unknown' ? '#087D58' : color(interval.speed),
+          strokeColor: interval.speed === 'unknown' ? '#0877B6' : color(interval.speed),
           strokeWeight: weight,
           strokeOpacity: opacity,
           clickable: Boolean(onSelect),
@@ -376,7 +432,7 @@ export class GoogleMapAdapter {
     this.routeLine = new google.maps.Polyline({
       map: this.map,
       path,
-      strokeColor: '#3d8b68',
+      strokeColor: '#0877B6',
       strokeWeight: 7,
       strokeOpacity: 1,
       clickable: false,

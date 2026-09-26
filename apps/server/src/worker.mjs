@@ -3,6 +3,7 @@ import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
 import { handleAccount, roadReportAuthor } from './auth.mjs';
 import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
+import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
 import { createRoadReport, readRoadReports } from './road_reports.mjs';
 
@@ -116,6 +117,16 @@ async function handleApi(request, env, ctx) {
     const state = await loadRoadEventState(env);
     const reports = await readRoadReports(env);
     return json({ ...state, events: [...reports, ...state.events] });
+  }
+  if (url.pathname === '/api/parking') {
+    const at = validateCoordinatePair(url.searchParams.get('at'));
+    if (!at) return json({ error: 'Valid NZ coordinate required' }, 400);
+    try {
+      return json({ places: await nearbyAtParking(at), source: 'Auckland Transport Open GIS', sourceUrl: AT_PARKING_SOURCE });
+    } catch (error) {
+      console.warn('AT parking query failed', error);
+      return json({ error: 'Parking data temporarily unavailable' }, 502);
+    }
   }
   if (url.pathname === '/api/speed-limit') {
     const at = validateCoordinatePair(url.searchParams.get('at'));

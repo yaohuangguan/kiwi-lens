@@ -184,7 +184,7 @@ class _ProfilePageState extends State<ProfilePage> {
     builder: (context, _) {
       final profile = widget.account.profile;
       return Scaffold(
-        backgroundColor: TasmanColors.lightBackground,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           backgroundColor: TasmanColors.darkOcean,
           foregroundColor: Colors.white,
@@ -323,7 +323,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 Center(
                   child: Text(
                     _text('or', '或'),
-                    style: const TextStyle(color: Colors.black54),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -521,8 +523,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     'Tasman only asks for system notification permission when you turn on a notification below.',
                     '只有当你主动开启下面的通知类型时，Tasman 才会请求系统通知权限。',
                   ),
-                  style: const TextStyle(
-                    color: TasmanColors.lightTextSecondary,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -671,7 +673,7 @@ class _Stat extends StatelessWidget {
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: TasmanColors.ice,
+        color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(

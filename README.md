@@ -112,6 +112,12 @@ pnpm exec wrangler kv namespace create CAMERA_DATA
 
 然后把返回的 namespace ID 填入 `wrangler.jsonc`。本地 `wrangler dev` 使用本地 KV/D1，与线上数据分离。
 
+### 终点附近停车
+
+PWA 的驾车路线预览会查询终点 1.5 km 内的停车点。奥克兰优先使用 Auckland Transport Open GIS 的 Car Parking 图层（`GET /api/parking?at=longitude,latitude`），显示已发布的地点、总车位、无障碍车位和限高；AT 无结果或暂时不可用时使用 Google Places Nearby Search。选择停车点后驾车导航到该点，抵达后可继续按步行路线到原目的地。距离标签为直线距离，停车费、开放时间和实时余位需在现场或官方渠道核实。AT 的 `AVAILABLESPACES` 字段未被当作实时空位使用。
+
+Flutter 路线预览同样支持选择终点附近停车场、驾车到停车点，并在结束驾车导航后继续规划步行路线。Flutter 直接读取 AT Car Parking 图层；在 Google 地图模式下，AT 无结果时使用现有附近地点服务补充停车点。Flutter 的“我的设置”、地图首页浮层和路线预览会跟随系统深色主题。
+
 ## 导航能力与限制
 
 - 浏览器前台 Geolocation 实时跟随位置，使用 Screen Wake Lock 尽可能保持屏幕唤醒。

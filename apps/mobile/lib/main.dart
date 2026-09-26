@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'data/account_repository.dart';
 import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
+import 'data/parking_repository.dart';
 import 'data/route_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
@@ -217,6 +218,7 @@ class _MapHomePageState extends State<MapHomePage> {
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
   final RouteRepository _routeRepository = RouteRepository();
+  final ParkingRepository _parkingRepository = ParkingRepository();
   final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
   late final MapboxSearchProvider _mapboxSearch = MapboxSearchProvider(
     _mapboxToken,
@@ -294,6 +296,12 @@ class _MapHomePageState extends State<MapHomePage> {
   RouteOption? _activeTransitRoute;
   RouteOption? _activeNavigationRoute;
   final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
+  List<ParkingPlace> _parkingPlaces = const [];
+  ParkingPlace? _selectedParking;
+  PlaceSummary? _parkingOriginalPlace;
+  bool _parkingLoading = false;
+  bool _parkingLegFinished = false;
+  int _parkingRequest = 0;
 
   SelectedPlace? _selectedPlace;
   JourneyPhase _journeyPhase = JourneyPhase.idle;
@@ -752,6 +760,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _mapboxRoutes.dispose();
     _account.dispose();
     _placeDetailsRepository.dispose();
+    _parkingRepository.dispose();
     _driveEngine.dispose();
     if (_navigationSessionInitialized) {
       GoogleMapsNavigator.cleanup();
@@ -1075,6 +1084,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _clearRoutePreview() async {
     ++_routeRequest;
+    ++_parkingRequest;
     _driveEngine.setRoute(null);
     final controller = _browseController;
     if (controller != null) {
@@ -1095,10 +1105,102 @@ class _MapHomePageState extends State<MapHomePage> {
       _placeDetailsError = null;
       _placeDetailsRequest++;
       _routeStops.clear();
+      _parkingPlaces = const [];
+      _parkingOriginalPlace = null;
+      _selectedParking = null;
+      _parkingLoading = false;
+      _parkingLegFinished = false;
     });
   }
 
-  Future<void> _loadRoutePreview(PointOfInterest poi) async {
+  Future<void> _loadParking(PlaceSummary destination) async {
+    final request = ++_parkingRequest;
+    setState(() {
+      _parkingPlaces = const [];
+      _parkingLoading = true;
+    });
+    try {
+      final places = await _parkingRepository.nearby(
+        destination: destination.location,
+        allowGoogleFallback: _mapProvider == MapProvider.google,
+        language: _appLanguage,
+      );
+      if (!mounted || request != _parkingRequest) return;
+      setState(() => _parkingPlaces = places);
+    } catch (_) {
+      if (mounted && request == _parkingRequest) {
+        setState(() => _parkingPlaces = const []);
+      }
+    } finally {
+      if (mounted && request == _parkingRequest) {
+        setState(() => _parkingLoading = false);
+      }
+    }
+  }
+
+  Future<void> _selectParking(ParkingPlace parking) async {
+    final original = _parkingOriginalPlace ?? _selectedPlace?.place;
+    if (original == null) return;
+    ++_parkingRequest;
+    setState(() {
+      _parkingOriginalPlace = original;
+      _selectedParking = parking;
+      _parkingLegFinished = false;
+      _parkingLoading = false;
+      _selectedPlace = SelectedPlace(
+        parking.toPlaceSummary(),
+        SelectionSource.map,
+        originMap: _mapProvider,
+      );
+      _routeStops.clear();
+    });
+    final poi = _selectedPoi;
+    if (poi != null) await _loadRoutePreview(poi);
+  }
+
+  Future<void> _restoreDirectDestination() async {
+    final original = _parkingOriginalPlace;
+    if (original == null) return;
+    setState(() {
+      _parkingOriginalPlace = null;
+      _selectedParking = null;
+      _parkingLegFinished = false;
+      _selectedPlace = SelectedPlace(
+        original,
+        SelectionSource.map,
+        originMap: _mapProvider,
+      );
+    });
+    final poi = _selectedPoi;
+    if (poi != null) await _loadRoutePreview(poi);
+  }
+
+  Future<void> _continueOnFoot() async {
+    final original = _parkingOriginalPlace;
+    if (original == null) return;
+    setState(() {
+      _parkingOriginalPlace = null;
+      _selectedParking = null;
+      _parkingLegFinished = false;
+      _parkingPlaces = const [];
+      _manualOrigin = null;
+      _routeStops.clear();
+      _selectedPlace = SelectedPlace(
+        original,
+        SelectionSource.map,
+        originMap: _mapProvider,
+      );
+    });
+    final poi = _selectedPoi;
+    if (poi != null) {
+      await _loadRoutePreview(poi, preferredMode: KiwiTravelMode.walk);
+    }
+  }
+
+  Future<void> _loadRoutePreview(
+    PointOfInterest poi, {
+    KiwiTravelMode preferredMode = KiwiTravelMode.drive,
+  }) async {
     final origin = _manualOrigin?.location ?? _gpsLocation;
     if (origin == null) {
       setState(() => _message = 'Waiting for GPS before calculating routes.');
@@ -1108,10 +1210,15 @@ class _MapHomePageState extends State<MapHomePage> {
     setState(() {
       _routePreviewLoading = true;
       _routePlan = null;
-      _selectedMode = KiwiTravelMode.drive;
+      _selectedMode = preferredMode;
       _selectedRouteId = null;
       _message = null;
     });
+    if (preferredMode == KiwiTravelMode.drive &&
+        _selectedParking == null &&
+        _selectedPlace != null) {
+      unawaited(_loadParking(_selectedPlace!.place));
+    }
     try {
       final plan = _mapProvider == MapProvider.mapbox
           ? await _mapboxRoutes.route(
@@ -1134,14 +1241,16 @@ class _MapHomePageState extends State<MapHomePage> {
                   .map((stop) => stop.location)
                   .toList(growable: false),
             );
-      final firstDrive = plan.forMode(KiwiTravelMode.drive).firstOrNull;
+      final firstRoute = plan.forMode(preferredMode).firstOrNull;
       if (!mounted || request != _routeRequest) return;
       setState(() {
         _routePlan = plan;
-        _selectedRouteId = firstDrive?.id;
+        _selectedRouteId = firstRoute?.id;
         _journeyPhase = JourneyPhase.routePreview;
       });
-      _driveEngine.setRoute(firstDrive);
+      _driveEngine.setRoute(
+        preferredMode == KiwiTravelMode.drive ? firstRoute : null,
+      );
       await _renderRoutePreview();
     } catch (error) {
       if (mounted && request == _routeRequest) {
@@ -1452,7 +1561,7 @@ class _MapHomePageState extends State<MapHomePage> {
       _selectedMode = mode;
       _selectedRouteId = plan.forMode(mode).first.id;
     });
-    _driveEngine.setRoute(_selectedRoute);
+    _driveEngine.setRoute(mode == KiwiTravelMode.drive ? _selectedRoute : null);
     unawaited(_renderRoutePreview());
   }
 
@@ -1859,6 +1968,10 @@ class _MapHomePageState extends State<MapHomePage> {
         _activeNavigationRoute = null;
         _destinationTitle = 'Destination';
         _journeyPhase = JourneyPhase.idle;
+        _parkingLegFinished =
+            _selectedParking != null &&
+            _parkingOriginalPlace != null &&
+            _selectedMode == KiwiTravelMode.drive;
       });
       return;
     }
@@ -1881,6 +1994,9 @@ class _MapHomePageState extends State<MapHomePage> {
     _driveEngine.setRoute(null);
     await GoogleMapsNavigator.stopGuidance();
     await GoogleMapsNavigator.clearDestinations();
+    if (_selectedParking != null && _selectedMode == KiwiTravelMode.drive) {
+      await _driveEngine.stop();
+    }
     await _navigationController?.setNavigationUIEnabled(false);
     await _navigationController?.followMyLocation(CameraPerspective.tilted);
     if (!mounted) return;
@@ -1889,6 +2005,11 @@ class _MapHomePageState extends State<MapHomePage> {
       _junctionZoomed = false;
       _activeNavigationRoute = null;
       _destinationTitle = 'Destination';
+      _journeyPhase = JourneyPhase.idle;
+      _parkingLegFinished =
+          _selectedParking != null &&
+          _parkingOriginalPlace != null &&
+          _selectedMode == KiwiTravelMode.drive;
     });
     if (_useCarMarker && _navigationController != null) {
       await _navigationController!.setMyLocationEnabled(false);
@@ -2023,6 +2144,12 @@ class _MapHomePageState extends State<MapHomePage> {
     setState(() {
       _selectedPlace = SelectedPlace(place, source, originMap: _mapProvider);
       _journeyPhase = JourneyPhase.placeSelected;
+      ++_parkingRequest;
+      _parkingPlaces = const [];
+      _parkingOriginalPlace = null;
+      _selectedParking = null;
+      _parkingLoading = false;
+      _parkingLegFinished = false;
       _routePlan = null;
       _selectedRouteId = null;
       _message = null;
@@ -3009,17 +3136,18 @@ class _MapHomePageState extends State<MapHomePage> {
               visualDensity: VisualDensity.compact,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               padding: const EdgeInsets.symmetric(horizontal: 7),
-              backgroundColor: Colors.white.withValues(alpha: .94),
+              backgroundColor: Theme.of(context).colorScheme.surface
+                  .withValues(alpha: .96),
               side: BorderSide(color: TasmanColors.sky.withValues(alpha: .28)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(13),
               ),
               label: Text(
                 action,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: TasmanColors.deepOcean,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               onPressed: () => _onQuickAction(action),
@@ -3263,12 +3391,16 @@ class _MapHomePageState extends State<MapHomePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 22, color: TasmanColors.deepOcean),
+              Icon(
+                icon,
+                size: 22,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(height: 2),
               Text(
                 label,
-                style: const TextStyle(
-                  color: TasmanColors.deepOcean,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
                 ),
@@ -3283,9 +3415,11 @@ class _MapHomePageState extends State<MapHomePage> {
       minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .96),
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: .96),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: TasmanColors.sky.withValues(alpha: .6)),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: .25),
+          ),
           boxShadow: const [
             BoxShadow(
               color: Color(0x22082F49),
@@ -3343,7 +3477,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         const SizedBox(height: 2),
                         Text(
                           _text('Start', '出发'),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: TasmanColors.ocean,
                             fontSize: 10,
                             fontWeight: FontWeight.w900,
@@ -3621,7 +3755,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 child: Column(
                   children: [
                     Material(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.surface,
                       elevation: 5,
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
@@ -3632,7 +3766,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     ),
                     const SizedBox(height: 8),
                     Material(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.surface,
                       elevation: 5,
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
@@ -3646,7 +3780,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     ),
                     const SizedBox(height: 8),
                     Material(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.surface,
                       elevation: 5,
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
@@ -3677,10 +3811,12 @@ class _MapHomePageState extends State<MapHomePage> {
                   children: [
                     DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .96),
+                        color: Theme.of(context).colorScheme.surface
+                            .withValues(alpha: .96),
                         borderRadius: BorderRadius.circular(19),
                         border: Border.all(
-                          color: TasmanColors.sky.withValues(alpha: .72),
+                          color: Theme.of(context).colorScheme.primary
+                              .withValues(alpha: .25),
                         ),
                         boxShadow: const [
                           BoxShadow(
@@ -3725,8 +3861,10 @@ class _MapHomePageState extends State<MapHomePage> {
                                   children: [
                                     Text(
                                       _text('Where to?', '去哪儿？'),
-                                      style: const TextStyle(
-                                        color: TasmanColors.deepOcean,
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface,
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -3736,8 +3874,10 @@ class _MapHomePageState extends State<MapHomePage> {
                                         'Navigate Aotearoa with Tasman',
                                         '用 Tasman 探索新西兰',
                                       ),
-                                      style: const TextStyle(
-                                        color: TasmanColors.lightTextSecondary,
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -3832,9 +3972,28 @@ class _MapHomePageState extends State<MapHomePage> {
                 if (mounted) setState(() => _message = null);
               },
             ),
+          if (_parkingLegFinished &&
+              _parkingOriginalPlace != null &&
+              _selectedParking != null &&
+              !_guidanceRunning)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: ParkingContinuationCard(
+                destinationTitle: _parkingOriginalPlace!.name,
+                parkingTitle: _selectedParking!.name,
+                isChinese: _appLanguage == 'zh',
+                onContinue: () => unawaited(_continueOnFoot()),
+                onEnd: () => setState(() {
+                  _parkingLegFinished = false;
+                  _parkingOriginalPlace = null;
+                  _selectedParking = null;
+                }),
+              ),
+            ),
           if (!_driveEngine.active &&
               !_transitTripRunning &&
-              _selectedPoi == null)
+              _selectedPoi == null &&
+              !_parkingLegFinished)
             Align(
               alignment: Alignment.bottomCenter,
               child: PointerInterceptor(child: _buildBottomBar()),
@@ -3893,6 +4052,16 @@ class _MapHomePageState extends State<MapHomePage> {
                 stopCount: _routeStops.length,
                 cameraCount: _driveEngine.routeCameraCount,
                 customOrigin: _manualOrigin != null,
+                parkingPlaces: _parkingPlaces,
+                selectedParkingId: _selectedParking?.id,
+                finalDestinationTitle: _parkingOriginalPlace?.name,
+                parkingLoading: _parkingLoading,
+                isChinese: _appLanguage == 'zh',
+                onParkingSelected: (parking) =>
+                    unawaited(_selectParking(parking)),
+                onDirectDestination: _parkingOriginalPlace == null
+                    ? null
+                    : () => unawaited(_restoreDirectDestination()),
                 onModeChanged: _selectMode,
                 onRouteSelected: _selectRoute,
                 onStart: () => unawaited(_navigateToSelectedPoi()),
