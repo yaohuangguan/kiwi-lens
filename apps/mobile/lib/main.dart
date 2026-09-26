@@ -3081,7 +3081,7 @@ class _MapHomePageState extends State<MapHomePage> {
                                       style: const TextStyle(
                                         color: TasmanColors.deepOcean,
                                         fontSize: 16,
-                                        fontWeight: FontWeight.w850,
+                                        fontWeight: FontWeight.w800,
                                       ),
                                     ),
                                     Text(
