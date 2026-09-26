@@ -38,8 +38,9 @@ extension CameraKindLabel on CameraKind {
       return CameraKind.busLane;
     }
     if (type.contains('red light')) return CameraKind.redLight;
-    if (type.contains('spot speed') || type.contains('speed'))
+    if (type.contains('spot speed') || type.contains('speed')) {
       return CameraKind.spotSpeed;
+    }
     return CameraKind.other;
   }
 }
