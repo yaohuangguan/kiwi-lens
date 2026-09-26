@@ -127,6 +127,8 @@ class RoutePreviewSheet extends StatelessWidget {
         : routes
               .map((route) => route.durationSeconds)
               .reduce((a, b) => a < b ? a : b);
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final maxSheetHeight = (screenHeight * .44).clamp(330.0, 420.0);
 
     return PointerInterceptor(
       child: Material(
@@ -137,16 +139,16 @@ class RoutePreviewSheet extends StatelessWidget {
         child: SafeArea(
           top: false,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 640),
+            constraints: BoxConstraints(maxHeight: maxSheetHeight),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 52,
-                    height: 5,
-                    margin: const EdgeInsets.only(bottom: 10),
+                    width: 44,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 6),
                     decoration: BoxDecoration(
                       color: Theme.of(context).dividerColor,
                       borderRadius: BorderRadius.circular(6),
@@ -160,12 +162,17 @@ class RoutePreviewSheet extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
                       IconButton(
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 36,
+                          height: 36,
+                        ),
                         tooltip: isFavorite
                             ? 'Remove favorite'
                             : 'Save favorite',
@@ -180,24 +187,34 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                       ),
                       IconButton(
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 36,
+                          height: 36,
+                        ),
                         tooltip: 'My review',
                         onPressed: onReview,
                         icon: const Icon(Icons.rate_review_outlined),
                       ),
                       IconButton(
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 36,
+                          height: 36,
+                        ),
                         onPressed: onClose,
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(3, 4, 3, 8),
+                    padding: const EdgeInsets.fromLTRB(2, 1, 2, 5),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.my_location_rounded,
-                          size: 15,
-                          color: Color(0xFF1479FF),
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 7),
                         Flexible(
@@ -258,7 +275,8 @@ class RoutePreviewSheet extends StatelessWidget {
                                   : 1,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 10,
+                                  vertical: 6,
+                                  horizontal: 2,
                                 ),
                                 decoration: BoxDecoration(
                                   color: selectedMode == mode
@@ -279,9 +297,9 @@ class RoutePreviewSheet extends StatelessWidget {
                                           : Theme.of(context)
                                                 .colorScheme
                                                 .onSurfaceVariant,
-                                      size: 21,
+                                      size: 18,
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 2),
                                     Text(
                                       plan.forMode(mode).isEmpty
                                           ? '—'
@@ -316,9 +334,9 @@ class RoutePreviewSheet extends StatelessWidget {
                       isChinese: isChinese,
                     ),
                   if (routes.isNotEmpty) ...[
-                    const Divider(height: 20),
+                    const Divider(height: 12),
                     SizedBox(
-                      height: 94,
+                      height: 72,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: routes.length,
@@ -331,10 +349,10 @@ class RoutePreviewSheet extends StatelessWidget {
                             onTap: () => onRouteSelected(route),
                             borderRadius: BorderRadius.circular(15),
                             child: Container(
-                              width: 182,
+                              width: 166,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 9,
+                                horizontal: 10,
+                                vertical: 6,
                               ),
                               decoration: BoxDecoration(
                                 color: active
@@ -374,16 +392,18 @@ class RoutePreviewSheet extends StatelessWidget {
                                                   fastestDuration
                                               ? 'Fastest'
                                               : 'Alternative',
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 10,
                                             fontWeight: FontWeight.w800,
-                                            color: TasmanColors.deepTeal,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
                                           ),
                                         ),
                                         Text(
                                           _duration(route.durationSeconds),
                                           style: const TextStyle(
-                                            fontSize: 18,
+                                            fontSize: 16,
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
@@ -421,60 +441,102 @@ class RoutePreviewSheet extends StatelessWidget {
                         selected.transit.isNotEmpty)
                       _TransitDetails(route: selected),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Text(
                             routeExplanation(selected, routes).isNotEmpty
                                 ? routeExplanation(selected, routes)
                                 : 'Route preview',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSurfaceVariant,
-                              fontSize: 12,
+                              fontSize: 11,
+                              height: 1.25,
                             ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.speed_rounded, size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$cameraCount',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 9),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Chip(
-                        avatar: const Icon(Icons.speed_rounded, size: 18),
-                        label: Text('$cameraCount cameras on selected route'),
-                        backgroundColor: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer,
-                      ),
-                    ),
                     if (customOrigin)
-                      const Align(
+                      Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
                           'Custom origin is for route preview; live guidance starts from your GPS.',
+                          maxLines: 2,
                           style: TextStyle(
-                            color: Color(0xFF795D22),
-                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.tertiary,
+                            fontSize: 10,
+                            height: 1.2,
                           ),
                         ),
                       ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 7),
                     Row(
                       children: [
                         OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                          ),
                           onPressed: selectedMode == KiwiTravelMode.transit
                               ? null
                               : onAddStop,
-                          icon: const Icon(Icons.add_location_alt_outlined),
+                          icon: const Icon(
+                            Icons.add_location_alt_outlined,
+                            size: 17,
+                          ),
                           label: Text(
                             stopCount == 0 ? 'Add stop' : 'Stops $stopCount',
                           ),
                         ),
                         const SizedBox(width: 8),
                         OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                          ),
                           onPressed: onSave,
-                          icon: const Icon(Icons.bookmark_border_rounded),
+                          icon: const Icon(
+                            Icons.bookmark_border_rounded,
+                            size: 17,
+                          ),
                           label: const Text('Save'),
                         ),
                         const Spacer(),
@@ -484,8 +546,8 @@ class RoutePreviewSheet extends StatelessWidget {
                             backgroundColor: TasmanColors.ocean,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 13,
+                              horizontal: 14,
+                              vertical: 9,
                             ),
                           ),
                           icon: busy
@@ -532,23 +594,32 @@ class _TrafficCard extends StatelessWidget {
         : '$slow slow section${slow == 1 ? '' : 's'} ahead';
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFF1C37A)),
+        color: Theme.of(context).colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.tertiary.withValues(alpha: .35),
+        ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Color(0xFF9A5A13)),
+          Icon(
+            Icons.warning_amber_rounded,
+            color: Theme.of(context).colorScheme.onTertiaryContainer,
+          ),
           const SizedBox(width: 9),
           Expanded(
             child: Text(
               route.warnings.isNotEmpty
                   ? '$text · ${route.warnings.first}'
                   : text,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.onTertiaryContainer,
+              ),
             ),
           ),
         ],
@@ -566,11 +637,12 @@ class _TransitDetails extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F5FA),
-        borderRadius: BorderRadius.circular(14),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         children: [
@@ -597,9 +669,9 @@ class _TransitDetails extends StatelessWidget {
                         '${route.transit[index].departureStop} → '
                         '${route.transit[index].arrivalStop}'
                         '${route.transit[index].stopCount > 0 ? ' · ${route.transit[index].stopCount} stops' : ''}',
-                        style: const TextStyle(
-                          color: Color(0xFF657169),
-                          fontSize: 11,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 10,
                         ),
                       ),
                     ],
@@ -642,8 +714,8 @@ class _ParkingChoices extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(13),
+      margin: const EdgeInsets.only(top: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: scheme.primaryContainer.withValues(alpha: .35),
         border: Border.all(color: scheme.primary.withValues(alpha: .22)),
@@ -674,10 +746,12 @@ class _ParkingChoices extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             isChinese ? '先驾车到停车点，再步行至终点。所示距离为直线距离。' : 'Drive to a car park, then continue on foot. Distance shown is straight line.',
-            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
           ),
           if (onDirect != null)
             Align(
@@ -701,7 +775,7 @@ class _ParkingChoices extends StatelessWidget {
           if (places.isNotEmpty) ...[
             const SizedBox(height: 10),
             SizedBox(
-              height: 114,
+              height: 92,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: places.length,
@@ -713,8 +787,8 @@ class _ParkingChoices extends StatelessWidget {
                     onTap: () => onSelected?.call(place),
                     borderRadius: BorderRadius.circular(14),
                     child: Container(
-                      width: 220,
-                      padding: const EdgeInsets.all(11),
+                      width: 200,
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: active
                             ? scheme.primaryContainer

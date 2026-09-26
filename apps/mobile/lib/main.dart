@@ -1137,6 +1137,7 @@ class _MapHomePageState extends State<MapHomePage> {
     if (controller != null) {
       try {
         await controller.clearPolylines();
+        await controller.setPadding(EdgeInsets.zero);
       } catch (_) {}
     }
     if (!mounted) return;
@@ -1520,6 +1521,10 @@ class _MapHomePageState extends State<MapHomePage> {
     final controller = _browseController;
     final plan = _routePlan;
     if (controller == null || plan == null) return;
+    final sheetInset = (MediaQuery.sizeOf(context).height * .44).clamp(
+      330.0,
+      420.0,
+    );
     await controller.clearPolylines();
     final selected = _selectedRoute;
     final options = <PolylineOptions>[];
@@ -1588,6 +1593,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
     if (options.isNotEmpty) await controller.addPolylines(options);
     if (selected != null && selected.points.length >= 2) {
+      await controller.setPadding(EdgeInsets.fromLTRB(24, 76, 24, sheetInset));
       final bounds = LatLngBounds.createBoundsFromPoints(
         selected.points
             .map(
@@ -1597,7 +1603,7 @@ class _MapHomePageState extends State<MapHomePage> {
             .toList(growable: false),
       );
       await controller.animateCamera(
-        CameraUpdate.newLatLngBounds(bounds, padding: 72),
+        CameraUpdate.newLatLngBounds(bounds, padding: 36),
         duration: const Duration(milliseconds: 420),
       );
     }
@@ -2743,13 +2749,14 @@ class _MapHomePageState extends State<MapHomePage> {
 
     final controller = _navigationController;
     final size = MediaQuery.sizeOf(context);
-    final bottomInset = size.height * .43;
+    final sheetHeight = (size.height * .40).clamp(300.0, 390.0);
+    final bottomInset = sheetHeight - 14;
 
     if (controller != null) {
       _following = false;
-      await controller.setPadding(EdgeInsets.fromLTRB(28, 84, 28, bottomInset));
+      await controller.setPadding(EdgeInsets.fromLTRB(24, 82, 24, bottomInset));
       await controller.showRouteOverview();
-      await Future<void>.delayed(const Duration(milliseconds: 180));
+      await Future<void>.delayed(const Duration(milliseconds: 160));
       await controller.showRouteOverview();
     }
 
@@ -2760,84 +2767,157 @@ class _MapHomePageState extends State<MapHomePage> {
       isDismissible: true,
       enableDrag: true,
       useSafeArea: true,
-      showDragHandle: true,
-      constraints: BoxConstraints(maxHeight: size.height * .48),
-      builder: (sheetContext) => ListView(
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 22),
-        children: [
-          ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            leading: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: TasmanColors.ice,
-                borderRadius: BorderRadius.circular(12),
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      constraints: BoxConstraints(maxHeight: sheetHeight),
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final scheme = theme.colorScheme;
+        return Material(
+          color: scheme.surface,
+          elevation: 0,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 8, 8, 4),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.dividerColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: scheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(
+                            Icons.route_rounded,
+                            color: scheme.onPrimaryContainer,
+                            size: 19,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _text('Directions', '路线指引'),
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Text(
+                                _text(
+                                  '${(route.distanceMeters / 1000).toStringAsFixed(1)} km · ${route.steps.length} steps',
+                                  '${(route.distanceMeters / 1000).toStringAsFixed(1)} 公里 · ${route.steps.length} 个步骤',
+                                ),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: _text('Close', '关闭'),
+                          onPressed: () => Navigator.of(sheetContext).pop(),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              child: const Icon(Icons.route_rounded, color: TasmanColors.ocean),
-            ),
-            title: Text(
-              _text('Directions', '路线指引'),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-            ),
-            subtitle: Text(
-              _text(
-                '${(route.distanceMeters / 1000).toStringAsFixed(1)} km · ${route.steps.length} steps',
-                '${(route.distanceMeters / 1000).toStringAsFixed(1)} 公里 · ${route.steps.length} 个步骤',
+              Divider(color: theme.dividerColor),
+              Expanded(
+                child: route.steps.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(
+                            _text(
+                              'Turn list is not available for this route.',
+                              '这条路线暂时没有逐步指引。',
+                            ),
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(12, 3, 12, 18),
+                        itemCount: route.steps.length,
+                        separatorBuilder: (_, _) =>
+                            Divider(height: 1, color: theme.dividerColor),
+                        itemBuilder: (context, index) {
+                          final step = route.steps[index];
+                          return ListTile(
+                            dense: true,
+                            minTileHeight: 48,
+                            visualDensity: VisualDensity.compact,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1,
+                            ),
+                            leading: Container(
+                              width: 28,
+                              height: 28,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: scheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  color: scheme.onPrimaryContainer,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              step.instruction,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            trailing: Text(
+                              step.distanceMeters >= 1000
+                                  ? '${(step.distanceMeters / 1000).toStringAsFixed(1)} km'
+                                  : '${step.distanceMeters} m',
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 10,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
               ),
-            ),
+            ],
           ),
-          if (route.steps.isEmpty)
-            ListTile(
-              dense: true,
-              title: Text(
-                _text(
-                  'Turn list is not available for this route.',
-                  '这条路线暂时没有逐步指引。',
-                ),
-              ),
-            ),
-          for (var index = 0; index < route.steps.length; index++)
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-              leading: Container(
-                width: 30,
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: TasmanColors.mist,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Text(
-                  '${index + 1}',
-                  style: const TextStyle(
-                    color: TasmanColors.ocean,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              title: Text(
-                route.steps[index].instruction,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: Text(
-                route.steps[index].distanceMeters >= 1000
-                    ? '${(route.steps[index].distanceMeters / 1000).toStringAsFixed(1)} km'
-                    : '${route.steps[index].distanceMeters} m',
-                style: const TextStyle(
-                  color: TasmanColors.lightTextSecondary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                ),
-              ),
-            ),
-        ],
-      ),
+        );
+      },
     );
 
     if (controller != null) {
