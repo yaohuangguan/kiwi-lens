@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../domain/map_provider.dart';
 
 /// A small north-facing bird silhouette for the location puck. This is
-/// separate from the Kiwi Lens logo; the existing logo remains unchanged.
+/// separate from the Tasman brand mark; map-location art stays independent.
 class LocationMarkerArt {
   static final Map<LocationMarkerStyle, Future<Uint8List>> _cache = {};
 

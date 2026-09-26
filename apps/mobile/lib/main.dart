@@ -3178,7 +3178,7 @@ class _MapHomePageState extends State<MapHomePage> {
                   padding: const EdgeInsets.fromLTRB(20, 76, 20, 0),
                   child: PointerInterceptor(
                     child: Material(
-                      color: const Color(0xEE0B1717),
+                      color: TasmanColors.darkOcean.withValues(alpha: .93),
                       borderRadius: BorderRadius.circular(14),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
