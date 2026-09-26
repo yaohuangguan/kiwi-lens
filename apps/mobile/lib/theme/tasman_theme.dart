@@ -99,6 +99,36 @@ abstract final class TasmanTheme {
           fontWeight: FontWeight.w700,
         ),
       ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return dark
+                ? TasmanColors.darkTextSecondary.withValues(alpha: .45)
+                : TasmanColors.lightTextSecondary.withValues(alpha: .45);
+          }
+          if (states.contains(WidgetState.selected)) {
+            return dark ? TasmanColors.midnightOcean : Colors.white;
+          }
+          return dark ? TasmanColors.darkTextSecondary : Colors.white;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return dark
+                ? TasmanColors.darkBorder.withValues(alpha: .45)
+                : TasmanColors.lightBorder.withValues(alpha: .55);
+          }
+          if (states.contains(WidgetState.selected)) {
+            return dark ? TasmanColors.sky : TasmanColors.ocean;
+          }
+          return dark ? TasmanColors.darkSurface : TasmanColors.lightBorder;
+        }),
+        trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return Colors.transparent;
+          }
+          return dark ? TasmanColors.darkBorder : TasmanColors.lightBorder;
+        }),
+      ),
       navigationBarTheme: NavigationBarThemeData(
         elevation: 0,
         backgroundColor: dark

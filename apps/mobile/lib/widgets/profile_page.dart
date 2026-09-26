@@ -667,7 +667,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     fontSize: 12,
                   ),
                 ),
-                SwitchListTile.adaptive(
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.speed_rounded),
                   title: Text(_text('Safety cameras', '安全摄像头')),
@@ -683,7 +683,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     widget.onNotifySafetyCamerasChanged(value);
                   },
                 ),
-                SwitchListTile.adaptive(
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.warning_amber_rounded),
                   title: Text(_text('Road incidents', '道路事件')),
@@ -699,7 +699,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     widget.onNotifyRoadIncidentsChanged(value);
                   },
                 ),
-                SwitchListTile.adaptive(
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.groups_2_outlined),
                   title: Text(_text('Community reports', '社区上报')),
@@ -715,7 +715,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     widget.onNotifyCommunityReportsChanged(value);
                   },
                 ),
-                SwitchListTile.adaptive(
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.route_outlined),
                   title: Text(_text('Saved-route disruption', '收藏路线异常')),

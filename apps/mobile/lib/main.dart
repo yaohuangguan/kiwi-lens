@@ -2761,6 +2761,20 @@ class _MapHomePageState extends State<MapHomePage> {
     }
 
     if (!mounted) return;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final sheetColor = dark ? TasmanColors.darkOcean : scheme.surface;
+    final headerColor = dark ? TasmanColors.darkSurface : scheme.surface;
+    final badgeColor = dark
+        ? TasmanColors.deepTeal.withValues(alpha: .38)
+        : scheme.primaryContainer;
+    final badgeForeground = dark ? TasmanColors.sky : scheme.onPrimaryContainer;
+    final secondaryColor = dark
+        ? TasmanColors.darkTextSecondary
+        : scheme.onSurfaceVariant;
+    final dividerColor = dark ? TasmanColors.darkBorder : theme.dividerColor;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -2768,83 +2782,87 @@ class _MapHomePageState extends State<MapHomePage> {
       enableDrag: true,
       useSafeArea: true,
       showDragHandle: false,
-      backgroundColor: Colors.transparent,
+      backgroundColor: sheetColor,
+      barrierColor: Colors.black.withValues(alpha: dark ? .46 : .28),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      clipBehavior: Clip.antiAlias,
       constraints: BoxConstraints(maxHeight: sheetHeight),
       builder: (sheetContext) {
-        final theme = Theme.of(sheetContext);
-        final scheme = theme.colorScheme;
         return Material(
-          color: scheme.surface,
+          color: sheetColor,
           elevation: 0,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-          clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 8, 4),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.dividerColor,
-                        borderRadius: BorderRadius.circular(4),
+              ColoredBox(
+                color: headerColor,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 8, 4),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: dividerColor,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: scheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(11),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: badgeColor,
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: Icon(
+                              Icons.route_rounded,
+                              color: badgeForeground,
+                              size: 19,
+                            ),
                           ),
-                          child: Icon(
-                            Icons.route_rounded,
-                            color: scheme.onPrimaryContainer,
-                            size: 19,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _text('Directions', '路线指引'),
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  _text(
+                                    '${(route.distanceMeters / 1000).toStringAsFixed(1)} km · ${route.steps.length} steps',
+                                    '${(route.distanceMeters / 1000).toStringAsFixed(1)} 公里 · ${route.steps.length} 个步骤',
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: secondaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _text('Directions', '路线指引'),
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              Text(
-                                _text(
-                                  '${(route.distanceMeters / 1000).toStringAsFixed(1)} km · ${route.steps.length} steps',
-                                  '${(route.distanceMeters / 1000).toStringAsFixed(1)} 公里 · ${route.steps.length} 个步骤',
-                                ),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: scheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: _text('Close', '关闭'),
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            icon: const Icon(Icons.close_rounded),
                           ),
-                        ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          tooltip: _text('Close', '关闭'),
-                          onPressed: () => Navigator.of(sheetContext).pop(),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Divider(color: theme.dividerColor),
+              Divider(height: 1, color: dividerColor),
               Expanded(
                 child: route.steps.isEmpty
                     ? Center(
@@ -2863,7 +2881,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         padding: const EdgeInsets.fromLTRB(12, 3, 12, 18),
                         itemCount: route.steps.length,
                         separatorBuilder: (_, _) =>
-                            Divider(height: 1, color: theme.dividerColor),
+                            Divider(height: 1, color: dividerColor),
                         itemBuilder: (context, index) {
                           final step = route.steps[index];
                           return ListTile(
@@ -2879,13 +2897,13 @@ class _MapHomePageState extends State<MapHomePage> {
                               height: 28,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: scheme.primaryContainer,
+                                color: badgeColor,
                                 borderRadius: BorderRadius.circular(9),
                               ),
                               child: Text(
                                 '${index + 1}',
                                 style: TextStyle(
-                                  color: scheme.onPrimaryContainer,
+                                  color: badgeForeground,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -2905,7 +2923,7 @@ class _MapHomePageState extends State<MapHomePage> {
                                   ? '${(step.distanceMeters / 1000).toStringAsFixed(1)} km'
                                   : '${step.distanceMeters} m',
                               style: TextStyle(
-                                color: scheme.onSurfaceVariant,
+                                color: secondaryColor,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 10,
                               ),
