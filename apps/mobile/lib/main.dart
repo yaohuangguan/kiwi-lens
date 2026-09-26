@@ -619,7 +619,7 @@ class _MapHomePageState extends State<MapHomePage> {
         }),
       ).timeout(const Duration(seconds: 10));
       if (response.statusCode != 201) {
-        throw StateError('HTTP ' + response.statusCode.toString());
+        throw StateError('HTTP ${response.statusCode}');
       }
       await _driveEngine.loadCameras(force: true);
       if (mounted) {
@@ -630,45 +630,13 @@ class _MapHomePageState extends State<MapHomePage> {
     } catch (error) {
       if (mounted) {
         setState(() => _message = _text(
-          'Could not submit road report: ' + error.toString(),
-          '道路上报失败：' + error.toString(),
+          'Could not submit road report: $error',
+          '道路上报失败：$error',
         ));
       }
     }
   }
 
-
-  Future<void> _rotateMap(double degrees) async {
-    if (_mapProvider == MapProvider.mapbox) {
-      _following = false;
-      await _browseRenderer?.moveTo(
-        _viewport.copyWith(bearing: (_viewport.bearing + degrees + 360) % 360),
-      );
-      return;
-    }
-    final controller = _driveEngine.active
-        ? _navigationController
-        : _browseController;
-    if (controller == null) return;
-    try {
-      final camera = await controller.getCameraPosition();
-      _following = false;
-      await controller.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: camera.target,
-            zoom: camera.zoom,
-            tilt: camera.tilt,
-            bearing: (camera.bearing + degrees + 360) % 360,
-          ),
-        ),
-      );
-    } catch (error) {
-      if (mounted) {
-        setState(() => _message = 'Map rotation unavailable: $error');
-      }
-    }
-  }
 
   void _showRouteOverview() {
     _following = false;
