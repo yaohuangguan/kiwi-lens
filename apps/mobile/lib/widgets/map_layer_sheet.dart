@@ -40,50 +40,154 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
     required ValueChanged<bool> onVisible,
     required bool alert,
     required ValueChanged<bool> onAlert,
-  }) => Container(
-    margin: const EdgeInsets.only(bottom: 7),
-    decoration: BoxDecoration(
-      color: TasmanColors.sky.withValues(alpha: .055),
-      borderRadius: BorderRadius.circular(15),
-      border: Border.all(color: TasmanColors.sky.withValues(alpha: .18)),
-    ),
-    child: Row(
-      children: [
-        const SizedBox(width: 12),
-        Icon(icon, color: TasmanColors.ocean, size: 21),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            _text(en, zh),
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: TasmanColors.deepOcean,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final activeBlue = dark ? TasmanColors.sky : TasmanColors.ocean;
+    final activeSurface = dark
+        ? TasmanColors.deepTeal.withValues(alpha: .20)
+        : TasmanColors.sky.withValues(alpha: .10);
+    final idleSurface = dark
+        ? TasmanColors.darkSurface
+        : scheme.surfaceContainerLow;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: visible || alert ? activeSurface : idleSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: visible || alert
+              ? activeBlue.withValues(alpha: dark ? .48 : .28)
+              : theme.dividerColor,
+        ),
+      ),
+      child: Row(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: visible || alert
+                  ? activeBlue.withValues(alpha: dark ? .18 : .12)
+                  : scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(
+              icon,
+              color: visible || alert ? activeBlue : scheme.onSurfaceVariant,
+              size: 19,
             ),
           ),
-        ),
-        Tooltip(
-          message: _text('Show on map', '在地图显示'),
-          child: Switch.adaptive(value: visible, onChanged: onVisible),
-        ),
-        Tooltip(
-          message: _text('Alert while driving', '驾驶时提醒'),
-          child: IconButton(
-            onPressed: () => onAlert(!alert),
-            icon: Icon(
-              alert
-                  ? Icons.notifications_active_rounded
-                  : Icons.notifications_off_outlined,
-              size: 20,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _text(en, zh),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
+              ),
+            ),
+          ),
+          Tooltip(
+            message: _text('Show on map', '在地图显示'),
+            child: Switch(
+              value: visible,
+              onChanged: onVisible,
+              thumbColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return dark ? TasmanColors.midnightOcean : Colors.white;
+                }
+                return dark ? TasmanColors.darkTextSecondary : Colors.white;
+              }),
+              trackColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return activeBlue;
+                }
+                return dark
+                    ? TasmanColors.darkBorder
+                    : TasmanColors.lightBorder;
+              }),
+              trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return Colors.transparent;
+                }
+                return dark
+                    ? TasmanColors.darkBorder
+                    : TasmanColors.lightBorder;
+              }),
+            ),
+          ),
+          const SizedBox(width: 3),
+          Tooltip(
+            message: _text('Alert while driving', '驾驶时提醒'),
+            child: Material(
               color: alert
-                  ? TasmanColors.ocean
-                  : TasmanColors.lightTextSecondary,
+                  ? activeBlue.withValues(alpha: dark ? .22 : .12)
+                  : Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(11),
+                side: BorderSide(
+                  color: alert
+                      ? activeBlue.withValues(alpha: .55)
+                      : theme.dividerColor,
+                ),
+              ),
+              child: InkWell(
+                onTap: () => onAlert(!alert),
+                borderRadius: BorderRadius.circular(11),
+                child: SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: Icon(
+                    alert
+                        ? Icons.notifications_active_rounded
+                        : Icons.notifications_none_rounded,
+                    size: 19,
+                    color: alert ? activeBlue : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
+
+  SwitchThemeData _tasmanLayerSwitchTheme(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final activeBlue = dark ? TasmanColors.sky : TasmanColors.ocean;
+    return SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return Theme.of(context).disabledColor;
+        }
+        if (states.contains(WidgetState.selected)) {
+          return dark ? TasmanColors.midnightOcean : Colors.white;
+        }
+        return dark ? TasmanColors.darkTextSecondary : Colors.white;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return Theme.of(context).disabledColor.withValues(alpha: .20);
+        }
+        if (states.contains(WidgetState.selected)) return activeBlue;
+        return dark ? TasmanColors.darkBorder : TasmanColors.lightBorder;
+      }),
+      trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return Colors.transparent;
+        return dark ? TasmanColors.darkBorder : TasmanColors.lightBorder;
+      }),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -175,33 +279,50 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                       onSelectionChanged: (value) =>
                           update(current.copyWith(style: value.first)),
                     ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      secondary: const Icon(Icons.traffic_rounded),
-                      title: Text(_text('Live traffic', '实时交通')),
-                      value:
-                          widget.mapProvider == MapProvider.google &&
-                          current.traffic,
-                      onChanged: widget.mapProvider == MapProvider.google
-                          ? (value) => update(current.copyWith(traffic: value))
-                          : null,
+                    Theme(
+                      data: Theme.of(
+                        context,
+                      ).copyWith(switchTheme: _tasmanLayerSwitchTheme(context)),
+                      child: SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Icon(
+                          Icons.traffic_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        title: Text(_text('Live traffic', '实时交通')),
+                        value:
+                            widget.mapProvider == MapProvider.google &&
+                            current.traffic,
+                        onChanged: widget.mapProvider == MapProvider.google
+                            ? (value) =>
+                                  update(current.copyWith(traffic: value))
+                            : null,
+                      ),
                     ),
                     const Divider(),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      secondary: const Icon(Icons.photo_camera_rounded),
-                      title: Text(
-                        _text('Fixed enforcement cameras', '固定执法摄像头'),
-                      ),
-                      subtitle: Text(
-                        _text(
-                          'Map visibility and driving alerts can be controlled separately.',
-                          '地图显示和驾驶提醒可以分别控制。',
+                    Theme(
+                      data: Theme.of(
+                        context,
+                      ).copyWith(switchTheme: _tasmanLayerSwitchTheme(context)),
+                      child: SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Icon(
+                          Icons.photo_camera_rounded,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
+                        title: Text(
+                          _text('Fixed enforcement cameras', '固定执法摄像头'),
+                        ),
+                        subtitle: Text(
+                          _text(
+                            'Map visibility and driving alerts can be controlled separately.',
+                            '地图显示和驾驶提醒可以分别控制。',
+                          ),
+                        ),
+                        value: current.cameras,
+                        onChanged: (value) =>
+                            update(current.copyWith(cameras: value)),
                       ),
-                      value: current.cameras,
-                      onChanged: (value) =>
-                          update(current.copyWith(cameras: value)),
                     ),
                     _cameraToggle(
                       icon: Icons.speed_rounded,
