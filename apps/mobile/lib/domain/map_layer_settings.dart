@@ -1,20 +1,26 @@
 import 'safety_camera.dart';
 
-enum CameraKind { speed, redLight, lane, other }
+enum CameraKind { spotSpeed, averageSpeed, redLight, dualRedLightSpeed, other }
 
 extension CameraKindLabel on CameraKind {
   String get label => switch (this) {
-    CameraKind.speed => 'Speed cameras',
-    CameraKind.redLight => 'Red-light cameras',
-    CameraKind.lane => 'Lane cameras',
-    CameraKind.other => 'Other cameras',
+    CameraKind.spotSpeed => 'Spot speed',
+    CameraKind.averageSpeed => 'Average speed',
+    CameraKind.redLight => 'Red light',
+    CameraKind.dualRedLightSpeed => 'Red light + speed',
+    CameraKind.other => 'Other',
   };
 
   static CameraKind fromCamera(SafetyCamera camera) {
     final type = camera.type.toLowerCase();
+    if (type.contains('average') || type.contains('point-to-point') || type.contains('p2p')) {
+      return CameraKind.averageSpeed;
+    }
+    if (type.contains('dual') && type.contains('red') && type.contains('speed')) {
+      return CameraKind.dualRedLightSpeed;
+    }
     if (type.contains('red light')) return CameraKind.redLight;
-    if (type.contains('lane') || type.contains('bus')) return CameraKind.lane;
-    if (type.contains('speed')) return CameraKind.speed;
+    if (type.contains('spot speed') || type.contains('speed')) return CameraKind.spotSpeed;
     return CameraKind.other;
   }
 }
@@ -24,48 +30,84 @@ enum BaseMapStyle { standard, satellite, terrain, hybrid }
 class MapLayerSettings {
   const MapLayerSettings({
     this.cameras = true,
-    this.speed = true,
+    this.spotSpeed = true,
+    this.averageSpeed = true,
     this.redLight = true,
-    this.lane = true,
+    this.dualRedLightSpeed = true,
     this.other = true,
+    this.alertSpotSpeed = true,
+    this.alertAverageSpeed = true,
+    this.alertRedLight = true,
+    this.alertDualRedLightSpeed = true,
+    this.alertOther = false,
     this.traffic = true,
     this.style = BaseMapStyle.standard,
   });
 
   final bool cameras;
-  final bool speed;
+  final bool spotSpeed;
+  final bool averageSpeed;
   final bool redLight;
-  final bool lane;
+  final bool dualRedLightSpeed;
   final bool other;
+
+  final bool alertSpotSpeed;
+  final bool alertAverageSpeed;
+  final bool alertRedLight;
+  final bool alertDualRedLightSpeed;
+  final bool alertOther;
+
   final bool traffic;
   final BaseMapStyle style;
 
   bool shows(SafetyCamera camera) {
     if (!cameras) return false;
     return switch (CameraKindLabel.fromCamera(camera)) {
-      CameraKind.speed => speed,
+      CameraKind.spotSpeed => spotSpeed,
+      CameraKind.averageSpeed => averageSpeed,
       CameraKind.redLight => redLight,
-      CameraKind.lane => lane,
+      CameraKind.dualRedLightSpeed => dualRedLightSpeed,
       CameraKind.other => other,
     };
   }
 
-  String get markerSignature => '$cameras:$speed:$redLight:$lane:$other';
+  bool alerts(SafetyCamera camera) => switch (CameraKindLabel.fromCamera(camera)) {
+    CameraKind.spotSpeed => alertSpotSpeed,
+    CameraKind.averageSpeed => alertAverageSpeed,
+    CameraKind.redLight => alertRedLight,
+    CameraKind.dualRedLightSpeed => alertDualRedLightSpeed,
+    CameraKind.other => alertOther,
+  };
+
+  String get markerSignature =>
+      '$cameras:$spotSpeed:$averageSpeed:$redLight:$dualRedLightSpeed:$other';
 
   MapLayerSettings copyWith({
     bool? cameras,
-    bool? speed,
+    bool? spotSpeed,
+    bool? averageSpeed,
     bool? redLight,
-    bool? lane,
+    bool? dualRedLightSpeed,
     bool? other,
+    bool? alertSpotSpeed,
+    bool? alertAverageSpeed,
+    bool? alertRedLight,
+    bool? alertDualRedLightSpeed,
+    bool? alertOther,
     bool? traffic,
     BaseMapStyle? style,
   }) => MapLayerSettings(
     cameras: cameras ?? this.cameras,
-    speed: speed ?? this.speed,
+    spotSpeed: spotSpeed ?? this.spotSpeed,
+    averageSpeed: averageSpeed ?? this.averageSpeed,
     redLight: redLight ?? this.redLight,
-    lane: lane ?? this.lane,
+    dualRedLightSpeed: dualRedLightSpeed ?? this.dualRedLightSpeed,
     other: other ?? this.other,
+    alertSpotSpeed: alertSpotSpeed ?? this.alertSpotSpeed,
+    alertAverageSpeed: alertAverageSpeed ?? this.alertAverageSpeed,
+    alertRedLight: alertRedLight ?? this.alertRedLight,
+    alertDualRedLightSpeed: alertDualRedLightSpeed ?? this.alertDualRedLightSpeed,
+    alertOther: alertOther ?? this.alertOther,
     traffic: traffic ?? this.traffic,
     style: style ?? this.style,
   );

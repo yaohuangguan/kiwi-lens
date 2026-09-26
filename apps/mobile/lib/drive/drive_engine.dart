@@ -80,6 +80,13 @@ class DriveEngine extends ChangeNotifier {
   double speedKph = 0;
   int? speedLimitKph;
   bool voiceEnabled = true;
+  bool Function(SafetyCamera) _cameraAlertFilter = (_) => true;
+
+  void setCameraAlertFilter(bool Function(SafetyCamera) filter) {
+    _cameraAlertFilter = filter;
+    _recomputeRouteCameras();
+    notifyListeners();
+  }
 
   Future<void> setVoiceLanguage(String language) =>
       _voiceEngine.setLanguage(language);
@@ -97,13 +104,10 @@ class DriveEngine extends ChangeNotifier {
   Future<void> start() async {
     if (active) return;
     _roadSnappedFixCompleter = Completer<void>();
-    active = true;
     error = null;
-    notifyListeners();
 
     await _voiceEngine.initialize();
     await loadCameras(force: true);
-    _startRoadIntelligenceRefreshTimer();
 
     final snapped =
         await GoogleMapsNavigator.setRoadSnappedLocationUpdatedListener(
@@ -143,6 +147,9 @@ class DriveEngine extends ChangeNotifier {
         notifyListeners();
       }),
     );
+    active = true;
+    _startRoadIntelligenceRefreshTimer();
+    notifyListeners();
   }
 
   /// Local location feed for a non-Google map renderer. Camera alerts keep
@@ -230,7 +237,7 @@ class DriveEngine extends ChangeNotifier {
   void _recomputeRouteCameras() {
     routeCameras = _route == null
         ? const []
-        : _routeMatcher.match(_route!, _cameras);
+        : _routeMatcher.match(_route!, _cameras.where(_cameraAlertFilter).toList(growable: false));
     _highConfidenceCameraIds = routeCameras
         .where((match) => match.highConfidence)
         .map((match) => match.camera.id)
@@ -307,7 +314,7 @@ class DriveEngine extends ChangeNotifier {
       match = _cameraMatcher.findUpcoming(
         latitude: current.latitude,
         longitude: current.longitude,
-        cameras: _cameras,
+        cameras: _cameras.where(_cameraAlertFilter).toList(growable: false),
         headingDegrees: _headingDegrees,
       );
     }

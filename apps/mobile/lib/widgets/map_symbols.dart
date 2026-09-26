@@ -52,9 +52,10 @@ class MapSymbols {
     final canvas = Canvas(recorder);
     final paint = Paint()..isAntiAlias = true;
     final color = switch (kind) {
-      CameraKind.speed => const Color(0xFF163D34),
+      CameraKind.spotSpeed => const Color(0xFF1670B9),
+      CameraKind.averageSpeed => const Color(0xFF0891B2),
       CameraKind.redLight => const Color(0xFFC64539),
-      CameraKind.lane => const Color(0xFF3268A4),
+      CameraKind.dualRedLightSpeed => const Color(0xFFD97706),
       CameraKind.other => const Color(0xFF7250A1),
     };
     paint.color = onRoute ? TasmanColors.sky : Colors.white;
@@ -77,22 +78,33 @@ class MapSymbols {
           canvas.drawCircle(Offset(36, y), 4, paint);
         }
         break;
-      case CameraKind.lane:
-        paint.strokeWidth = 3.2;
-        canvas.drawLine(const Offset(24, 50), const Offset(27, 18), paint);
-        canvas.drawLine(const Offset(48, 50), const Offset(45, 18), paint);
-        final path = Path()
-          ..moveTo(36, 19)
-          ..lineTo(27, 32)
-          ..lineTo(33, 32)
-          ..lineTo(33, 47)
-          ..lineTo(39, 47)
-          ..lineTo(39, 32)
-          ..lineTo(45, 32)
-          ..close();
-        canvas.drawPath(path, paint);
+      case CameraKind.averageSpeed:
+        paint.style = PaintingStyle.stroke;
+        paint.strokeWidth = 4;
+        canvas.drawCircle(const Offset(27, 35), 10, paint);
+        canvas.drawCircle(const Offset(45, 35), 10, paint);
+        canvas.drawLine(const Offset(27, 22), const Offset(45, 22), paint);
+        canvas.drawLine(const Offset(27, 48), const Offset(45, 48), paint);
+        paint.style = PaintingStyle.fill;
         break;
-      case CameraKind.speed:
+      case CameraKind.dualRedLightSpeed:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(25, 13, 22, 42),
+            const Radius.circular(5),
+          ),
+          paint,
+        );
+        paint.color = color;
+        canvas.drawCircle(const Offset(36, 24), 4, paint);
+        canvas.drawCircle(const Offset(36, 36), 4, paint);
+        canvas.drawCircle(const Offset(36, 48), 4, paint);
+        paint.color = Colors.white;
+        canvas.drawCircle(const Offset(51, 20), 8, paint);
+        paint.color = color;
+        canvas.drawCircle(const Offset(51, 20), 4, paint);
+        break;
+      case CameraKind.spotSpeed:
       case CameraKind.other:
         canvas.drawRRect(
           RRect.fromRectAndRadius(

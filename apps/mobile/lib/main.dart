@@ -269,16 +269,23 @@ class _MapHomePageState extends State<MapHomePage> {
     _driveEngine.voiceEnabled = _voiceEnabled;
     _layers = MapLayerSettings(
       cameras: prefs.getBool('kiwi.layers.cameras') ?? true,
-      speed: prefs.getBool('kiwi.layers.speed') ?? true,
+      spotSpeed: prefs.getBool('tasman.layers.spot_speed') ?? prefs.getBool('kiwi.layers.speed') ?? true,
+      averageSpeed: prefs.getBool('tasman.layers.average_speed') ?? true,
       redLight: prefs.getBool('kiwi.layers.red_light') ?? true,
-      lane: prefs.getBool('kiwi.layers.lane') ?? true,
+      dualRedLightSpeed: prefs.getBool('tasman.layers.dual_red_speed') ?? true,
       other: prefs.getBool('kiwi.layers.other') ?? true,
+      alertSpotSpeed: prefs.getBool('tasman.alerts.spot_speed') ?? true,
+      alertAverageSpeed: prefs.getBool('tasman.alerts.average_speed') ?? true,
+      alertRedLight: prefs.getBool('tasman.alerts.red_light') ?? true,
+      alertDualRedLightSpeed: prefs.getBool('tasman.alerts.dual_red_speed') ?? true,
+      alertOther: prefs.getBool('tasman.alerts.other_camera') ?? false,
       traffic: prefs.getBool('kiwi.layers.traffic') ?? true,
       style: BaseMapStyle.values.firstWhere(
         (value) => value.name == prefs.getString('kiwi.layers.style'),
         orElse: () => BaseMapStyle.standard,
       ),
     );
+    _driveEngine.setCameraAlertFilter(_layers.alerts);
     await _driveEngine.setVoiceLanguage(_voiceLanguage);
     final controller = _driveEngine.active
         ? _navigationController
@@ -422,7 +429,9 @@ class _MapHomePageState extends State<MapHomePage> {
         await _browseRenderer!.moveTo(
           _viewport.copyWith(
             center: GeoPoint(location.latitude, location.longitude),
-            zoom: _mapboxNavigation.active ? 16 : _viewport.zoom,
+            zoom: _mapboxNavigation.active ? 16 : (_northUp ? 16 : 17),
+            bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
+            pitch: _northUp ? 0 : 45,
           ),
         );
       }
@@ -480,7 +489,12 @@ class _MapHomePageState extends State<MapHomePage> {
       if (_following && !_driveEngine.active) {
         await controller.animateCamera(
           CameraUpdate.newCameraPosition(
-            CameraPosition(target: location, bearing: 0, tilt: 0, zoom: 16),
+            CameraPosition(
+            target: location,
+            bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
+            tilt: _northUp ? 0 : 45,
+            zoom: _northUp ? 16 : 17,
+          ),
           ),
         );
       }
@@ -513,6 +527,75 @@ class _MapHomePageState extends State<MapHomePage> {
       return;
     }
     _queueMapRefresh();
+  }
+
+  IconData get _locationControlIcon {
+    if (!_following) return Icons.my_location_outlined;
+    return _northUp ? Icons.north_rounded : Icons.navigation_rounded;
+  }
+
+  String get _locationControlTooltip {
+    if (!_following) return _text('Return to my location', '回到我的位置');
+    return _northUp
+        ? _text('Switch to heading-up', '切换到车头朝向')
+        : _text('Switch to north-up', '切换到指北');
+  }
+
+  void _cycleLocationCamera() {
+    if (!_following) {
+      setState(() {
+        _following = true;
+        _northUp = true;
+      });
+    } else {
+      setState(() => _northUp = !_northUp);
+    }
+    _recenter();
+  }
+
+  Future<bool> _ensureGoogleReportSession() async {
+    if (await GoogleMapsNavigator.isInitialized()) {
+      _navigationSessionInitialized = true;
+      return true;
+    }
+    if (!await _ensureLocationPermission()) return false;
+    if (!await GoogleMapsNavigator.areTermsAccepted()) {
+      final accepted = await GoogleMapsNavigator.showTermsAndConditionsDialog(
+        'Tasman Navigation',
+        'Tasman',
+      );
+      if (!accepted) return false;
+    }
+    try {
+      await GoogleMapsNavigator.initializeNavigationSession(
+        taskRemovedBehavior: TaskRemovedBehavior.continueService,
+      );
+      _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+      return _navigationSessionInitialized;
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Road reporting unavailable: $error');
+      return false;
+    }
+  }
+
+  Future<void> _showRoadReport() async {
+    if (_mapProvider != MapProvider.google) {
+      if (mounted) {
+        setState(() => _message = _text(
+          'Road reports currently use Google reporting. Switch to Google Maps to submit one.',
+          '道路上报目前使用 Google 上报服务，请切换到 Google 地图后提交。',
+        ));
+      }
+      return;
+    }
+    final controller = _navigationController ?? _browseController;
+    if (controller == null || !await _ensureGoogleReportSession()) return;
+    try {
+      // ignore: experimental_member_use
+      await controller.showReportIncidentsPanel();
+    } catch (error) {
+      if (mounted) setState(() => _message = 'Could not open road report: $error');
+    }
   }
 
   Future<void> _rotateMap(double degrees) async {
@@ -1085,7 +1168,11 @@ class _MapHomePageState extends State<MapHomePage> {
         isVibrationEnabled: true,
       ),
     );
-    _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+    for (var attempt = 0; attempt < 10; attempt++) {
+      _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+      if (_navigationSessionInitialized) break;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
     if (!_navigationSessionInitialized) {
       if (mounted) {
         setState(
@@ -1097,10 +1184,17 @@ class _MapHomePageState extends State<MapHomePage> {
     try {
       await _driveEngine.start();
     } on SessionNotInitializedException {
-      await GoogleMapsNavigator.initializeNavigationSession(
-        taskRemovedBehavior: TaskRemovedBehavior.continueService,
-      );
-      _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (!await GoogleMapsNavigator.isInitialized()) {
+        await GoogleMapsNavigator.initializeNavigationSession(
+          taskRemovedBehavior: TaskRemovedBehavior.continueService,
+        );
+      }
+      for (var attempt = 0; attempt < 10; attempt++) {
+        _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+        if (_navigationSessionInitialized) break;
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
       if (!_navigationSessionInitialized) return false;
       await _driveEngine.start();
     }
@@ -1879,13 +1973,20 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _setMapLayers(MapLayerSettings value) async {
     setState(() => _layers = value);
+    _driveEngine.setCameraAlertFilter(value.alerts);
     final prefs = await SharedPreferences.getInstance();
     await Future.wait([
       prefs.setBool('kiwi.layers.cameras', value.cameras),
-      prefs.setBool('kiwi.layers.speed', value.speed),
+      prefs.setBool('tasman.layers.spot_speed', value.spotSpeed),
+      prefs.setBool('tasman.layers.average_speed', value.averageSpeed),
       prefs.setBool('kiwi.layers.red_light', value.redLight),
-      prefs.setBool('kiwi.layers.lane', value.lane),
+      prefs.setBool('tasman.layers.dual_red_speed', value.dualRedLightSpeed),
       prefs.setBool('kiwi.layers.other', value.other),
+      prefs.setBool('tasman.alerts.spot_speed', value.alertSpotSpeed),
+      prefs.setBool('tasman.alerts.average_speed', value.alertAverageSpeed),
+      prefs.setBool('tasman.alerts.red_light', value.alertRedLight),
+      prefs.setBool('tasman.alerts.dual_red_speed', value.alertDualRedLightSpeed),
+      prefs.setBool('tasman.alerts.other_camera', value.alertOther),
       prefs.setBool('kiwi.layers.traffic', value.traffic),
       prefs.setString('kiwi.layers.style', value.style.name),
     ]);
@@ -2276,28 +2377,52 @@ class _MapHomePageState extends State<MapHomePage> {
     await _browseRenderer?.moveTo(_viewport.copyWith(center: place.location));
   }
 
+  IconData _quickActionIcon(String action) => switch (action) {
+    'Home' => Icons.home_rounded,
+    'Work' => Icons.work_rounded,
+    'Frequent' => Icons.history_rounded,
+    'Restaurants' => Icons.restaurant_rounded,
+    'Shopping' => Icons.shopping_bag_rounded,
+    'Gas' => Icons.local_gas_station_rounded,
+    _ => Icons.place_rounded,
+  };
+
   Widget _buildQuickActions() => SizedBox(
-    height: 43,
+    height: 34,
     child: ListView(
       scrollDirection: Axis.horizontal,
       children: [
         for (final action in _quickActions)
           Padding(
-            padding: const EdgeInsets.only(right: 7),
+            padding: const EdgeInsets.only(right: 6),
             child: ActionChip(
-              backgroundColor: const Color(0xFFF1F8DF),
-              side: const BorderSide(color: TasmanColors.sky, width: 1.3),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
+              avatar: Icon(_quickActionIcon(action), size: 15, color: TasmanColors.ocean),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 7),
+              backgroundColor: Colors.white.withValues(alpha: .94),
+              side: BorderSide(color: TasmanColors.sky.withValues(alpha: .28)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+              label: Text(
+                action,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: TasmanColors.deepOcean,
+                ),
               ),
-              label: Text(action),
               onPressed: () => _onQuickAction(action),
             ),
           ),
-        IconButton.filledTonal(
-          tooltip: _text('Edit shortcuts', '编辑快捷入口'),
-          onPressed: _editQuickActions,
-          icon: const Icon(Icons.tune_rounded, size: 19),
+        SizedBox(
+          width: 34,
+          height: 34,
+          child: IconButton.filledTonal(
+            padding: EdgeInsets.zero,
+            tooltip: _text('Edit shortcuts', '编辑快捷入口'),
+            onPressed: _editQuickActions,
+            icon: const Icon(Icons.tune_rounded, size: 17),
+          ),
         ),
       ],
     ),
@@ -2867,31 +2992,25 @@ class _MapHomePageState extends State<MapHomePage> {
                       elevation: 5,
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
-                        tooltip: 'Rotate map left',
-                        icon: const Icon(Icons.rotate_left_rounded),
-                        onPressed: () => unawaited(_rotateMap(-45)),
+                        tooltip: _text('Report road issue', '上报道路情况'),
+                        icon: const Icon(Icons.add_alert_rounded, color: TasmanColors.ocean),
+                        onPressed: () => unawaited(_showRoadReport()),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Material(
-                      color: Colors.white,
+                      color: _following
+                          ? TasmanColors.sky.withValues(alpha: .13)
+                          : Colors.white,
                       elevation: 5,
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
-                        tooltip: 'Rotate map right',
-                        icon: const Icon(Icons.rotate_right_rounded),
-                        onPressed: () => unawaited(_rotateMap(45)),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Material(
-                      color: Colors.white,
-                      elevation: 5,
-                      borderRadius: BorderRadius.circular(14),
-                      child: IconButton(
-                        tooltip: 'Follow my location',
-                        icon: const Icon(Icons.navigation_rounded),
-                        onPressed: _recenter,
+                        tooltip: _locationControlTooltip,
+                        icon: Icon(
+                          _locationControlIcon,
+                          color: _following ? TasmanColors.ocean : TasmanColors.deepOcean,
+                        ),
+                        onPressed: _cycleLocationCamera,
                       ),
                     ),
                   ],
@@ -2974,13 +3093,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         onOverview: _showRouteOverview,
                         northUp: _northUp,
                         onCompassToggle: _toggleCompass,
-                        onReport: () {
-                          final controller = _navigationController;
-                          if (controller != null) {
-                            // ignore: experimental_member_use
-                            unawaited(controller.showReportIncidentsPanel());
-                          }
-                        },
+                        onReport: () => unawaited(_showRoadReport()),
                         onSearchAlongRoute: _showAlongRouteSearch,
                         onDirections: _showDirections,
                         onShare: _shareTripSnapshot,

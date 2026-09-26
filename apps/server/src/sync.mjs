@@ -31,7 +31,7 @@ export function parseNztaPage(html) {
       const [suburb, location, type, latText, lonText] = cells;
       const latitude = Number(latText?.replace(/[^\d.-]/g, ''));
       const longitude = Number(lonText?.replace(/[^\d.-]/g, ''));
-      if (!location || !type || !/spot speed|average speed|red light/i.test(type)) return;
+      if (!location || !type) return;
       if (!(latitude > -48 && latitude < -34 && longitude > 166 && longitude < 179)) return;
       cameras.push({ id: cameraId(location, latitude, longitude), name: `${location} — ${suburb}`, region, suburb, location, type, latitude, longitude, source: SOURCE_URL, updatedAt });
     });
@@ -43,7 +43,7 @@ export function parseNztaPage(html) {
 
 export async function fetchNztaCameras(fetcher = fetch) {
   const response = await fetcher(SOURCE_URL, {
-    headers: { 'user-agent': 'KiwiLens/0.1 (+https://github.com/yaohuangguan/kiwi-lens)', accept: 'text/html' },
+    headers: { 'user-agent': 'Tasman/0.1 (+https://github.com/yaohuangguan/tasman)', accept: 'text/html' },
     signal: AbortSignal.timeout(15000)
   });
   if (!response.ok) throw new Error(`NZTA returned HTTP ${response.status}`);

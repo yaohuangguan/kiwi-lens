@@ -213,9 +213,10 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
             geometry: _point(GeoPoint(camera.latitude, camera.longitude)),
             circleRadius: 7,
             circleColor: switch (CameraKindLabel.fromCamera(camera)) {
-              CameraKind.speed => const Color(0xFF1670B9).toARGB32(),
+              CameraKind.spotSpeed => const Color(0xFF1670B9).toARGB32(),
+              CameraKind.averageSpeed => const Color(0xFF0891B2).toARGB32(),
               CameraKind.redLight => const Color(0xFFD95640).toARGB32(),
-              CameraKind.lane => const Color(0xFF735CC8).toARGB32(),
+              CameraKind.dualRedLightSpeed => const Color(0xFFD97706).toARGB32(),
               CameraKind.other => const Color(0xFF325A77).toARGB32(),
             },
             circleStrokeColor: Colors.white.toARGB32(),
