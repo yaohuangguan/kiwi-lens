@@ -126,7 +126,11 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 ),
                 child: Row(
                   children: [
-                    Icon(_maneuverIcon(step?.maneuver), color: _accent, size: 40),
+                    Icon(
+                      _maneuverIcon(step?.maneuver),
+                      color: _accent,
+                      size: 40,
+                    ),
                     const SizedBox(width: 13),
                     Expanded(
                       child: Column(
@@ -364,7 +368,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   decoration: BoxDecoration(
                     color: TasmanColors.lightSurface.withValues(alpha: .97),
                     borderRadius: BorderRadius.circular(19),
-                    border: Border.all(color: TasmanColors.sky.withValues(alpha: .55)),
+                    border: Border.all(
+                      color: TasmanColors.sky.withValues(alpha: .55),
+                    ),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x36000000),
@@ -378,7 +384,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     children: [
                       const CircleAvatar(
                         backgroundColor: TasmanColors.ocean,
-                        child: const Icon(Icons.speed_rounded, color: Colors.white),
+                        child: Icon(Icons.speed_rounded, color: Colors.white),
                       ),
                       const SizedBox(width: 10),
                       Flexible(
@@ -433,9 +439,6 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                       top: Radius.circular(27),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    shape: const Border(
-                      top: BorderSide(color: TasmanColors.sky, width: 1.2),
-                    ),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(16, 5, 16, bottomInset + 15),
                       child: Column(

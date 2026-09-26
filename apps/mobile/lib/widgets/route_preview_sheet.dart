@@ -6,7 +6,6 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../domain/route_option.dart';
 
 const _ink = TasmanColors.darkOcean;
-const _accent = TasmanColors.sky;
 
 String _duration(int seconds) {
   final duration = Duration(seconds: seconds);
@@ -298,43 +297,47 @@ class RoutePreviewSheet extends StatelessWidget {
                                   Container(
                                     width: 4,
                                     decoration: BoxDecoration(
-                                      color: active ? TasmanColors.ocean : TasmanColors.sky,
+                                      color: active
+                                          ? TasmanColors.ocean
+                                          : TasmanColors.sky,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
                                   const SizedBox(width: 9),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                  Text(
-                                    route.durationSeconds == fastestDuration
-                                        ? 'Fastest'
-                                        : 'Alternative',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: TasmanColors.deepTeal,
-                                    ),
-                                  ),
-                                  Text(
-                                    _duration(route.durationSeconds),
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${_distance(route.distanceMeters)}'
-                                    '${route.durationSeconds > fastestDuration + 60 ? ' · +${_duration(route.durationSeconds - fastestDuration)}' : ''}'
-                                    '${delay != null && delay > 60 ? ' · ${_duration(delay)} traffic' : ''}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Color(0xFF68756E),
-                                    ),
-                                  ),
+                                        Text(
+                                          route.durationSeconds ==
+                                                  fastestDuration
+                                              ? 'Fastest'
+                                              : 'Alternative',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: TasmanColors.deepTeal,
+                                          ),
+                                        ),
+                                        Text(
+                                          _duration(route.durationSeconds),
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${_distance(route.distanceMeters)}'
+                                          '${route.durationSeconds > fastestDuration + 60 ? ' · +${_duration(route.durationSeconds - fastestDuration)}' : ''}'
+                                          '${delay != null && delay > 60 ? ' · ${_duration(delay)} traffic' : ''}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Color(0xFF68756E),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),

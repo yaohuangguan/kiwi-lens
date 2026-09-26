@@ -134,23 +134,23 @@ class RoadEventTimeline extends StatelessWidget {
             const SizedBox(width: TasmanSpacing.x2),
             Expanded(
               child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (var index = 0; index < items.length; index++) ...[
-                if (index > 0)
-                  Container(
-                    width: 24,
-                    height: 2,
-                    color: dark
-                        ? TasmanColors.darkBorder
-                        : TasmanColors.lightBorder,
-                  ),
-                items[index],
-              ],
-            ],
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var index = 0; index < items.length; index++) ...[
+                      if (index > 0)
+                        Container(
+                          width: 24,
+                          height: 2,
+                          color: dark
+                              ? TasmanColors.darkBorder
+                              : TasmanColors.lightBorder,
+                        ),
+                      items[index],
+                    ],
+                  ],
+                ),
               ),
-            ),
             ),
           ],
         ),
