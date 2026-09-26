@@ -253,8 +253,8 @@ class DriveHud extends StatelessWidget {
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
                     color: cameraDistance <= 150
-                        ? const Color(0xFFF7D66D)
-                        : const Color(0xFFF5F0D8),
+                        ? TasmanColors.warning.withValues(alpha: .16)
+                        : TasmanColors.ice,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: const [
                       BoxShadow(
@@ -268,7 +268,7 @@ class DriveHud extends StatelessWidget {
                     children: [
                       const Icon(
                         Icons.speed_rounded,
-                        color: Color(0xFF7B5610),
+                        color: TasmanColors.ocean,
                         size: 30,
                       ),
                       const SizedBox(width: 12),
@@ -289,7 +289,7 @@ class DriveHud extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Color(0xFF705E2B),
+                                color: TasmanColors.lightTextSecondary,
                                 fontSize: 12,
                               ),
                             ),

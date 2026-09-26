@@ -118,9 +118,9 @@ class RoutePreviewSheet extends StatelessWidget {
 
     return PointerInterceptor(
       child: Material(
-        color: Colors.white,
-        elevation: 22,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        color: TasmanColors.lightSurface,
+        elevation: 0,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         clipBehavior: Clip.antiAlias,
         child: SafeArea(
           top: false,
@@ -224,7 +224,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   color: selectedMode == mode
-                                      ? const Color(0xFFEAF4EA)
+                                      ? TasmanColors.ice
                                       : Colors.transparent,
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -283,18 +283,30 @@ class RoutePreviewSheet extends StatelessWidget {
                               ),
                               decoration: BoxDecoration(
                                 color: active
-                                    ? const Color(0xFFF0F7E1)
-                                    : const Color(0xFFF5F7F5),
+                                    ? TasmanColors.ice
+                                    : TasmanColors.lightBackground,
                                 borderRadius: BorderRadius.circular(15),
                                 border: Border.all(
                                   color: active
-                                      ? const Color(0xFF91B850)
-                                      : const Color(0xFFE2E7E3),
+                                      ? TasmanColors.ocean
+                                      : TasmanColors.lightBorder,
                                 ),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  Container(
+                                    width: 4,
+                                    decoration: BoxDecoration(
+                                      color: active ? TasmanColors.ocean : TasmanColors.sky,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 9),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
                                   Text(
                                     route.durationSeconds == fastestDuration
                                         ? 'Fastest'
@@ -321,6 +333,9 @@ class RoutePreviewSheet extends StatelessWidget {
                                     style: const TextStyle(
                                       fontSize: 10,
                                       color: Color(0xFF68756E),
+                                    ),
+                                  ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -361,7 +376,7 @@ class RoutePreviewSheet extends StatelessWidget {
                       child: Chip(
                         avatar: const Icon(Icons.speed_rounded, size: 18),
                         label: Text('$cameraCount cameras on selected route'),
-                        backgroundColor: const Color(0xFFF0F7E1),
+                        backgroundColor: TasmanColors.ice,
                       ),
                     ),
                     if (customOrigin)
@@ -397,8 +412,8 @@ class RoutePreviewSheet extends StatelessWidget {
                         FilledButton.icon(
                           onPressed: busy ? null : onStart,
                           style: FilledButton.styleFrom(
-                            backgroundColor: _ink,
-                            foregroundColor: _accent,
+                            backgroundColor: TasmanColors.ocean,
+                            foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 18,
                               vertical: 13,

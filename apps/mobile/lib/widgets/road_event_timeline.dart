@@ -117,7 +117,23 @@ class RoadEventTimeline extends StatelessWidget {
             color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
           ),
         ),
-        child: SingleChildScrollView(
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 42,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [TasmanColors.ocean, TasmanColors.teal],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            const SizedBox(width: TasmanSpacing.x2),
+            Expanded(
+              child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
@@ -133,7 +149,9 @@ class RoadEventTimeline extends StatelessWidget {
                 items[index],
               ],
             ],
-          ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -163,7 +181,15 @@ class _TimelineNode extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: color, size: 19),
+        Container(
+          width: 29,
+          height: 29,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .13),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
         const SizedBox(height: 2),
         Text(
           label,

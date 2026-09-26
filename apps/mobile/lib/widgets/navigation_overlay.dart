@@ -228,7 +228,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     (direction) => direction.isRecommended,
                                   )
                                   ? _accent
-                                  : const Color(0xFF30453B),
+                                  : TasmanColors.darkSurface,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -362,8 +362,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: TasmanColors.lightSurface.withValues(alpha: .97),
                     borderRadius: BorderRadius.circular(19),
+                    border: Border.all(color: TasmanColors.sky.withValues(alpha: .55)),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x36000000),
@@ -376,8 +377,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const CircleAvatar(
-                        backgroundColor: _ink,
-                        child: Icon(Icons.speed_rounded, color: _accent),
+                        backgroundColor: TasmanColors.ocean,
+                        child: const Icon(Icons.speed_rounded, color: Colors.white),
                       ),
                       const SizedBox(width: 10),
                       Flexible(
@@ -426,12 +427,15 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.bottomCenter,
                   child: Material(
-                    color: Colors.white,
-                    elevation: 18,
+                    color: TasmanColors.lightSurface,
+                    elevation: 0,
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(27),
                     ),
                     clipBehavior: Clip.antiAlias,
+                    shape: const Border(
+                      top: BorderSide(color: TasmanColors.sky, width: 1.2),
+                    ),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(16, 5, 16, bottomInset + 15),
                       child: Column(
@@ -469,8 +473,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               FilledButton.icon(
                                 onPressed: widget.onEnd,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: _accent,
-                                  foregroundColor: _ink,
+                                  backgroundColor: TasmanColors.ocean,
+                                  foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
                                     vertical: 12,
