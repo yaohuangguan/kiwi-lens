@@ -46,6 +46,7 @@ class RoadEvent {
     required this.type,
     required this.location,
     required this.source,
+    this.geometry = const [],
     this.severity = RoadEventSeverity.information,
     this.observation = RoadEventObservation.official,
     this.headingDegrees,
@@ -62,6 +63,7 @@ class RoadEvent {
   final RoadEventType type;
   final GeoPoint location;
   final RoadEventSource source;
+  final List<GeoPoint> geometry;
   final RoadEventSeverity severity;
   final RoadEventObservation observation;
   final double? headingDegrees;
@@ -83,6 +85,7 @@ class RoadEvent {
         type: type,
         location: location,
         source: source,
+        geometry: geometry,
         severity: severity,
         observation: observation,
         headingDegrees: headingDegrees,

@@ -60,62 +60,86 @@ class RoadIntelligenceEngine {
         : _routeMatcher.project(driver, route.points);
     final output = <RoadEvent>[];
     final seen = <String>{};
+
     for (final event in events) {
       if (!event.isCurrent(at) ||
           event.confidence < .5 ||
           !seen.add(event.id)) {
         continue;
       }
-      // Rough bounding box prevents most distance and route projections.
-      final latDelta = maxDistanceMeters / 110540;
-      final lonDelta =
-          maxDistanceMeters /
-          (111320 *
-              math.cos(driver.latitude * math.pi / 180).abs().clamp(.1, 1));
-      if ((event.location.latitude - driver.latitude).abs() > latDelta ||
-          (event.location.longitude - driver.longitude).abs() > lonDelta) {
-        continue;
-      }
-      final distance = distanceMeters(
-        driver.latitude,
-        driver.longitude,
-        event.location.latitude,
-        event.location.longitude,
-      );
-      if (distance > maxDistanceMeters) continue;
+
+      final candidates = event.geometry.isEmpty
+          ? <GeoPoint>[event.location]
+          : event.geometry;
+      final nearby = candidates
+          .map((point) => (
+                point: point,
+                distance: distanceMeters(
+                  driver.latitude,
+                  driver.longitude,
+                  point.latitude,
+                  point.longitude,
+                ),
+              ))
+          .where((entry) => entry.distance <= maxDistanceMeters)
+          .toList(growable: false);
+      if (nearby.isEmpty) continue;
+
+      GeoPoint? matchedPoint;
+      double? fromDriver;
       double? along;
+
       if (route != null && progress != null && progress.offsetMeters <= 100) {
-        final projected = _routeMatcher.project(event.location, route.points);
-        if (projected == null || projected.offsetMeters > routeCorridorMeters) {
-          continue;
-        }
-        along = projected.alongMeters - progress.alongMeters;
-        if (along < -15 || along > maxDistanceMeters) continue;
-        if (event.headingDegrees != null &&
-            angleDifference(event.headingDegrees!, projected.bearingDegrees) >
-                55) {
-          continue;
+        double bestOffset = double.infinity;
+        for (final entry in nearby) {
+          final projected = _routeMatcher.project(entry.point, route.points);
+          if (projected == null || projected.offsetMeters > routeCorridorMeters) {
+            continue;
+          }
+          final candidateAlong = projected.alongMeters - progress.alongMeters;
+          if (candidateAlong < -15 || candidateAlong > maxDistanceMeters) continue;
+          if (event.headingDegrees != null &&
+              angleDifference(event.headingDegrees!, projected.bearingDegrees) > 55) {
+            continue;
+          }
+          if (projected.offsetMeters < bestOffset) {
+            bestOffset = projected.offsetMeters;
+            matchedPoint = entry.point;
+            fromDriver = entry.distance;
+            along = candidateAlong;
+          }
         }
       } else {
         if (headingDegrees == null) continue;
-        final bearing = bearingDegrees(
-          driver.latitude,
-          driver.longitude,
-          event.location.latitude,
-          event.location.longitude,
-        );
-        final difference = angleDifference(headingDegrees, bearing);
-        if (difference > 45 ||
-            distance * math.sin(difference * math.pi / 180) > 65) {
-          continue;
-        }
-        if (event.headingDegrees != null &&
-            angleDifference(event.headingDegrees!, headingDegrees) > 55) {
-          continue;
+        double bestDistance = double.infinity;
+        for (final entry in nearby) {
+          final bearing = bearingDegrees(
+            driver.latitude,
+            driver.longitude,
+            entry.point.latitude,
+            entry.point.longitude,
+          );
+          final difference = angleDifference(headingDegrees, bearing);
+          if (difference > 45 ||
+              entry.distance * math.sin(difference * math.pi / 180) > 65) {
+            continue;
+          }
+          if (event.headingDegrees != null &&
+              angleDifference(event.headingDegrees!, headingDegrees) > 55) {
+            continue;
+          }
+          if (entry.distance < bestDistance) {
+            bestDistance = entry.distance;
+            matchedPoint = entry.point;
+            fromDriver = entry.distance;
+          }
         }
       }
-      output.add(event.withDistance(fromDriver: distance, alongRoute: along));
+
+      if (matchedPoint == null || fromDriver == null) continue;
+      output.add(event.withDistance(fromDriver: fromDriver, alongRoute: along));
     }
+
     output.sort((a, b) {
       final byDistance = (a.distanceAlongRoute ?? a.distanceFromDriver ?? 0)
           .compareTo(b.distanceAlongRoute ?? b.distanceFromDriver ?? 0);

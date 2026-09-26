@@ -111,3 +111,12 @@ test('Worker exposes normalized live NZTA road events at /api/road-events', asyn
     globalThis.fetch = originalFetch;
   }
 });
+
+test('densifies long NZTA line geometry so route matching can use the whole affected segment', () => {
+  const roadEvent = normalizeRoadEvent(event({
+    geometry: 'LINESTRING (174.70 -36.85, 174.82 -36.85)'
+  }), NOW);
+  assert.ok(roadEvent.geometry.length > 10);
+  assert.ok(roadEvent.geometry.length <= 200);
+  assert.equal(roadEvent.location.latitude, -36.85);
+});

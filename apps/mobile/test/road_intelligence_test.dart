@@ -104,4 +104,31 @@ void main() {
     expect(events, hasLength(1));
     expect(registry.lastErrors, hasLength(1));
   });
+
+  test('long road-event geometry matches near the driver even when midpoint is far away', () {
+    const engine = RoadIntelligenceEngine(maxDistanceMeters: 1500);
+    final event = RoadEvent(
+      id: 'works',
+      type: RoadEventType.roadworks,
+      location: const GeoPoint(0, .05),
+      geometry: const [
+        GeoPoint(0, .005),
+        GeoPoint(0, .02),
+        GeoPoint(0, .05),
+      ],
+      source: const RoadEventSource(
+        provider: 'test',
+        country: 'NZ',
+        sourceId: 'works',
+      ),
+    );
+    final results = engine.relevant(
+      driver: const GeoPoint(0, 0),
+      headingDegrees: 90,
+      events: [event],
+    );
+    expect(results.map((item) => item.id), ['works']);
+    expect(results.single.distanceFromDriver, lessThan(600));
+  });
+
 }

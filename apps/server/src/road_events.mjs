@@ -9,18 +9,59 @@ function text(value, limit = 400) {
   return typeof value === 'string' ? value.trim().slice(0, limit) : '';
 }
 
-function geometryPosition(geometry) {
+function geometryPoints(geometry) {
   if (typeof geometry !== 'string' || geometry.length > 100000) return null;
-  const pairs = [...geometry.matchAll(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g)];
-  if (!pairs.length || pairs.length > 5000) return null;
-  const middle = pairs[Math.floor(pairs.length / 2)];
-  const longitude = Number(middle[1]);
-  const latitude = Number(middle[2]);
-  if (
-    longitude <= NZ_BOUNDS.minLon || longitude >= NZ_BOUNDS.maxLon ||
-    latitude <= NZ_BOUNDS.minLat || latitude >= NZ_BOUNDS.maxLat
-  ) return null;
-  return { latitude, longitude };
+  const raw = [...geometry.matchAll(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g)]
+    .map((match) => ({
+      longitude: Number(match[1]),
+      latitude: Number(match[2])
+    }))
+    .filter((point) =>
+      point.longitude > NZ_BOUNDS.minLon && point.longitude < NZ_BOUNDS.maxLon &&
+      point.latitude > NZ_BOUNDS.minLat && point.latitude < NZ_BOUNDS.maxLat
+    );
+  if (!raw.length || raw.length > 5000) return null;
+
+  const sampled = [];
+  const push = (point) => {
+    const previous = sampled.at(-1);
+    if (!previous || previous.latitude !== point.latitude || previous.longitude !== point.longitude) {
+      sampled.push(point);
+    }
+  };
+
+  for (let index = 0; index < raw.length; index++) {
+    const point = raw[index];
+    if (index === 0) {
+      push(point);
+      continue;
+    }
+    const previous = raw[index - 1];
+    const latScale = 111320;
+    const lonScale = 111320 * Math.cos(((previous.latitude + point.latitude) / 2) * Math.PI / 180);
+    const dy = (point.latitude - previous.latitude) * latScale;
+    const dx = (point.longitude - previous.longitude) * lonScale;
+    const metres = Math.hypot(dx, dy);
+    const steps = Math.min(32, Math.max(1, Math.ceil(metres / 300)));
+    for (let step = 1; step <= steps; step++) {
+      const fraction = step / steps;
+      push({
+        latitude: previous.latitude + (point.latitude - previous.latitude) * fraction,
+        longitude: previous.longitude + (point.longitude - previous.longitude) * fraction
+      });
+    }
+  }
+
+  if (sampled.length > 200) {
+    const stride = (sampled.length - 1) / 199;
+    return Array.from({ length: 200 }, (_, index) => sampled[Math.round(index * stride)]);
+  }
+  return sampled;
+}
+
+function geometryPosition(points) {
+  if (!Array.isArray(points) || !points.length) return null;
+  return points[Math.floor(points.length / 2)];
 }
 
 function eventType(event) {
@@ -50,7 +91,8 @@ function severity(event, type) {
 
 export function normalizeRoadEvent(event, now = new Date()) {
   if (!event || event.status !== 'Active' || event.id == null) return null;
-  const location = geometryPosition(event.geometry);
+  const geometry = geometryPoints(event.geometry);
+  const location = geometryPosition(geometry);
   if (!location) return null;
   const from = Date.parse(event.startDate || '');
   const until = Date.parse(event.endDate || '');
@@ -64,6 +106,7 @@ export function normalizeRoadEvent(event, now = new Date()) {
     id: `nzta:event:${sourceId}`,
     type,
     location,
+    geometry,
     roadName: text(event.locationArea, 160) || text(event.journey?.name, 80) || null,
     severity: severity(event, type),
     confidence: event.geometry.startsWith('POINT') ? 0.95 : 0.75,

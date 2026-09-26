@@ -50,10 +50,21 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
     final longitude = (location['longitude'] as num?)?.toDouble();
     if (latitude == null || longitude == null) return null;
 
+    final geometry = (json['geometry'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map((point) {
+          final lat = (point['latitude'] as num?)?.toDouble();
+          final lon = (point['longitude'] as num?)?.toDouble();
+          return lat == null || lon == null ? null : GeoPoint(lat, lon);
+        })
+        .whereType<GeoPoint>()
+        .toList(growable: false);
+
     return RoadEvent(
       id: json['id']?.toString() ?? '',
       type: _eventType(json['type']?.toString()),
       location: GeoPoint(latitude, longitude),
+      geometry: geometry,
       source: RoadEventSource(
         provider: source['provider']?.toString() ?? 'NZTA Traffic and Travel',
         country: source['country']?.toString() ?? 'NZ',
