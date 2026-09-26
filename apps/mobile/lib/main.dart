@@ -4,12 +4,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
+import 'data/api_config.dart';
 import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/route_repository.dart';
@@ -553,50 +555,88 @@ class _MapHomePageState extends State<MapHomePage> {
     _recenter();
   }
 
-  Future<bool> _ensureGoogleReportSession() async {
-    if (await GoogleMapsNavigator.isInitialized()) {
-      _navigationSessionInitialized = true;
-      return true;
+  Future<void> _showRoadReport() async {
+    final location = _gpsLocation;
+    if (location == null) {
+      setState(() => _message = _text(
+        'Current location is required to report a road issue.',
+        '需要获取当前位置才能上报道路情况。',
+      ));
+      return;
     }
-    if (!await _ensureLocationPermission()) return false;
-    if (!await GoogleMapsNavigator.areTermsAccepted()) {
-      final accepted = await GoogleMapsNavigator.showTermsAndConditionsDialog(
-        'Tasman Navigation',
-        'Tasman',
-      );
-      if (!accepted) return false;
-    }
+    final choices = <(String, String, String, IconData)>[
+      ('incident', 'Crash / hazard', '事故 / 危险', Icons.car_crash_rounded),
+      ('roadworks', 'Roadworks', '道路施工', Icons.construction_rounded),
+      ('roadClosure', 'Road closed', '道路封闭', Icons.block_rounded),
+      ('congestion', 'Heavy traffic', '严重拥堵', Icons.traffic_rounded),
+      ('flooding', 'Flooding', '积水 / 洪水', Icons.water_rounded),
+      ('slip', 'Slip / debris', '滑坡 / 道路杂物', Icons.landslide_rounded),
+    ];
+    final selected = await showModalBottomSheet<(String, String)>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 44, height: 4, decoration: BoxDecoration(
+              color: Theme.of(context).dividerColor,
+              borderRadius: BorderRadius.circular(4),
+            )),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(_text('Report road issue', '上报道路情况'),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              subtitle: Text(_text(
+                'Reports are shared with Tasman drivers for about 2 hours.',
+                '上报内容将在约 2 小时内共享给 Tasman 驾驶用户。',
+              )),
+            ),
+            for (final choice in choices)
+              ListTile(
+                leading: Icon(choice.$4, color: TasmanColors.ocean),
+                title: Text(_text(choice.$2, choice.$3)),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(sheetContext, (choice.$1, choice.$2)),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
     try {
-      await GoogleMapsNavigator.initializeNavigationSession(
-        taskRemovedBehavior: TaskRemovedBehavior.continueService,
-      );
-      _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
-      return _navigationSessionInitialized;
+      final response = await http.post(
+        Uri.parse('$workerBaseUrl/api/road-reports'),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode({
+          'type': selected.$1,
+          'latitude': location.latitude,
+          'longitude': location.longitude,
+          'headingDegrees': _travelHeading ?? _deviceHeading,
+          'description': selected.$2,
+        }),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 201) {
+        throw StateError('HTTP ' + response.statusCode.toString());
+      }
+      await _driveEngine.loadCameras(force: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('Road report submitted', '道路情况已上报'))),
+        );
+      }
     } catch (error) {
-      if (mounted) setState(() => _message = 'Road reporting unavailable: $error');
-      return false;
+      if (mounted) {
+        setState(() => _message = _text(
+          'Could not submit road report: ' + error.toString(),
+          '道路上报失败：' + error.toString(),
+        ));
+      }
     }
   }
 
-  Future<void> _showRoadReport() async {
-    if (_mapProvider != MapProvider.google) {
-      if (mounted) {
-        setState(() => _message = _text(
-          'Road reports currently use Google reporting. Switch to Google Maps to submit one.',
-          '道路上报目前使用 Google 上报服务，请切换到 Google 地图后提交。',
-        ));
-      }
-      return;
-    }
-    final controller = _navigationController ?? _browseController;
-    if (controller == null || !await _ensureGoogleReportSession()) return;
-    try {
-      // ignore: experimental_member_use
-      await controller.showReportIncidentsPanel();
-    } catch (error) {
-      if (mounted) setState(() => _message = 'Could not open road report: $error');
-    }
-  }
 
   Future<void> _rotateMap(double degrees) async {
     if (_mapProvider == MapProvider.mapbox) {

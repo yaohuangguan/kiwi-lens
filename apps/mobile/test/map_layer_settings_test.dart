@@ -14,33 +14,23 @@ SafetyCamera camera(String type) => SafetyCamera(
 );
 
 void main() {
-  test(
-    'NZTA camera categories are distinct and future lane data is supported',
-    () {
-      expect(
-        CameraKindLabel.fromCamera(camera('Spot speed')),
-        CameraKind.speed,
-      );
-      expect(
-        CameraKindLabel.fromCamera(camera('Average speed')),
-        CameraKind.speed,
-      );
-      expect(
-        CameraKindLabel.fromCamera(camera('Red light')),
-        CameraKind.redLight,
-      );
-      expect(CameraKindLabel.fromCamera(camera('Bus lane')), CameraKind.lane);
-    },
-  );
-
-  test('layer switches only affect matching camera classes', () {
-    const settings = MapLayerSettings();
-    final withoutSpeed = settings.copyWith(speed: false);
-    expect(withoutSpeed.shows(camera('Spot speed')), false);
-    expect(withoutSpeed.shows(camera('Red light')), true);
+  test('NZTA fixed camera categories stay distinct', () {
+    expect(CameraKindLabel.fromCamera(camera('Spot speed')), CameraKind.spotSpeed);
+    expect(CameraKindLabel.fromCamera(camera('Average speed')), CameraKind.averageSpeed);
+    expect(CameraKindLabel.fromCamera(camera('Red light')), CameraKind.redLight);
     expect(
-      withoutSpeed.copyWith(cameras: false).shows(camera('Red light')),
-      false,
+      CameraKindLabel.fromCamera(camera('Dual red light or speed')),
+      CameraKind.dualRedLightSpeed,
     );
+    expect(CameraKindLabel.fromCamera(camera('Future camera')), CameraKind.other);
+  });
+
+  test('visibility and alert switches are independent', () {
+    const settings = MapLayerSettings();
+    final next = settings.copyWith(spotSpeed: false, alertSpotSpeed: true);
+    expect(next.shows(camera('Spot speed')), false);
+    expect(next.alerts(camera('Spot speed')), true);
+    expect(next.shows(camera('Average speed')), true);
+    expect(next.copyWith(cameras: false).shows(camera('Red light')), false);
   });
 }

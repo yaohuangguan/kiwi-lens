@@ -4,6 +4,7 @@ import { handleAccount } from './auth.mjs';
 import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
 import { loadRoadEventState } from './road_events.mjs';
+import { createRoadReport, readRoadReports } from './road_reports.mjs';
 
 const CAMERA_KEY = 'cameras/current';
 let lastSearchAt = 0;
@@ -77,6 +78,14 @@ async function upstreamJson(url, headers = {}) {
 
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
+  if (url.pathname === '/api/road-reports' && request.method === 'POST') {
+    try {
+      const report = await createRoadReport(env, await request.json());
+      return json({ ok: true, report }, 201);
+    } catch (error) {
+      return json({ error: String(error.message || error) }, 400);
+    }
+  }
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
   if (url.pathname === '/api/config') {
     if (!env.GOOGLE_MAPS_BROWSER_API_KEY) {
@@ -97,7 +106,9 @@ async function handleApi(request, env, ctx) {
     return json({ ...state, source: SOURCE_URL });
   }
   if (url.pathname === '/api/road-events') {
-    return json(await loadRoadEventState(env));
+    const state = await loadRoadEventState(env);
+    const reports = await readRoadReports(env);
+    return json({ ...state, events: [...reports, ...state.events] });
   }
   if (url.pathname === '/api/speed-limit') {
     const at = validateCoordinatePair(url.searchParams.get('at'));

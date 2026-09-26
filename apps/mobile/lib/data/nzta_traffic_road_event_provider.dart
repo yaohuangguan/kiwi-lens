@@ -73,7 +73,7 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
         updatedAt: DateTime.tryParse(source['updatedAt']?.toString() ?? ''),
       ),
       severity: _severity(json['severity']?.toString()),
-      observation: RoadEventObservation.official,
+      observation: _observation(json['observation']?.toString()),
       roadName: json['roadName']?.toString(),
       confidence: (json['confidence'] as num?)?.toDouble() ?? 1,
       validFrom: DateTime.tryParse(json['validFrom']?.toString() ?? ''),
@@ -88,6 +88,13 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
         'flooding' => RoadEventType.flooding,
         'slip' => RoadEventType.slip,
         _ => RoadEventType.incident,
+      };
+
+  RoadEventObservation _observation(String? value) => switch (value) {
+        'observed' => RoadEventObservation.observed,
+        'forecast' => RoadEventObservation.forecast,
+        'inferred' => RoadEventObservation.inferred,
+        _ => RoadEventObservation.official,
       };
 
   RoadEventSeverity _severity(String? value) => switch (value) {
