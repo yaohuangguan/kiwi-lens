@@ -24,6 +24,14 @@ class ProfilePage extends StatefulWidget {
     required this.onMapProviderChanged,
     required this.onLocationMarkerChanged,
     required this.mapboxAvailable,
+    required this.notifySafetyCameras,
+    required this.notifyRoadIncidents,
+    required this.notifyCommunityReports,
+    required this.notifySavedRouteDisruptions,
+    required this.onNotifySafetyCamerasChanged,
+    required this.onNotifyRoadIncidentsChanged,
+    required this.onNotifyCommunityReportsChanged,
+    required this.onNotifySavedRouteDisruptionsChanged,
   });
 
   final AccountRepository account;
@@ -41,6 +49,14 @@ class ProfilePage extends StatefulWidget {
   final Future<MapProvider> Function(MapProvider) onMapProviderChanged;
   final ValueChanged<LocationMarkerStyle> onLocationMarkerChanged;
   final bool mapboxAvailable;
+  final bool notifySafetyCameras;
+  final bool notifyRoadIncidents;
+  final bool notifyCommunityReports;
+  final bool notifySavedRouteDisruptions;
+  final ValueChanged<bool> onNotifySafetyCamerasChanged;
+  final ValueChanged<bool> onNotifyRoadIncidentsChanged;
+  final ValueChanged<bool> onNotifyCommunityReportsChanged;
+  final ValueChanged<bool> onNotifySavedRouteDisruptionsChanged;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -57,6 +73,10 @@ class _ProfilePageState extends State<ProfilePage> {
   late String _language = widget.voiceLanguage;
   late MapProvider _mapProvider = widget.mapProvider;
   late LocationMarkerStyle _locationMarker = widget.locationMarker;
+  late bool _notifySafetyCameras = widget.notifySafetyCameras;
+  late bool _notifyRoadIncidents = widget.notifyRoadIncidents;
+  late bool _notifyCommunityReports = widget.notifyCommunityReports;
+  late bool _notifySavedRouteDisruptions = widget.notifySavedRouteDisruptions;
 
   String _text(String english, String chinese) =>
       _appLanguage == 'zh' ? chinese : english;
@@ -495,6 +515,82 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               if (profile != null) ...[
                 const SizedBox(height: 12),
+                _SectionTitle(_text('Notifications', '通知')),
+                Text(
+                  _text(
+                    'Tasman only asks for system notification permission when you turn on a notification below.',
+                    '只有当你主动开启下面的通知类型时，Tasman 才会请求系统通知权限。',
+                  ),
+                  style: const TextStyle(
+                    color: TasmanColors.lightTextSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.speed_rounded),
+                  title: Text(_text('Safety cameras', '安全摄像头')),
+                  subtitle: Text(
+                    _text(
+                      'System alerts for enabled camera types while driving',
+                      '驾驶时对已启用的摄像头类型发送系统通知',
+                    ),
+                  ),
+                  value: _notifySafetyCameras,
+                  onChanged: (value) {
+                    setState(() => _notifySafetyCameras = value);
+                    widget.onNotifySafetyCamerasChanged(value);
+                  },
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.warning_amber_rounded),
+                  title: Text(_text('Road incidents', '道路事件')),
+                  subtitle: Text(
+                    _text(
+                      'Closures, serious incidents and important road warnings',
+                      '封路、严重事故和重要道路警告',
+                    ),
+                  ),
+                  value: _notifyRoadIncidents,
+                  onChanged: (value) {
+                    setState(() => _notifyRoadIncidents = value);
+                    widget.onNotifyRoadIncidentsChanged(value);
+                  },
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.groups_2_outlined),
+                  title: Text(_text('Community reports', '社区上报')),
+                  subtitle: Text(
+                    _text(
+                      'Nearby reports shared by Tasman drivers',
+                      '附近 Tasman 用户分享的道路报告',
+                    ),
+                  ),
+                  value: _notifyCommunityReports,
+                  onChanged: (value) {
+                    setState(() => _notifyCommunityReports = value);
+                    widget.onNotifyCommunityReportsChanged(value);
+                  },
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.route_outlined),
+                  title: Text(_text('Saved-route disruption', '收藏路线异常')),
+                  subtitle: Text(
+                    _text(
+                      'Prepare for remote alerts when a saved route is disrupted',
+                      '为收藏路线发生封路或重大变化时的远程推送做准备',
+                    ),
+                  ),
+                  value: _notifySavedRouteDisruptions,
+                  onChanged: (value) {
+                    setState(() => _notifySavedRouteDisruptions = value);
+                    widget.onNotifySavedRouteDisruptionsChanged(value);
+                  },
+                ),
+                const SizedBox(height: 12),
                 _SectionTitle(_text('Your activity', '你的活动')),
                 _ActivitySection(
                   _text('Recent routes', '最近路线'),
@@ -502,7 +598,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   profile.routes
                       .map(
                         (item) =>
-                            item['destinationName']?.toString() ?? _text('Route', '路线'),
+                            item['destinationName']?.toString() ??
+                            _text('Route', '路线'),
                       )
                       .toList(),
                   countLabel: _text('items', '项'),
@@ -512,7 +609,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   _text('Saved places', '已收藏地点'),
                   Icons.bookmark_rounded,
                   profile.places
-                      .map((item) => item['name']?.toString() ?? _text('Place', '地点'))
+                      .map(
+                        (item) =>
+                            item['name']?.toString() ?? _text('Place', '地点'),
+                      )
                       .toList(),
                   countLabel: _text('items', '项'),
                   emptyLabel: _text('Nothing here yet', '这里还没有内容'),
@@ -521,7 +621,11 @@ class _ProfilePageState extends State<ProfilePage> {
                   _text('Your reviews', '你的评价'),
                   Icons.rate_review_rounded,
                   profile.reviews
-                      .map((item) => item['placeName']?.toString() ?? _text('Place', '地点'))
+                      .map(
+                        (item) =>
+                            item['placeName']?.toString() ??
+                            _text('Place', '地点'),
+                      )
                       .toList(),
                   countLabel: _text('items', '项'),
                   emptyLabel: _text('Nothing here yet', '这里还没有内容'),

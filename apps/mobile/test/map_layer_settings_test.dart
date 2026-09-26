@@ -22,6 +22,14 @@ void main() {
       CameraKindLabel.fromCamera(camera('Dual red light or speed')),
       CameraKind.dualRedLightSpeed,
     );
+    expect(
+      CameraKindLabel.fromCamera(camera('Bus lane enforcement')),
+      CameraKind.busLane,
+    );
+    expect(
+      CameraKindLabel.fromCamera(camera('Special Vehicle Lane CCTV')),
+      CameraKind.busLane,
+    );
     expect(CameraKindLabel.fromCamera(camera('Future camera')), CameraKind.other);
   });
 
@@ -31,6 +39,9 @@ void main() {
     expect(next.shows(camera('Spot speed')), false);
     expect(next.alerts(camera('Spot speed')), true);
     expect(next.shows(camera('Average speed')), true);
+    final noBus = next.copyWith(busLane: false, alertBusLane: true);
+    expect(noBus.shows(camera('Bus lane enforcement')), false);
+    expect(noBus.alerts(camera('Bus lane enforcement')), true);
     expect(next.copyWith(cameras: false).shows(camera('Red light')), false);
   });
 }

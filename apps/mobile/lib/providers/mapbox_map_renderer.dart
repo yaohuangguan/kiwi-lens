@@ -238,6 +238,7 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
               CameraKind.dualRedLightSpeed => const Color(
                 0xFFD97706,
               ).toARGB32(),
+              CameraKind.busLane => const Color(0xFF0E7490).toARGB32(),
               CameraKind.other => const Color(0xFF325A77).toARGB32(),
             },
             circleStrokeColor: Colors.white.toARGB32(),

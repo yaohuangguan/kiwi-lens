@@ -280,6 +280,10 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _following = true;
   bool _voiceEnabled = true;
   bool _lanesEnabled = true;
+  bool _notifySafetyCameras = false;
+  bool _notifyRoadIncidents = false;
+  bool _notifyCommunityReports = false;
+  bool _notifySavedRouteDisruptions = false;
   String _destinationTitle = 'Destination';
   RoutePlan? _routePlan;
   KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
@@ -335,17 +339,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _maybeShowCoreOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('tasman.onboarding.core.v1') == true) {
-      if (prefs.getBool('tasman.notifications.permission_prompted.v1') !=
-          true) {
-        await prefs.setBool(
-          'tasman.notifications.permission_prompted.v1',
-          true,
-        );
-        unawaited(TasmanNotificationService.instance.requestPermission());
-      }
-      return;
-    }
+    if (prefs.getBool('tasman.onboarding.core.v1') == true) return;
     if (!mounted) return;
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
@@ -421,11 +415,6 @@ class _MapHomePageState extends State<MapHomePage> {
           FilledButton.icon(
             onPressed: () async {
               await prefs.setBool('tasman.onboarding.core.v1', true);
-              await prefs.setBool(
-                'tasman.notifications.permission_prompted.v1',
-                true,
-              );
-              unawaited(TasmanNotificationService.instance.requestPermission());
               if (dialogContext.mounted) Navigator.of(dialogContext).pop();
             },
             icon: const Icon(Icons.arrow_forward_rounded),
@@ -514,7 +503,8 @@ class _MapHomePageState extends State<MapHomePage> {
     if (!_driveEngine.active) return;
     final camera = _driveEngine.upcomingCamera;
     final cameraDistance = _driveEngine.upcomingCameraDistanceMeters;
-    if (camera != null &&
+    if (_notifySafetyCameras &&
+        camera != null &&
         cameraDistance != null &&
         cameraDistance <= 600 &&
         _lastNotifiedCameraId != camera.id) {
@@ -533,11 +523,14 @@ class _MapHomePageState extends State<MapHomePage> {
     for (final event in _driveEngine.upcomingRoadEvents) {
       final distance = event.distanceAlongRoute ?? event.distanceFromDriver;
       if (distance == null || distance > 1500) continue;
-      final important =
+      final community = event.metadata['userReported'] == true;
+      final importantOfficial =
           event.severity == RoadEventSeverity.warning ||
-          event.severity == RoadEventSeverity.critical ||
-          event.metadata['userReported'] == true;
-      if (!important || !_notifiedRoadEventIds.add(event.id)) continue;
+          event.severity == RoadEventSeverity.critical;
+      final enabled = community
+          ? _notifyCommunityReports
+          : _notifyRoadIncidents && importantOfficial;
+      if (!enabled || !_notifiedRoadEventIds.add(event.id)) continue;
       final reporter = event.metadata['reporterName']?.toString();
       await TasmanNotificationService.instance.showRoadAlert(
         id: event.id,
@@ -675,6 +668,14 @@ class _MapHomePageState extends State<MapHomePage> {
     _voiceLanguage = prefs.getString('kiwi.voice.language') ?? 'en-NZ';
     _voiceEnabled = prefs.getBool('kiwi.voice.enabled') ?? true;
     _lanesEnabled = prefs.getBool('kiwi.nav.lanes') ?? true;
+    _notifySafetyCameras =
+        prefs.getBool('tasman.notifications.safety_cameras') ?? false;
+    _notifyRoadIncidents =
+        prefs.getBool('tasman.notifications.road_incidents') ?? false;
+    _notifyCommunityReports =
+        prefs.getBool('tasman.notifications.community_reports') ?? false;
+    _notifySavedRouteDisruptions =
+        prefs.getBool('tasman.notifications.saved_route_disruptions') ?? false;
     _driveEngine.voiceEnabled = _voiceEnabled;
     _layers = MapLayerSettings(
       cameras: prefs.getBool('kiwi.layers.cameras') ?? true,
@@ -685,12 +686,14 @@ class _MapHomePageState extends State<MapHomePage> {
       averageSpeed: prefs.getBool('tasman.layers.average_speed') ?? true,
       redLight: prefs.getBool('kiwi.layers.red_light') ?? true,
       dualRedLightSpeed: prefs.getBool('tasman.layers.dual_red_speed') ?? true,
+      busLane: prefs.getBool('tasman.layers.bus_lane') ?? true,
       other: prefs.getBool('kiwi.layers.other') ?? true,
       alertSpotSpeed: prefs.getBool('tasman.alerts.spot_speed') ?? true,
       alertAverageSpeed: prefs.getBool('tasman.alerts.average_speed') ?? true,
       alertRedLight: prefs.getBool('tasman.alerts.red_light') ?? true,
       alertDualRedLightSpeed:
           prefs.getBool('tasman.alerts.dual_red_speed') ?? true,
+      alertBusLane: prefs.getBool('tasman.alerts.bus_lane') ?? true,
       alertOther: prefs.getBool('tasman.alerts.other_camera') ?? false,
       traffic: prefs.getBool('kiwi.layers.traffic') ?? true,
       style: BaseMapStyle.values.firstWhere(
@@ -1163,12 +1166,10 @@ class _MapHomePageState extends State<MapHomePage> {
   Color _trafficColor(String speed, bool active) {
     final alpha = active ? 0xFF : 0x66;
     final rgb = speed == 'trafficJam'
-        ? 0xEA4335
+        ? 0xE5484D
         : speed == 'slow'
-        ? 0xF9AB00
-        : speed == 'normal'
-        ? 0x34A853
-        : 0x087D58;
+        ? 0xF59E0B
+        : 0x0284C7;
     return Color((alpha << 24) | rgb);
   }
 
@@ -1200,6 +1201,34 @@ class _MapHomePageState extends State<MapHomePage> {
           mapProvider: _mapProvider,
           locationMarker: _locationMarker,
           mapboxAvailable: _mapboxToken.isNotEmpty,
+          notifySafetyCameras: _notifySafetyCameras,
+          notifyRoadIncidents: _notifyRoadIncidents,
+          notifyCommunityReports: _notifyCommunityReports,
+          notifySavedRouteDisruptions: _notifySavedRouteDisruptions,
+          onNotifySafetyCamerasChanged: (value) => unawaited(
+            _setNotificationPreference(
+              'tasman.notifications.safety_cameras',
+              value,
+            ),
+          ),
+          onNotifyRoadIncidentsChanged: (value) => unawaited(
+            _setNotificationPreference(
+              'tasman.notifications.road_incidents',
+              value,
+            ),
+          ),
+          onNotifyCommunityReportsChanged: (value) => unawaited(
+            _setNotificationPreference(
+              'tasman.notifications.community_reports',
+              value,
+            ),
+          ),
+          onNotifySavedRouteDisruptionsChanged: (value) => unawaited(
+            _setNotificationPreference(
+              'tasman.notifications.saved_route_disruptions',
+              value,
+            ),
+          ),
           onMapProviderChanged: (value) async {
             await _setMapProvider(value);
             return _mapProvider;
@@ -1350,9 +1379,9 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               )
               .toList(growable: false),
-          strokeColor: _selectedMode == KiwiTravelMode.drive
-              ? (active ? const Color(0xCC60716A) : const Color(0x3560716A))
-              : (active ? const Color(0xFF4285F4) : const Color(0x554285F4)),
+          strokeColor: active
+              ? TasmanColors.ocean.withValues(alpha: .92)
+              : TasmanColors.sky.withValues(alpha: .38),
           strokeWidth: active ? 8 : 6,
           zIndex: active ? 18 : 8,
           clickable: false,
@@ -2451,6 +2480,7 @@ class _MapHomePageState extends State<MapHomePage> {
       prefs.setBool('tasman.layers.average_speed', value.averageSpeed),
       prefs.setBool('kiwi.layers.red_light', value.redLight),
       prefs.setBool('tasman.layers.dual_red_speed', value.dualRedLightSpeed),
+      prefs.setBool('tasman.layers.bus_lane', value.busLane),
       prefs.setBool('kiwi.layers.other', value.other),
       prefs.setBool('tasman.alerts.spot_speed', value.alertSpotSpeed),
       prefs.setBool('tasman.alerts.average_speed', value.alertAverageSpeed),
@@ -2459,6 +2489,7 @@ class _MapHomePageState extends State<MapHomePage> {
         'tasman.alerts.dual_red_speed',
         value.alertDualRedLightSpeed,
       ),
+      prefs.setBool('tasman.alerts.bus_lane', value.alertBusLane),
       prefs.setBool('tasman.alerts.other_camera', value.alertOther),
       prefs.setBool('kiwi.layers.traffic', value.traffic),
       prefs.setString('kiwi.layers.style', value.style.name),
@@ -2477,6 +2508,10 @@ class _MapHomePageState extends State<MapHomePage> {
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
       builder: (_) => MapLayerSheet(
         settings: _layers,
         mapProvider: _mapProvider,
@@ -2484,6 +2519,27 @@ class _MapHomePageState extends State<MapHomePage> {
         onChanged: (value) => unawaited(_setMapLayers(value)),
       ),
     );
+  }
+
+  Future<void> _setNotificationPreference(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+    if (value) {
+      await TasmanNotificationService.instance.requestPermission();
+    }
+    if (!mounted) return;
+    setState(() {
+      switch (key) {
+        case 'tasman.notifications.safety_cameras':
+          _notifySafetyCameras = value;
+        case 'tasman.notifications.road_incidents':
+          _notifyRoadIncidents = value;
+        case 'tasman.notifications.community_reports':
+          _notifyCommunityReports = value;
+        case 'tasman.notifications.saved_route_disruptions':
+          _notifySavedRouteDisruptions = value;
+      }
+    });
   }
 
   Future<void> _setVoiceLanguage(String language) async {
@@ -2505,37 +2561,113 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _showNavigationSettings() => _showProfile();
 
-  void _showDirections() {
+  Future<void> _showDirections() async {
     final route = _activeNavigationRoute;
     if (route == null) return;
-    showModalBottomSheet<void>(
+
+    final controller = _navigationController;
+    final size = MediaQuery.sizeOf(context);
+    final bottomInset = size.height * .43;
+
+    if (controller != null) {
+      _following = false;
+      await controller.setPadding(EdgeInsets.fromLTRB(28, 84, 28, bottomInset));
+      await controller.showRouteOverview();
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      await controller.showRouteOverview();
+    }
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
       useSafeArea: true,
-      builder: (sheetContext) => SizedBox(
-        height: MediaQuery.sizeOf(sheetContext).height * .65,
-        child: ListView(
-          children: [
-            const ListTile(
-              title: Text(
-                'Directions',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+      showDragHandle: true,
+      constraints: BoxConstraints(maxHeight: size.height * .48),
+      builder: (sheetContext) => ListView(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 22),
+        children: [
+          ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            leading: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: TasmanColors.ice,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.route_rounded, color: TasmanColors.ocean),
+            ),
+            title: Text(
+              _text('Directions', '路线指引'),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(
+              _text(
+                '${(route.distanceMeters / 1000).toStringAsFixed(1)} km · ${route.steps.length} steps',
+                '${(route.distanceMeters / 1000).toStringAsFixed(1)} 公里 · ${route.steps.length} 个步骤',
               ),
             ),
-            if (route.steps.isEmpty)
-              const ListTile(
-                title: Text('Turn list is not available for this route.'),
+          ),
+          if (route.steps.isEmpty)
+            ListTile(
+              dense: true,
+              title: Text(
+                _text(
+                  'Turn list is not available for this route.',
+                  '这条路线暂时没有逐步指引。',
+                ),
               ),
-            for (final step in route.steps)
-              ListTile(
-                leading: const Icon(Icons.turn_right_rounded),
-                title: Text(step.instruction),
-                subtitle: Text('${step.distanceMeters} m'),
+            ),
+          for (var index = 0; index < route.steps.length; index++)
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+              leading: Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: TasmanColors.mist,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: TasmanColors.ocean,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
-          ],
-        ),
+              title: Text(
+                route.steps[index].instruction,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Text(
+                route.steps[index].distanceMeters >= 1000
+                    ? '${(route.steps[index].distanceMeters / 1000).toStringAsFixed(1)} km'
+                    : '${route.steps[index].distanceMeters} m',
+                style: const TextStyle(
+                  color: TasmanColors.lightTextSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+        ],
       ),
     );
+
+    if (controller != null) {
+      await controller.setPadding(EdgeInsets.zero);
+      if (mounted) _recenter();
+    }
   }
 
   Future<void> _shareTripSnapshot() async {

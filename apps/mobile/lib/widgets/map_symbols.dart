@@ -58,6 +58,7 @@ class MapSymbols {
       CameraKind.averageSpeed => const Color(0xFF0891B2),
       CameraKind.redLight => const Color(0xFFC64539),
       CameraKind.dualRedLightSpeed => const Color(0xFFD97706),
+      CameraKind.busLane => const Color(0xFF0E7490),
       CameraKind.other => const Color(0xFF7250A1),
     };
     paint.color = onRoute ? TasmanColors.sky : Colors.white;
@@ -105,6 +106,31 @@ class MapSymbols {
         canvas.drawCircle(const Offset(51, 20), 8, paint);
         paint.color = color;
         canvas.drawCircle(const Offset(51, 20), 4, paint);
+        break;
+      case CameraKind.busLane:
+        paint.strokeWidth = 4;
+        paint.style = PaintingStyle.stroke;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(20, 20, 32, 32),
+            const Radius.circular(7),
+          ),
+          paint,
+        );
+        paint.style = PaintingStyle.fill;
+        final paragraph =
+            (ui.ParagraphBuilder(
+                    ui.ParagraphStyle(
+                      textAlign: TextAlign.center,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  )
+                  ..pushStyle(ui.TextStyle(color: color))
+                  ..addText('BUS'))
+                .build()
+              ..layout(const ui.ParagraphConstraints(width: 32));
+        canvas.drawParagraph(paragraph, const Offset(20, 28));
         break;
       case CameraKind.spotSpeed:
       case CameraKind.other:
