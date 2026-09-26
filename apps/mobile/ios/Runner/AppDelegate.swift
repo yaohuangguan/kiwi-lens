@@ -2,6 +2,7 @@ import Flutter
 import CoreLocation
 import GoogleMaps
 import UIKit
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -16,6 +17,7 @@ import UIKit
        !apiKey.contains("$(") {
       GMSServices.provideAPIKey(apiKey)
     }
+    UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
