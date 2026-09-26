@@ -37,7 +37,10 @@ class DriveEngine extends ChangeNotifier {
       cameraRepository ?? CameraRepository(),
     );
     _trafficProvider = NztaTrafficRoadEventProvider();
-    _providerRegistry = RoadEventProviderRegistry([_nztaProvider, _trafficProvider]);
+    _providerRegistry = RoadEventProviderRegistry([
+      _nztaProvider,
+      _trafficProvider,
+    ]);
   }
 
   final CameraMatcher _cameraMatcher;
@@ -144,7 +147,13 @@ class DriveEngine extends ChangeNotifier {
             ? position.speed
             : 0;
         speedKph = metresPerSecond * 3.6;
-        notifyListeners();
+        if (_lastSnappedLocation == null) {
+          _onLocation(
+            LatLng(latitude: position.latitude, longitude: position.longitude),
+          );
+        } else {
+          notifyListeners();
+        }
       }),
     );
     active = true;
@@ -196,13 +205,13 @@ class DriveEngine extends ChangeNotifier {
       final providerErrors = _providerRegistry.lastErrors;
       roadIntelligenceStatus =
           cameraStatus == 'stale' || trafficStatus == 'stale'
-              ? 'stale'
-              : (providerErrors.isNotEmpty ||
+          ? 'stale'
+          : (providerErrors.isNotEmpty ||
                     cameraStatus == 'unavailable' ||
                     trafficStatus == 'unavailable' ||
                     trafficStatus == 'not_loaded'
-                    ? 'partial'
-                    : 'live');
+                ? 'partial'
+                : 'live');
       _recomputeRouteCameras();
       error = null;
     } catch (exception) {
@@ -237,7 +246,10 @@ class DriveEngine extends ChangeNotifier {
   void _recomputeRouteCameras() {
     routeCameras = _route == null
         ? const []
-        : _routeMatcher.match(_route!, _cameras.where(_cameraAlertFilter).toList(growable: false));
+        : _routeMatcher.match(
+            _route!,
+            _cameras.where(_cameraAlertFilter).toList(growable: false),
+          );
     _highConfidenceCameraIds = routeCameras
         .where((match) => match.highConfidence)
         .map((match) => match.camera.id)

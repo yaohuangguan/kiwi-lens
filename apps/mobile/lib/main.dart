@@ -64,6 +64,61 @@ class KiwiLensApp extends StatelessWidget {
   }
 }
 
+class _OnboardingFeature extends StatelessWidget {
+  const _OnboardingFeature({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: TasmanColors.ice,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: TasmanColors.ocean, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: TasmanColors.deepOcean,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                body,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  height: 1.35,
+                  color: TasmanColors.lightTextSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class MapHomePage extends StatefulWidget {
   const MapHomePage({super.key});
 
@@ -188,10 +243,97 @@ class _MapHomePageState extends State<MapHomePage> {
     _driveEngine.addListener(_onEngineChanged);
     unawaited(_account.restore());
     unawaited(_driveEngine.loadCameras());
-    unawaited(_restoreMapSettings());
+    unawaited(_restoreMapSettings().then((_) => _maybeShowCoreOnboarding()));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_startTracking());
     });
+  }
+
+  Future<void> _maybeShowCoreOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('tasman.onboarding.core.v1') == true || !mounted) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 6),
+        contentPadding: const EdgeInsets.fromLTRB(24, 10, 24, 8),
+        actionsPadding: const EdgeInsets.fromLTRB(18, 6, 18, 18),
+        title: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [TasmanColors.ocean, TasmanColors.teal],
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.navigation_rounded, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _text('Welcome to Tasman', '欢迎使用 Tasman'),
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _OnboardingFeature(
+              icon: Icons.route_rounded,
+              title: _text('Navigation first', '专注导航'),
+              body: _text(
+                'Clear route guidance, traffic-aware routing and a focused Drive Mode.',
+                '清晰路线指引、实时交通路线，以及专注驾驶的 Drive Mode。',
+              ),
+            ),
+            _OnboardingFeature(
+              icon: Icons.shield_outlined,
+              title: _text('Road Intelligence', '道路情报'),
+              body: _text(
+                'NZTA roadworks, closures, incidents and safety cameras appear when relevant.',
+                '根据路线显示 NZTA 道路施工、封路、事故与安全摄像头。',
+              ),
+            ),
+            _OnboardingFeature(
+              icon: Icons.add_alert_rounded,
+              title: _text('Report the road', '上报道路情况'),
+              body: _text(
+                'Share crashes, hazards, roadworks, flooding and congestion with other Tasman drivers.',
+                '向其他 Tasman 用户分享事故、危险、施工、积水与拥堵。',
+              ),
+            ),
+            _OnboardingFeature(
+              icon: Icons.explore_rounded,
+              title: _text('Made for New Zealand', '为新西兰道路设计'),
+              body: _text(
+                'Kiwi location marker, NZ road data and a calm ocean-blue driving interface.',
+                'Kiwi 定位标记、新西兰道路数据，以及 Tasman 海洋蓝驾驶界面。',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton.icon(
+            onPressed: () async {
+              await prefs.setBool('tasman.onboarding.core.v1', true);
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+            },
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: Text(_text('Start exploring', '开始探索')),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onAccountChanged() {
@@ -271,7 +413,10 @@ class _MapHomePageState extends State<MapHomePage> {
     _driveEngine.voiceEnabled = _voiceEnabled;
     _layers = MapLayerSettings(
       cameras: prefs.getBool('kiwi.layers.cameras') ?? true,
-      spotSpeed: prefs.getBool('tasman.layers.spot_speed') ?? prefs.getBool('kiwi.layers.speed') ?? true,
+      spotSpeed:
+          prefs.getBool('tasman.layers.spot_speed') ??
+          prefs.getBool('kiwi.layers.speed') ??
+          true,
       averageSpeed: prefs.getBool('tasman.layers.average_speed') ?? true,
       redLight: prefs.getBool('kiwi.layers.red_light') ?? true,
       dualRedLightSpeed: prefs.getBool('tasman.layers.dual_red_speed') ?? true,
@@ -279,7 +424,8 @@ class _MapHomePageState extends State<MapHomePage> {
       alertSpotSpeed: prefs.getBool('tasman.alerts.spot_speed') ?? true,
       alertAverageSpeed: prefs.getBool('tasman.alerts.average_speed') ?? true,
       alertRedLight: prefs.getBool('tasman.alerts.red_light') ?? true,
-      alertDualRedLightSpeed: prefs.getBool('tasman.alerts.dual_red_speed') ?? true,
+      alertDualRedLightSpeed:
+          prefs.getBool('tasman.alerts.dual_red_speed') ?? true,
       alertOther: prefs.getBool('tasman.alerts.other_camera') ?? false,
       traffic: prefs.getBool('kiwi.layers.traffic') ?? true,
       style: BaseMapStyle.values.firstWhere(
@@ -492,11 +638,11 @@ class _MapHomePageState extends State<MapHomePage> {
         await controller.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(
-            target: location,
-            bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
-            tilt: _northUp ? 0 : 45,
-            zoom: _northUp ? 16 : 17,
-          ),
+              target: location,
+              bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
+              tilt: _northUp ? 0 : 45,
+              zoom: _northUp ? 16 : 17,
+            ),
           ),
         );
       }
@@ -558,10 +704,12 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _showRoadReport() async {
     final location = _gpsLocation;
     if (location == null) {
-      setState(() => _message = _text(
-        'Current location is required to report a road issue.',
-        '需要获取当前位置才能上报道路情况。',
-      ));
+      setState(
+        () => _message = _text(
+          'Current location is required to report a road issue.',
+          '需要获取当前位置才能上报道路情况。',
+        ),
+      );
       return;
     }
     final choices = <(String, String, String, IconData)>[
@@ -580,26 +728,38 @@ class _MapHomePageState extends State<MapHomePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 44, height: 4, decoration: BoxDecoration(
-              color: Theme.of(context).dividerColor,
-              borderRadius: BorderRadius.circular(4),
-            )),
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).dividerColor,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
             const SizedBox(height: 16),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(_text('Report road issue', '上报道路情况'),
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-              subtitle: Text(_text(
-                'Reports are shared with Tasman drivers for about 2 hours.',
-                '上报内容将在约 2 小时内共享给 Tasman 驾驶用户。',
-              )),
+              title: Text(
+                _text('Report road issue', '上报道路情况'),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text(
+                _text(
+                  'Reports are shared with Tasman drivers for about 2 hours.',
+                  '上报内容将在约 2 小时内共享给 Tasman 驾驶用户。',
+                ),
+              ),
             ),
             for (final choice in choices)
               ListTile(
                 leading: Icon(choice.$4, color: TasmanColors.ocean),
                 title: Text(_text(choice.$2, choice.$3)),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.pop(sheetContext, (choice.$1, choice.$2)),
+                onTap: () =>
+                    Navigator.pop(sheetContext, (choice.$1, choice.$2)),
               ),
           ],
         ),
@@ -607,17 +767,19 @@ class _MapHomePageState extends State<MapHomePage> {
     );
     if (selected == null) return;
     try {
-      final response = await http.post(
-        Uri.parse('$workerBaseUrl/api/road-reports'),
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode({
-          'type': selected.$1,
-          'latitude': location.latitude,
-          'longitude': location.longitude,
-          'headingDegrees': _travelHeading ?? _deviceHeading,
-          'description': selected.$2,
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$workerBaseUrl/api/road-reports'),
+            headers: {'content-type': 'application/json'},
+            body: jsonEncode({
+              'type': selected.$1,
+              'latitude': location.latitude,
+              'longitude': location.longitude,
+              'headingDegrees': _travelHeading ?? _deviceHeading,
+              'description': selected.$2,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode != 201) {
         throw StateError('HTTP ${response.statusCode}');
       }
@@ -629,14 +791,15 @@ class _MapHomePageState extends State<MapHomePage> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _message = _text(
-          'Could not submit road report: $error',
-          '道路上报失败：$error',
-        ));
+        setState(
+          () => _message = _text(
+            'Could not submit road report: $error',
+            '道路上报失败：$error',
+          ),
+        );
       }
     }
   }
-
 
   void _showRouteOverview() {
     _following = false;
@@ -1199,7 +1362,8 @@ class _MapHomePageState extends State<MapHomePage> {
         );
       }
       for (var attempt = 0; attempt < 10; attempt++) {
-        _navigationSessionInitialized = await GoogleMapsNavigator.isInitialized();
+        _navigationSessionInitialized =
+            await GoogleMapsNavigator.isInitialized();
         if (_navigationSessionInitialized) break;
         await Future<void>.delayed(const Duration(milliseconds: 120));
       }
@@ -1471,19 +1635,19 @@ class _MapHomePageState extends State<MapHomePage> {
       _lastBrowseCamera =
           await _browseController?.getCameraPosition() ?? _lastBrowseCamera;
       if (!await _ensureNavigationSession()) return;
-      if (!await _driveEngine.waitForRoadSnappedLocation()) {
-        await _driveEngine.stop();
-        await GoogleMapsNavigator.cleanup();
-        _navigationSessionInitialized = false;
-        if (mounted) {
-          setState(
-            () => _message =
-                'Waiting for a road-snapped GPS fix. Try Drive Mode again.',
-          );
-        }
-        return;
-      }
       if (mounted) setState(() {});
+      await WidgetsBinding.instance.endOfFrame;
+      final hasFix = await _driveEngine.waitForRoadSnappedLocation(
+        timeout: const Duration(seconds: 6),
+      );
+      if (!hasFix && mounted) {
+        setState(
+          () => _message = _text(
+            'Drive Mode is running while GPS settles. Keep the phone near a clear view of the sky.',
+            '驾驶模式已启动，正在等待 GPS 稳定，请保持手机能够正常接收定位信号。',
+          ),
+        );
+      }
     } catch (error) {
       if (mounted) {
         setState(() => _message = 'Could not start Drive Mode: $error');
@@ -1993,7 +2157,10 @@ class _MapHomePageState extends State<MapHomePage> {
       prefs.setBool('tasman.alerts.spot_speed', value.alertSpotSpeed),
       prefs.setBool('tasman.alerts.average_speed', value.alertAverageSpeed),
       prefs.setBool('tasman.alerts.red_light', value.alertRedLight),
-      prefs.setBool('tasman.alerts.dual_red_speed', value.alertDualRedLightSpeed),
+      prefs.setBool(
+        'tasman.alerts.dual_red_speed',
+        value.alertDualRedLightSpeed,
+      ),
       prefs.setBool('tasman.alerts.other_camera', value.alertOther),
       prefs.setBool('kiwi.layers.traffic', value.traffic),
       prefs.setString('kiwi.layers.style', value.style.name),
@@ -2404,13 +2571,19 @@ class _MapHomePageState extends State<MapHomePage> {
           Padding(
             padding: const EdgeInsets.only(right: 6),
             child: ActionChip(
-              avatar: Icon(_quickActionIcon(action), size: 15, color: TasmanColors.ocean),
+              avatar: Icon(
+                _quickActionIcon(action),
+                size: 15,
+                color: TasmanColors.ocean,
+              ),
               visualDensity: VisualDensity.compact,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               padding: const EdgeInsets.symmetric(horizontal: 7),
               backgroundColor: Colors.white.withValues(alpha: .94),
               side: BorderSide(color: TasmanColors.sky.withValues(alpha: .28)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(13),
+              ),
               label: Text(
                 action,
                 style: const TextStyle(
@@ -2684,7 +2857,11 @@ class _MapHomePageState extends State<MapHomePage> {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: TasmanColors.sky.withValues(alpha: .6)),
           boxShadow: const [
-            BoxShadow(color: Color(0x22082F49), blurRadius: 22, offset: Offset(0, 8)),
+            BoxShadow(
+              color: Color(0x22082F49),
+              blurRadius: 22,
+              offset: Offset(0, 8),
+            ),
           ],
         ),
         child: Padding(
@@ -2692,13 +2869,20 @@ class _MapHomePageState extends State<MapHomePage> {
           child: Row(
             children: [
               item(Icons.map_outlined, _text('Map', '地图'), _recenter),
-              item(Icons.explore_outlined, _text('Explore', '探索'), () => unawaited(_showExplore())),
+              item(
+                Icons.explore_outlined,
+                _text('Explore', '探索'),
+                () => unawaited(_showExplore()),
+              ),
               Expanded(
                 child: InkWell(
                   borderRadius: BorderRadius.circular(17),
                   onTap: _showGoSearch,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 3),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 3,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -2713,10 +2897,18 @@ class _MapHomePageState extends State<MapHomePage> {
                             ),
                             borderRadius: BorderRadius.circular(15),
                             boxShadow: const [
-                              BoxShadow(color: Color(0x300077B6), blurRadius: 10, offset: Offset(0, 4)),
+                              BoxShadow(
+                                color: Color(0x300077B6),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
+                              ),
                             ],
                           ),
-                          child: const Icon(Icons.navigation_rounded, size: 22, color: Colors.white),
+                          child: const Icon(
+                            Icons.navigation_rounded,
+                            size: 22,
+                            color: Colors.white,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -2732,8 +2924,16 @@ class _MapHomePageState extends State<MapHomePage> {
                   ),
                 ),
               ),
-              item(Icons.bookmark_outline_rounded, _text('Saved', '收藏'), () => unawaited(_showSaved())),
-              item(Icons.person_outline_rounded, _text('Me', '我的'), _showProfile),
+              item(
+                Icons.bookmark_outline_rounded,
+                _text('Saved', '收藏'),
+                () => unawaited(_showSaved()),
+              ),
+              item(
+                Icons.person_outline_rounded,
+                _text('Me', '我的'),
+                _showProfile,
+              ),
             ],
           ),
         ),
@@ -3002,7 +3202,10 @@ class _MapHomePageState extends State<MapHomePage> {
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
                         tooltip: _text('Report road issue', '上报道路情况'),
-                        icon: const Icon(Icons.add_alert_rounded, color: TasmanColors.ocean),
+                        icon: const Icon(
+                          Icons.add_alert_rounded,
+                          color: TasmanColors.ocean,
+                        ),
                         onPressed: () => unawaited(_showRoadReport()),
                       ),
                     ),
@@ -3017,7 +3220,9 @@ class _MapHomePageState extends State<MapHomePage> {
                         tooltip: _locationControlTooltip,
                         icon: Icon(
                           _locationControlIcon,
-                          color: _following ? TasmanColors.ocean : TasmanColors.deepOcean,
+                          color: _following
+                              ? TasmanColors.ocean
+                              : TasmanColors.deepOcean,
                         ),
                         onPressed: _cycleLocationCamera,
                       ),
@@ -3041,7 +3246,9 @@ class _MapHomePageState extends State<MapHomePage> {
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: .96),
                         borderRadius: BorderRadius.circular(19),
-                        border: Border.all(color: TasmanColors.sky.withValues(alpha: .72)),
+                        border: Border.all(
+                          color: TasmanColors.sky.withValues(alpha: .72),
+                        ),
                         boxShadow: const [
                           BoxShadow(
                             color: Color(0x18082F49),
@@ -3064,11 +3271,18 @@ class _MapHomePageState extends State<MapHomePage> {
                                   gradient: const LinearGradient(
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
-                                    colors: [TasmanColors.ocean, TasmanColors.teal],
+                                    colors: [
+                                      TasmanColors.ocean,
+                                      TasmanColors.teal,
+                                    ],
                                   ),
                                   borderRadius: BorderRadius.circular(13),
                                 ),
-                                child: const Icon(Icons.explore_rounded, color: Colors.white, size: 22),
+                                child: const Icon(
+                                  Icons.explore_rounded,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
                               ),
                               const SizedBox(width: 11),
                               Expanded(
@@ -3085,7 +3299,10 @@ class _MapHomePageState extends State<MapHomePage> {
                                       ),
                                     ),
                                     Text(
-                                      _text('Navigate Aotearoa with Tasman', '用 Tasman 探索新西兰'),
+                                      _text(
+                                        'Navigate Aotearoa with Tasman',
+                                        '用 Tasman 探索新西兰',
+                                      ),
                                       style: const TextStyle(
                                         color: TasmanColors.lightTextSecondary,
                                         fontSize: 10.5,
@@ -3095,7 +3312,11 @@ class _MapHomePageState extends State<MapHomePage> {
                                   ],
                                 ),
                               ),
-                              const Icon(Icons.arrow_forward_rounded, color: TasmanColors.ocean, size: 19),
+                              const Icon(
+                                Icons.arrow_forward_rounded,
+                                color: TasmanColors.ocean,
+                                size: 19,
+                              ),
                             ],
                           ),
                         ),
