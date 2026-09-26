@@ -85,6 +85,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
     final nav = widget.engine.navInfo;
     final step = nav?.currentStep;
     final camera = widget.engine.upcomingCamera;
@@ -366,10 +369,11 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: TasmanColors.lightSurface.withValues(alpha: .97),
+                    color: (dark ? TasmanColors.darkSurface : scheme.surface)
+                        .withValues(alpha: .97),
                     borderRadius: BorderRadius.circular(19),
                     border: Border.all(
-                      color: TasmanColors.sky.withValues(alpha: .55),
+                      color: scheme.primary.withValues(alpha: .45),
                     ),
                     boxShadow: const [
                       BoxShadow(
@@ -403,9 +407,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               camera.location,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFF68756E),
+                                color: scheme.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -433,7 +437,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.bottomCenter,
                   child: Material(
-                    color: TasmanColors.lightSurface,
+                    color: dark ? TasmanColors.darkOcean : scheme.surface,
                     elevation: 0,
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(27),
@@ -453,7 +457,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                 width: 51,
                                 height: 5,
                                 decoration: BoxDecoration(
-                                  color: TasmanColors.lightBorder,
+                                  color: theme.dividerColor,
                                   borderRadius: BorderRadius.circular(5),
                                 ),
                               ),
@@ -476,7 +480,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               FilledButton.icon(
                                 onPressed: widget.onEnd,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: TasmanColors.ocean,
+                                  backgroundColor: TasmanColors.danger,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
@@ -513,7 +517,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             const SizedBox(height: TasmanSpacing.x2),
                             RoadEventTimeline(
                               events: widget.engine.upcomingRoadEvents,
-                              dark: false,
+                              dark: dark,
                             ),
                           ],
                           const SizedBox(height: 10),
@@ -615,32 +619,35 @@ class _TripStat extends StatelessWidget {
   final String label;
   final String value;
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Color(0xFF84928A), fontSize: 10),
-          ),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
             ),
-          ),
-        ],
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _Chip extends StatelessWidget {
@@ -649,37 +656,45 @@ class _Chip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: Material(
-      color: const Color(0xFFF0F4F0),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 15, color: _ink),
-              const SizedBox(width: 3),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Expanded(
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: theme.dividerColor),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 15, color: scheme.primary),
+                const SizedBox(width: 3),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _MapControl extends StatelessWidget {
@@ -718,34 +733,42 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: (MediaQuery.sizeOf(context).width - 48) / 2,
-    child: Material(
-      color: const Color(0xFFF0F4F0),
-      borderRadius: BorderRadius.circular(13),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(13),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          child: Row(
-            children: [
-              Icon(icon, color: _ink, size: 19),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 2,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return SizedBox(
+      width: (MediaQuery.sizeOf(context).width - 48) / 2,
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(13),
+          side: BorderSide(color: theme.dividerColor),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(13),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: scheme.primary, size: 19),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

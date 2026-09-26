@@ -36,6 +36,9 @@ class DriveHud extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
     final nav = engine.navInfo;
     final step = nav?.currentStep;
     final camera = engine.upcomingCamera;
@@ -254,7 +257,7 @@ class DriveHud extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: cameraDistance <= 150
                         ? TasmanColors.warning.withValues(alpha: .16)
-                        : TasmanColors.ice,
+                        : (dark ? TasmanColors.darkSurface : TasmanColors.ice),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: const [
                       BoxShadow(
@@ -288,8 +291,8 @@ class DriveHud extends StatelessWidget {
                               '${camera.type} · ${camera.location}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: TasmanColors.lightTextSecondary,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
                                 fontSize: 12,
                               ),
                             ),
@@ -301,7 +304,7 @@ class DriveHud extends StatelessWidget {
                 ),
               ),
             if (engine.upcomingRoadEvents.isNotEmpty && camera == null) ...[
-              RoadEventTimeline(events: engine.upcomingRoadEvents),
+              RoadEventTimeline(events: engine.upcomingRoadEvents, dark: dark),
               const SizedBox(height: TasmanSpacing.x2),
             ],
             PointerInterceptor(

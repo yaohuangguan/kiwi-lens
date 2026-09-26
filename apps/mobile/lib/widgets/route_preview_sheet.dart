@@ -141,7 +141,7 @@ class RoutePreviewSheet extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxSheetHeight),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 88),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -468,41 +468,6 @@ class RoutePreviewSheet extends StatelessWidget {
                               size: 16,
                             ),
                             label: const Text('Save', maxLines: 1),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: busy ? null : onStart,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: TasmanColors.ocean,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 8,
-                              ),
-                            ),
-                            icon: busy
-                                ? const SizedBox(
-                                    width: 15,
-                                    height: 15,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.navigation_rounded,
-                                    size: 16,
-                                  ),
-                            label: Text(
-                              busy
-                                  ? 'Starting…'
-                                  : selectedMode == KiwiTravelMode.transit
-                                  ? 'Start trip'
-                                  : 'Start',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
                           ),
                         ),
                       ],

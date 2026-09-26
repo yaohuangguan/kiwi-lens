@@ -897,7 +897,12 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _refreshMap() async {
     if (_mapProvider == MapProvider.mapbox) {
       final location = _gpsLocation;
-      if (_following && location != null && _browseRenderer != null) {
+      final routePreviewOwnsCamera =
+          _journeyPhase == JourneyPhase.routePreview && _routePlan != null;
+      if (_following &&
+          !routePreviewOwnsCamera &&
+          location != null &&
+          _browseRenderer != null) {
         await _browseRenderer!.moveTo(
           _viewport.copyWith(
             center: GeoPoint(location.latitude, location.longitude),
@@ -958,7 +963,9 @@ class _MapHomePageState extends State<MapHomePage> {
       }
       // During Drive/Navigation the native SDK owns the camera. Manually
       // moving it on every GPS/heading update causes visible tug-of-war.
-      if (_following && !_driveEngine.active) {
+      final routePreviewOwnsCamera =
+          _journeyPhase == JourneyPhase.routePreview && _routePlan != null;
+      if (_following && !_driveEngine.active && !routePreviewOwnsCamera) {
         await controller.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(
@@ -1158,7 +1165,9 @@ class _MapHomePageState extends State<MapHomePage> {
       _selectedParking = null;
       _parkingLoading = false;
       _parkingLegFinished = false;
+      _following = true;
     });
+    _queueMapRefresh();
   }
 
   Future<void> _loadParking(PlaceSummary destination) async {
@@ -1260,6 +1269,7 @@ class _MapHomePageState extends State<MapHomePage> {
       _routePlan = null;
       _selectedMode = preferredMode;
       _selectedRouteId = null;
+      _following = false;
       _message = null;
     });
     if (preferredMode == KiwiTravelMode.drive &&
@@ -1518,6 +1528,7 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _renderRoutePreview() async {
+    _following = false;
     final controller = _browseController;
     final plan = _routePlan;
     if (controller == null || plan == null) return;
@@ -4218,6 +4229,45 @@ class _MapHomePageState extends State<MapHomePage> {
                 onFavorite: () => unawaited(_toggleFavorite(_selectedPoi!)),
                 onReview: () => unawaited(_reviewPlace(_selectedPoi!)),
                 onClose: () => unawaited(_clearRoutePreview()),
+              ),
+            ),
+          if (_selectedPoi != null &&
+              _routePlan != null &&
+              !_driveEngine.active &&
+              !_guidanceRunning &&
+              !_transitTripRunning)
+            Positioned(
+              right: 18,
+              bottom: MediaQuery.paddingOf(context).bottom + 18,
+              child: PointerInterceptor(
+                child: FloatingActionButton.extended(
+                  key: const Key('routeStartFloatingButton'),
+                  heroTag: 'route-start-floating',
+                  elevation: 9,
+                  onPressed: _busy
+                      ? null
+                      : () => unawaited(_navigateToSelectedPoi()),
+                  backgroundColor: TasmanColors.ocean,
+                  foregroundColor: Colors.white,
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.navigation_rounded),
+                  label: Text(
+                    _busy
+                        ? _text('Starting…', '正在开始…')
+                        : _selectedMode == KiwiTravelMode.transit
+                        ? _text('Start trip', '开始行程')
+                        : _text('Start', '开始导航'),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
               ),
             ),
         ],

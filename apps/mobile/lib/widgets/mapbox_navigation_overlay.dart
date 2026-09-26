@@ -29,6 +29,9 @@ class MapboxNavigationOverlay extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: Listenable.merge([engine, drive]),
     builder: (context, _) {
+      final theme = Theme.of(context);
+      final scheme = theme.colorScheme;
+      final dark = theme.brightness == Brightness.dark;
       final next = engine.nextStep;
       final distance = engine.distanceToStepMeters;
       final remaining = engine.remainingDistanceMeters;
@@ -88,7 +91,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
               right: 14,
               bottom: 14,
               child: Material(
-                color: Colors.white,
+                color: scheme.surface,
                 elevation: 12,
                 borderRadius: BorderRadius.circular(20),
                 child: Padding(
@@ -119,8 +122,8 @@ class MapboxNavigationOverlay extends StatelessWidget {
                                       '前方摄像头 · '
                                           '${drive.upcomingCameraDistanceMeters?.round() ?? 0} 米',
                                     ),
-                                    style: const TextStyle(
-                                      color: Color(0xFFC25735),
+                                    style: TextStyle(
+                                      color: scheme.error,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -137,7 +140,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
                         const SizedBox(height: TasmanSpacing.x2),
                         RoadEventTimeline(
                           events: drive.upcomingRoadEvents,
-                          dark: false,
+                          dark: dark,
                         ),
                       ],
                     ],
